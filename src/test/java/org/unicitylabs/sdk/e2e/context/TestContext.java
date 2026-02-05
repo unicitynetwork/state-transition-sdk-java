@@ -39,7 +39,7 @@ public class TestContext {
     // double-spend testing: after a transfer the token object is consumed,
     // so we need the original to attempt a second spend.
     private Map<String, Token> originalMintedTokens = new HashMap<>();
-    private Map<String, SigningService> userSigningServices = new HashMap<>();
+    private Map<String, SigningService> userSigningServices = new LinkedHashMap<>();
     private Map<String, byte[]> userNonces = new HashMap<>();
     private Map<String, byte[]> userSecrets = new HashMap<>();
     private Map<String, Predicate> userPredicate = new HashMap<>();
@@ -77,6 +77,8 @@ public class TestContext {
 
     // Current operation context
     private String currentUser;
+    private String lastSplitRecipient;
+    private List<Token> lastSplitTokens = new ArrayList<>();
     private String expectedErrorType;
     private int expectedSplitCount;
     private int configuredUserCount;
@@ -251,6 +253,12 @@ public class TestContext {
     public String getCurrentUser() { return currentUser; }
     public void setCurrentUser(String currentUser) { this.currentUser = currentUser; }
 
+    public String getLastSplitRecipient() { return lastSplitRecipient; }
+    public void setLastSplitRecipient(String lastSplitRecipient) { this.lastSplitRecipient = lastSplitRecipient; }
+
+    public List<Token> getLastSplitTokens() { return lastSplitTokens; }
+    public void setLastSplitTokens(List<Token> lastSplitTokens) { this.lastSplitTokens = lastSplitTokens; }
+
     public String getExpectedErrorType() { return expectedErrorType; }
     public void setExpectedErrorType(String expectedErrorType) { this.expectedErrorType = expectedErrorType; }
 
@@ -284,7 +292,7 @@ public class TestContext {
 
     public Token getUserToken(String userName) {
         List<Token> tokens = userTokens.get(userName);
-        return (tokens != null && !tokens.isEmpty()) ? tokens.get(0) : null;
+        return (tokens != null && !tokens.isEmpty()) ? tokens.get(tokens.size() - 1) : null;
     }
 
     public Token getUserToken(String userName, int index) {
@@ -353,6 +361,8 @@ public class TestContext {
         chainToken = null;
         transferCustomData.clear();
         currentUser = null;
+        lastSplitRecipient = null;
+        lastSplitTokens.clear();
         expectedErrorType = null;
         nameTagTokens.clear();
         pendingTransfers.clear();

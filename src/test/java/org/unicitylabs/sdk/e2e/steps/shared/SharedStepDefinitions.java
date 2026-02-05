@@ -1228,7 +1228,11 @@ public class SharedStepDefinitions {
                 .isOwner(helper.getSigningServiceForToken(recipient, splitTokens.get(1)).getPublicKey()), recipient + " should own the token");
 
         context.removeUserToken(username, originalToken);
-        context.getUserTokens().put(username, splitTokens);
+        // splitTokens[0] is owner's token, splitTokens[1] is recipient's token
+        context.addUserToken(username, splitTokens.get(0));
+        context.addUserToken(recipient, splitTokens.get(1));
+        context.setLastSplitTokens(splitTokens);
+        context.setLastSplitRecipient(recipient);
         context.setCurrentUser(username);
     }
 
