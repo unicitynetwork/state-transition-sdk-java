@@ -10,6 +10,7 @@ import org.unicitylabs.sdk.e2e.config.CucumberConfiguration;
 import org.unicitylabs.sdk.e2e.context.TestContext;
 import org.unicitylabs.sdk.hash.DataHash;
 import org.unicitylabs.sdk.hash.HashAlgorithm;
+import org.unicitylabs.sdk.predicate.SerializablePredicate;
 import org.unicitylabs.sdk.predicate.embedded.MaskedPredicate;
 import org.unicitylabs.sdk.predicate.Predicate;
 import org.unicitylabs.sdk.predicate.embedded.UnmaskedPredicate;
@@ -21,6 +22,7 @@ import org.unicitylabs.sdk.token.TokenState;
 import org.unicitylabs.sdk.token.TokenType;
 import org.unicitylabs.sdk.transaction.*;
 import org.unicitylabs.sdk.utils.TestUtils;
+import org.unicitylabs.sdk.utils.helpers.AggregatorRequestHelper;
 import org.unicitylabs.sdk.utils.helpers.CommitmentResult;
 
 import java.nio.charset.StandardCharsets;
@@ -89,11 +91,9 @@ public class StepHelper {
                 nametagGenesis
         );
     }
+    public void transferToken(String fromUser, String toUser, Token<?> token, Address toAddress, String customData) throws Exception {
+        SigningService fromSigningService = getSigningServiceForToken(fromUser, token);
 
-    public void transferToken(String fromUser, String toUser, Token token, Address toAddress, String customData) throws Exception {
-        SigningService fromSigningService = context.getUserSigningServices().get(fromUser);
-
-        // Create data hash and state data if custom data provided
         DataHash dataHash = null;
         byte[] stateData = null;
         if (customData != null && !customData.isEmpty()) {
@@ -101,7 +101,6 @@ public class StepHelper {
             dataHash = TestUtils.hashData(stateData);
         }
 
-        // Submit transfer commitment
         TransferCommitment transferCommitment = TransferCommitment.create(
                 token,
                 toAddress,
@@ -116,21 +115,13 @@ public class StepHelper {
             throw new Exception("Failed to submit transfer commitment: " + response.getStatus());
         }
 
-        // Wait for inclusion proof
-        InclusionProof inclusionProof = waitInclusionProof(
-                context.getClient(),
-                context.getTrustBase(),
-                transferCommitment
-        ).get();
-      TransferTransaction transferTransaction = transferCommitment.toTransaction(
-                inclusionProof
-        );
+        InclusionProof inclusionProof = waitInclusionProof(context.getClient(), context.getTrustBase(), transferCommitment).get();
+        TransferTransaction transferTransaction = transferCommitment.toTransaction(inclusionProof);
 
         context.savePendingTransfer(toUser, token, transferTransaction);
     }
 
     public void finalizeTransfer(String username, Token<?> token, TransferTransaction tx) throws Exception {
-
         byte[] secret = context.getUserSecret().get(username);
 
         Token<?> currentNameTagToken = context.getNameTagToken(username);
@@ -139,7 +130,6 @@ public class StepHelper {
             for (Token<?> t : nametagTokens) {
                 String actualNametagAddress = tx.getData().getRecipient().getAddress();
                 String expectedProxyAddress = ProxyAddress.create(t.getId()).getAddress();
-
                 if (actualNametagAddress.equalsIgnoreCase(expectedProxyAddress)) {
                     currentNameTagToken = t;
                     break;
@@ -152,23 +142,17 @@ public class StepHelper {
             additionalTokens.add(currentNameTagToken);
         }
 
-        Predicate unlockPredicate = context.getUserPredicate().get(username);
-        if (unlockPredicate == null){
-            context.getUserSigningServices().put(username, SigningService.createFromSecret(secret));
-            unlockPredicate = UnmaskedPredicate.create(
-                        token.getId(),
-                        token.getType(),
-                        context.getUserSigningServices().get(username),
-                        HashAlgorithm.SHA256,
-                        tx.getData().getSalt()
-                );
-        }
 
-        TokenState recipientState = new TokenState(
-                unlockPredicate,
-                null
+
+        PredicateType predicateType = detectPredicateType(username, token, tx);
+        Predicate recipientPredicate = createRecipientPredicate(
+                username,
+                token,
+                tx,
+                predicateType
         );
 
+        TokenState recipientState = new TokenState(recipientPredicate, null);
         Token finalizedToken = context.getClient().finalizeTransaction(
                 context.getTrustBase(),
                 token,
@@ -177,6 +161,7 @@ public class StepHelper {
                 additionalTokens
         );
 
+        context.getUserSigningServices().put(username, getSigningServiceForToken(username, finalizedToken));
         context.addUserToken(username, finalizedToken);
     }
 
@@ -283,10 +268,23 @@ public class StepHelper {
                 .collect(Collectors.toList());
     }
 
-    // Helper method to extract aggregator info from username
+    // Modified method to extract shard/aggregator from userName or use shard URL mapping
     public String extractAggregatorFromUserName(String userName) {
         if (userName.contains("-Aggregator")) {
             return userName.substring(userName.indexOf("-Aggregator"));
+        }
+        if (userName.contains("-Shard")) {
+            return userName.substring(userName.indexOf("-Shard"));
+        }
+        return "Unknown-Aggregator";
+    }
+
+    // New method to map shard URL to aggregator index
+    public String mapShardUrlToAggregator(String shardUrl, List<String> aggregatorUrls) {
+        for (int i = 0; i < aggregatorUrls.size(); i++) {
+            if (shardUrl.equals(aggregatorUrls.get(i))) {
+                return "-Aggregator" + i;
+            }
         }
         return "Unknown-Aggregator";
     }
@@ -324,6 +322,60 @@ public class StepHelper {
         } finally {
             executor.shutdown();
         }
+    }
+
+    public void verifyAllInclusionProofsInParallelForShardAggregators(
+            int timeoutSeconds,
+            AggregatorRequestHelper shardHelper) throws Exception {
+
+        List<CommitmentResult> results = collectCommitmentResults();
+
+        // Group results by shard ID instead of Aggregator name
+        Map<Integer, List<CommitmentResult>> resultsByShard = results.stream()
+                .collect(Collectors.groupingBy(r -> shardHelper.getShardForRequest(r.getRequestId())));
+
+        ExecutorService executor = Executors.newFixedThreadPool(resultsByShard.size());
+        List<CompletableFuture<Void>> verificationFutures = new ArrayList<>();
+
+        for (Map.Entry<Integer, List<CommitmentResult>> entry : resultsByShard.entrySet()) {
+            int shardId = entry.getKey();
+            List<CommitmentResult> shardResults = entry.getValue();
+            AggregatorClient aggregatorClient = shardHelper.getClientForShard(shardId);
+            String shardUrl = shardHelper.getShardUrl(shardId);
+
+            if (aggregatorClient == null) {
+                System.out.printf("⚠️ No aggregator found for shard %d, skipping %d results%n", shardId, shardResults.size());
+                continue;
+            }
+
+            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                try {
+                    System.out.printf("🔍 Verifying inclusion proofs for shard %d (%s)%n", shardId, shardUrl);
+                    verifyInclusionProofsForAggregator(aggregatorClient, shardResults, timeoutSeconds);
+
+                    // Update shard-level stats
+                    long verified = shardResults.stream().filter(CommitmentResult::isVerified).count();
+                    shardHelper.getStats(shardId).incrementCommitments();
+                    shardHelper.getStats(shardId).incrementSuccessBy((int) verified);
+                    shardHelper.getStats(shardId).incrementFailuresBy(shardResults.size() - (int) verified);
+
+                    System.out.printf("✅ Shard %d verification complete: %d/%d verified%n",
+                            shardId, verified, shardResults.size());
+                } catch (Exception e) {
+                    System.err.printf("❌ Error verifying shard %d: %s%n", shardId, e.getMessage());
+                    shardHelper.getStats(shardId).incrementFailures();
+                }
+            }, executor);
+
+            verificationFutures.add(future);
+        }
+
+        // Wait for all shard verifications to complete
+        CompletableFuture.allOf(verificationFutures.toArray(new CompletableFuture[0]))
+                .get(timeoutSeconds + 10, TimeUnit.SECONDS);
+
+        executor.shutdown();
+        shardHelper.printShardStats();
     }
 
     private void verifyInclusionProofsForAggregator(AggregatorClient aggregatorClient,
@@ -382,16 +434,47 @@ public class StepHelper {
         }
     }
 
-    // Method to print detailed results by aggregator
-    public void printDetailedResultsByAggregator(List<CommitmentResult> results, int aggregatorCount) {
-        System.out.println("\n=== Detailed Results by Aggregator ===");
+    // Modified method to group results by actual shard/aggregator URL
+    public void printDetailedResultsByAggregator(List<CommitmentResult> results,
+                                                 List<AggregatorClient> aggregatorClients,
+                                                 List<String> aggregatorUrls) {
+        System.out.println("\n=== 📊 AGGREGATOR PERFORMANCE COMPARISON ===");
+        System.out.println("\n=== Detailed Results by Shard ===");
 
-        Map<String, List<CommitmentResult>> resultsByAggregator = results.stream()
+        // Group by what's actually in the username (could be -Shard or -Aggregator)
+        Map<String, List<CommitmentResult>> resultsByIdentifier = results.stream()
                 .collect(Collectors.groupingBy(r -> extractAggregatorFromUserName(r.getUserName())));
 
-        for (int i = 0; i < aggregatorCount; i++) {
+        // Create a map from shard URLs to aggregator indices
+        Map<String, Integer> urlToIndex = new HashMap<>();
+        for (int i = 0; i < aggregatorUrls.size(); i++) {
+            urlToIndex.put(aggregatorUrls.get(i), i);
+        }
+
+        // Display results for each configured shard/aggregator
+        for (int i = 0; i < aggregatorUrls.size(); i++) {
+            String aggregatorUrl = aggregatorUrls.get(i);
+
+            // Try to find results for this aggregator by index
             String aggregatorId = "-Aggregator" + i;
-            List<CommitmentResult> aggregatorResults = resultsByAggregator.getOrDefault(aggregatorId, new ArrayList<>());
+            String shardId = "-Shard" + i;
+
+            // Collect results from both possible identifiers
+            List<CommitmentResult> aggregatorResults = new ArrayList<>();
+            aggregatorResults.addAll(resultsByIdentifier.getOrDefault(aggregatorId, new ArrayList<>()));
+            aggregatorResults.addAll(resultsByIdentifier.getOrDefault(shardId, new ArrayList<>()));
+
+            // Also check for any shard identifiers that might map to this URL
+            // (in case shard numbering doesn't match aggregator numbering)
+            for (Map.Entry<String, List<CommitmentResult>> entry : resultsByIdentifier.entrySet()) {
+                String identifier = entry.getKey();
+                // Skip if we already processed this identifier
+                if (identifier.equals(aggregatorId) || identifier.equals(shardId)) {
+                    continue;
+                }
+                // Check if any result in this group was sent to this URL
+                // (You'd need to track the URL in CommitmentResult for this to work properly)
+            }
 
             long verifiedCount = aggregatorResults.stream()
                     .filter(CommitmentResult::isVerified)
@@ -400,36 +483,119 @@ public class StepHelper {
             double successRate = aggregatorResults.isEmpty() ? 0 :
                     (double) verifiedCount / aggregatorResults.size() * 100;
 
-            // Calculate average inclusion proof time for verified commitments
             OptionalDouble avgInclusionTime = aggregatorResults.stream()
                     .filter(CommitmentResult::isVerified)
                     .mapToDouble(CommitmentResult::getInclusionDurationMillis)
                     .average();
 
-            System.out.println("Aggregator" + i + " (localhost:" + (3000 + i * 5080) + "):");
+            System.out.println("\nShard/Aggregator " + i + " (" + aggregatorUrl + "):");
             System.out.println("  Total commitments: " + aggregatorResults.size());
             System.out.println("  Verified: " + verifiedCount + " / " + aggregatorResults.size());
             System.out.println("  Success rate: " + String.format("%.2f%%", successRate));
 
             if (avgInclusionTime.isPresent()) {
                 System.out.println("  Average inclusion time: " + String.format("%.2f ms", avgInclusionTime.getAsDouble()));
+            } else if (!aggregatorResults.isEmpty()) {
+                System.out.println("  ⚠️ No verified commitments to calculate timing");
             }
 
-            // Print failed verifications
-            List<CommitmentResult> failed = aggregatorResults.stream()
-                    .filter(r -> !r.isVerified())
-                    .collect(Collectors.toList());
-
-            if (!failed.isEmpty()) {
-                System.out.println("  Failed verifications (" + failed.size() + "):");
-                failed.forEach(r -> System.out.println("    ❌ " + r.getRequestId() +
-                        " - " + (r.getStatus() != null ? r.getStatus() : "Unknown error")));
+            if (aggregatorResults.isEmpty()) {
+                System.out.println("  ℹ️ No commitments found for this shard/aggregator");
             } else {
-                System.out.println("  ✅ All commitments verified successfully!");
+                List<CommitmentResult> failed = aggregatorResults.stream()
+                        .filter(r -> !r.isVerified())
+                        .collect(Collectors.toList());
+
+                if (!failed.isEmpty()) {
+                    System.out.println("  Failed verifications (" + failed.size() + "):");
+                    failed.forEach(r -> System.out.println("    ❌ " + r.getRequestId() +
+                            " - " + (r.getStatus() != null ? r.getStatus() : "Unknown error")));
+                } else {
+                    System.out.println("  ✅ All commitments verified successfully!");
+                }
+            }
+        }
+
+        // Show any unmatched results
+        System.out.println("\n=== Unmatched Results ===");
+        for (Map.Entry<String, List<CommitmentResult>> entry : resultsByIdentifier.entrySet()) {
+            String identifier = entry.getKey();
+
+            // Skip if it matches our expected patterns
+            boolean matched = false;
+            for (int i = 0; i < aggregatorUrls.size(); i++) {
+                if (identifier.equals("-Aggregator" + i) || identifier.equals("-Shard" + i)) {
+                    matched = true;
+                    break;
+                }
             }
 
-            System.out.println();
+            if (!matched) {
+                List<CommitmentResult> unmatchedResults = entry.getValue();
+                long verifiedCount = unmatchedResults.stream()
+                        .filter(CommitmentResult::isVerified)
+                        .count();
+
+                System.out.println(identifier + ":");
+                System.out.println("  Total commitments: " + unmatchedResults.size());
+                System.out.println("  Verified: " + verifiedCount + " / " + unmatchedResults.size());
+
+                DoubleSummaryStatistics stats = unmatchedResults.stream()
+                        .filter(CommitmentResult::isVerified)
+                        .mapToDouble(CommitmentResult::getInclusionDurationMillis)
+                        .summaryStatistics();
+
+                if (stats.getCount() > 0) {
+                    System.out.println(String.format("  Average inclusion time: %.2f ms", stats.getAverage()));
+                }
+            }
         }
+
+        System.out.println("=====================================");
+    }
+
+    // Add this helper method to your test class or helper class
+    public void printInclusionProofStatistics(List<CommitmentResult> results) {
+        // Overall statistics
+        DoubleSummaryStatistics overallStats = results.stream()
+                .filter(CommitmentResult::isVerified)
+                .mapToDouble(CommitmentResult::getInclusionDurationMillis)
+                .summaryStatistics();
+
+        System.out.println("\n=== 📊 INCLUSION PROOF TIMING STATISTICS ===");
+
+        if (overallStats.getCount() > 0) {
+            System.out.println("Overall Performance:");
+            System.out.println(String.format("  Average: %.2f ms (%.2f seconds)",
+                    overallStats.getAverage(), overallStats.getAverage() / 1000));
+            System.out.println(String.format("  Minimum: %.2f ms", overallStats.getMin()));
+            System.out.println(String.format("  Maximum: %.2f ms", overallStats.getMax()));
+            System.out.println(String.format("  Total verified: %d", overallStats.getCount()));
+        }
+
+        // Per-aggregator statistics
+        Map<String, List<CommitmentResult>> resultsByAggregator = results.stream()
+                .collect(Collectors.groupingBy(r -> extractAggregatorFromUserName(r.getUserName())));
+
+        System.out.println("\n=== Per-Aggregator Timing Statistics ===");
+        for (Map.Entry<String, List<CommitmentResult>> entry : resultsByAggregator.entrySet()) {
+            String aggregatorId = entry.getKey();
+            List<CommitmentResult> aggregatorResults = entry.getValue();
+
+            DoubleSummaryStatistics aggregatorStats = aggregatorResults.stream()
+                    .filter(CommitmentResult::isVerified)
+                    .mapToDouble(CommitmentResult::getInclusionDurationMillis)
+                    .summaryStatistics();
+
+            if (aggregatorStats.getCount() > 0) {
+                System.out.println(aggregatorId + ":");
+                System.out.println(String.format("  Average: %.2f ms", aggregatorStats.getAverage()));
+                System.out.println(String.format("  Min: %.2f ms", aggregatorStats.getMin()));
+                System.out.println(String.format("  Max: %.2f ms", aggregatorStats.getMax()));
+                System.out.println(String.format("  Verified count: %d", aggregatorStats.getCount()));
+            }
+        }
+        System.out.println("==========================================");
     }
 
     public void printPerformanceComparison(List<CommitmentResult> results, int aggregatorCount) {
@@ -483,5 +649,104 @@ public class StepHelper {
         }
 
         System.out.println("=====================================\n");
+    }
+
+    // MaskedPredicate uses SHA256(secret + nonce) as private key.
+    // UnmaskedPredicate uses SHA256(secret). Using the wrong one causes
+    // signature verification to fail silently.
+    public SigningService getSigningServiceForToken(String username, Token<?> token) {
+        byte[] secret = context.getUserSecret().get(username);
+        SerializablePredicate predicate = token.getState().getPredicate();
+
+        if (predicate instanceof MaskedPredicate) {
+            MaskedPredicate maskedPredicate = (MaskedPredicate) predicate;
+            return SigningService.createFromMaskedSecret(secret, maskedPredicate.getNonce());
+        } else {
+            return SigningService.createFromSecret(secret);
+        }
+    }
+
+    public boolean isProxyTransfer(TransferTransaction tx) {
+        return tx.getData().getRecipient() instanceof ProxyAddress;
+    }
+
+    public Predicate createRecipientPredicate(String username, Token<?> sourceToken, TransferTransaction tx, PredicateType type) {
+        byte[] secret = context.getUserSecret().get(username);
+        byte[] salt = tx.getData().getSalt();
+
+        switch (type) {
+            case UNMASKED:
+                return UnmaskedPredicate.create(
+                        sourceToken.getId(),
+                        sourceToken.getType(),
+                        SigningService.createFromSecret(secret),
+                        HashAlgorithm.SHA256,
+                        salt
+                );
+            case MASKED:
+                MaskedPredicate srcMasked = (MaskedPredicate) sourceToken.getState().getPredicate();
+                return MaskedPredicate.create(
+                        sourceToken.getId(),
+                        sourceToken.getType(),
+                        SigningService.createFromMaskedSecret(secret, srcMasked.getNonce()),
+                        HashAlgorithm.SHA256,
+                        srcMasked.getNonce()
+                );
+            case NAMETAG_AWARE:
+            default:
+                if (isProxyTransfer(tx)) {
+                    return UnmaskedPredicate.create(
+                            sourceToken.getId(),
+                            sourceToken.getType(),
+                            SigningService.createFromSecret(secret),
+                            HashAlgorithm.SHA256,
+                            salt
+                    );
+                } else {
+                    MaskedPredicate src = (MaskedPredicate) sourceToken.getState().getPredicate();
+                    return MaskedPredicate.create(
+                            sourceToken.getId(),
+                            sourceToken.getType(),
+                            SigningService.createFromMaskedSecret(secret, src.getNonce()),
+                            HashAlgorithm.SHA256,
+                            src.getNonce()
+                    );
+                }
+        }
+    }
+
+    // Business rule: proxy (nametag) transfers always resolve to UnmaskedPredicate
+    // on finalization. Direct transfers match predicate type to the actual recipient
+    // address used in the transaction.
+    private PredicateType detectPredicateType(String username, Token<?> token, TransferTransaction tx) {
+        if (tx.getData().getRecipient() instanceof ProxyAddress) {
+            // Transfer goes through a name-tag (proxy) system
+            return PredicateType.NAMETAG_AWARE;
+        }
+
+        // For direct address transfers, check if the recipient address matches an
+        // unmasked predicate. This correctly handles the case where the source token
+        // uses a masked predicate but the transfer was done using an unmasked predicate.
+        byte[] secret = context.getUserSecret().get(username);
+        SigningService unmaskedSigning = SigningService.createFromSecret(secret);
+        DirectAddress unmaskedAddress = UnmaskedPredicateReference.create(
+                token.getType(),
+                unmaskedSigning,
+                HashAlgorithm.SHA256
+        ).toAddress();
+
+        if (unmaskedAddress.getAddress().equalsIgnoreCase(tx.getData().getRecipient().getAddress())) {
+            return PredicateType.UNMASKED;
+        }
+
+        Predicate predicate = (Predicate) token.getState().getPredicate();
+
+        if (predicate instanceof MaskedPredicate) {
+            // Previous state was masked — continuing the masked ownership chain
+            return PredicateType.MASKED;
+        }
+
+        // Default fallback: direct unmasked ownership
+        return PredicateType.UNMASKED;
     }
 }

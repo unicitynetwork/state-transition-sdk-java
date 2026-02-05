@@ -36,13 +36,13 @@ Feature: Advanced Token Scenarios
     When the token is transferred through the chain of existing users
     And each transfer includes custom data validation
     Then the final token should maintain original properties
-    And all intermediate transfers should be recorded correctly
+    And the transfer chain should have <expectedChainSize> participants from "<startUser>" to "<endUser>"
     And the token should have <expectedTransfers> transfers in history
 
     Examples:
-      | coinValue | expectedTransfers |
-      | 1000      | 3                |
-      | 5000      | 3                |
+      | coinValue | expectedTransfers | expectedChainSize | startUser | endUser |
+      | 1000      | 3                 | 4                 | Alice     | Dave    |
+      | 5000      | 3                 | 4                 | Alice     | Dave    |
 
   @nametag-scenarios
   @reset

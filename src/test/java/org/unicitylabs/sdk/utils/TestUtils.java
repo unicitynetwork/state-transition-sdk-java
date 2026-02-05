@@ -3,7 +3,9 @@ package org.unicitylabs.sdk.utils;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Collections;
 import java.util.Map;
 
 import org.unicitylabs.sdk.StateTransitionClient;
@@ -35,7 +37,53 @@ public class TestUtils {
 
     private static final String CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
     private static final SecureRandom RANDOM = new SecureRandom();
-    
+    private static final String FIXED_TOKEN_TYPE_HEX = "f8aa13834268d29355ff12183066f0cb902003629bbc5eb9ef0efbe397867509";
+    private static final String FIXED_COIN_ID_HEX   = "455ad8720656b08e8dbd5bac1f3c73eeea5431565f6c1c3af742b1aa12d41d89";
+
+    /**
+     * Converts a hex string to bytes.
+     */
+    public static byte[] hexToBytes(String hex) {
+        int len = hex.length();
+        byte[] data = new byte[len / 2];
+        for (int i = 0; i < len; i += 2) {
+            data[i / 2] = (byte)
+                    ((Character.digit(hex.charAt(i), 16) << 4)
+                            + Character.digit(hex.charAt(i + 1), 16));
+        }
+        return data;
+    }
+
+    /**
+     * Returns a fixed TokenType using the given HEX constant.
+     */
+    public static TokenType fixedTokenType() {
+        return new TokenType(hexToBytes(FIXED_TOKEN_TYPE_HEX));
+    }
+
+    /**
+     * Returns a fixed CoinId using the given HEX constant.
+     */
+    public static CoinId fixedCoinId() {
+        return new CoinId(hexToBytes(FIXED_COIN_ID_HEX));
+    }
+
+    /**
+     * Creates TokenCoinData with a fixed CoinId and specified amount.
+     * @param amount Coin amount (BigInteger)
+     */
+    public static TokenCoinData fixedCoinData(BigInteger amount) {
+        Map<CoinId, BigInteger> coins = Collections.singletonMap(fixedCoinId(), amount);
+        return new TokenCoinData(coins);
+    }
+
+    /**
+     * Convenience overload to specify amount as long.
+     */
+    public static TokenCoinData fixedCoinData(long amount) {
+        return fixedCoinData(BigInteger.valueOf(amount));
+    }
+
     /**
      * Generate random bytes of specified length.
      */
@@ -173,25 +221,36 @@ public class TestUtils {
     }
 
     /**
-     * Creates random coin data with specified number of coins
+     * Creates random coin data with specified number of coins.
      */
     public static TokenCoinData createRandomCoinData(int coinCount) {
-        Map<CoinId, BigInteger> coins = new java.util.HashMap<>();
-        for (int i = 0; i < coinCount; i++) {
-            CoinId coinId = new CoinId(randomBytes(32));
-            BigInteger value = BigInteger.valueOf(SECURE_RANDOM.nextInt(1000) + 100); // Random value between 100-1099
+        return randomCoinData(coinCount);
+    }
+
+    public static TokenCoinData createCoinDataFromTable(List<Map<String, String>> coinRows) {
+        Map<CoinId, BigInteger> coins = new HashMap<>();
+
+        for (Map<String, String> row : coinRows) {
+            String idHex = row.get("id");
+            String valueStr = row.get("value");
+
+            // Convert hex ID → CoinId
+            CoinId coinId = new CoinId(idHex.getBytes(StandardCharsets.UTF_8));
+
+            // Convert value → BigInteger
+            BigInteger value = new BigInteger(valueStr);
+
             coins.put(coinId, value);
         }
+
         return new TokenCoinData(coins);
     }
 
     /**
-     * Generates random bytes of specified length
+     * Generates random bytes of specified length.
      */
     public static byte[] generateRandomBytes(int length) {
-        byte[] bytes = new byte[length];
-        SECURE_RANDOM.nextBytes(bytes);
-        return bytes;
+        return randomBytes(length);
     }
 
     /**

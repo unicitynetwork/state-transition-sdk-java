@@ -106,11 +106,14 @@ public class AdvancedStepDefinitions {
         // Additional property validation can be added based on requirements
     }
 
-    @And("all intermediate transfers should be recorded correctly")
-    public void allIntermediateTransfersShouldBeRecordedCorrectly() {
-        assertEquals(4, context.getTransferChain().size(), "Transfer chain should have 4 users");
-        assertEquals("Alice", context.getTransferChain().get(0), "Chain should start with Alice");
-        assertEquals("Bob", context.getTransferChain().get(3), "Chain should end with Dave");
+    @And("the transfer chain should have {int} participants from {string} to {string}")
+    public void theTransferChainShouldHaveParticipants(int expectedSize, String startUser, String endUser) {
+        assertEquals(expectedSize, context.getTransferChain().size(),
+                "Transfer chain should have " + expectedSize + " participants");
+        assertEquals(startUser, context.getTransferChain().get(0),
+                "Chain should start with " + startUser);
+        assertEquals(endUser, context.getTransferChain().get(expectedSize - 1),
+                "Chain should end with " + endUser);
     }
 
     @And("the token should have <expectedTransfers> transfers in history")

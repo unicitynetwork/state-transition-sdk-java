@@ -1,5 +1,6 @@
 package org.unicitylabs.sdk.e2e.steps;
 
+import io.cucumber.datatable.DataTable;
 import org.unicitylabs.sdk.address.ProxyAddress;
 import org.unicitylabs.sdk.e2e.config.CucumberConfiguration;
 import org.unicitylabs.sdk.e2e.context.TestContext;
@@ -103,6 +104,53 @@ public class StepDefinitions {
                 context.getTrustBase()
         );
         context.addUserToken(user, token);
+    }
+
+    @When("the {string} mints a token of type {string} with coins data desctribed below")
+    public void theUserMintsATokenOfTypeWithCoins(String username,String tokenType, DataTable dataTable) throws Exception {
+        context.setCurrentUser(username);
+        String user = context.getCurrentUser();
+        TokenId tokenId = TestUtils.generateRandomTokenId();
+        TokenType type = TestUtils.createTokenTypeFromString(tokenType);
+        List<Map<String, String>> coinRows = dataTable.asMaps(String.class, String.class);
+
+        for (Map<String, String> row : coinRows) {
+            String name = row.get("name");
+            String symbol = row.get("symbol");
+            String id = row.get("id");
+            int decimals = Integer.parseInt(row.get("decimals"));
+            int value = Integer.parseInt(row.get("value"));
+
+            System.out.printf(
+                    "Token type: %s | Name: %s | Symbol: %s | ID: %s | Decimals: %d | Value: %d%n",
+                    tokenType, name, symbol, id, decimals, value
+            );
+
+            // 🪙 Your actual mint logic goes here
+            // e.g. TestUtils.mintToken(tokenType, name, symbol, id, decimals, value);
+        }
+
+        // Convert table → TokenCoinData
+        TokenCoinData coinData = TestUtils.createCoinDataFromTable(coinRows);
+
+        Token token = TestUtils.mintTokenForUser(
+                context.getClient(),
+                context.getUserSigningServices().get(user),
+                context.getUserNonces().get(user),
+                tokenId,
+                type,
+                coinData,
+                context.getTrustBase()
+        );
+        // do post-processing here (still in parallel)
+        if (TestUtils.validateTokenOwnership(
+                token,
+                context.getUserSigningServices().get(user),
+                context.getTrustBase()
+        )) {
+            context.addUserToken(user, token);
+        }
+        context.setCurrentUser(user);
     }
 
     @Then("the token should be minted successfully")

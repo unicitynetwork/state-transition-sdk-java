@@ -65,7 +65,7 @@ dependencies {
     testImplementation("com.google.guava:guava:33.0.0-jre")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
 
-    // ✅ Cucumber for BDD
+    // Cucumber for BDD
     testImplementation("io.cucumber:cucumber-java:7.27.2")
     testImplementation("io.cucumber:cucumber-junit-platform-engine:7.27.2")
 
@@ -166,13 +166,129 @@ tasks.register<Test>("advancedTokenTests") {
     shouldRunAfter(tasks.test)
 }
 
-// ✅ Run all cucumber tests (including integration)
+tasks.register<Test>("shardTests") {
+    useJUnitPlatform()
+    maxHeapSize = "1024m"
+    systemProperty("cucumber.junit-platform.naming-strategy", "long")
+    systemProperties = System.getProperties().toMap() as Map<String, Any>
+    systemProperty("cucumber.filter.tags", "@shard-routing")
+
+    filter {
+        includeTestsMatching("*CucumberTestRunner*")
+    }
+    shouldRunAfter(tasks.test)
+}
+
+tasks.register<Test>("multiAggregatorTests") {
+    useJUnitPlatform()
+    maxHeapSize = "1024m"
+    systemProperty("cucumber.junit-platform.naming-strategy", "long")
+    systemProperties = System.getProperties().toMap() as Map<String, Any>
+    systemProperty("cucumber.filter.tags", "@multi-aggregator and not @ignore")
+
+    filter {
+        includeTestsMatching("*CucumberTestRunner*")
+    }
+    shouldRunAfter(tasks.test)
+}
+
+tasks.register<Test>("perfTests") {
+    useJUnitPlatform()
+    maxHeapSize = "2048m"
+    systemProperty("cucumber.junit-platform.naming-strategy", "long")
+    systemProperties = System.getProperties().toMap() as Map<String, Any>
+    systemProperty("cucumber.filter.tags", "@performance")
+
+    filter {
+        includeTestsMatching("*CucumberTestRunner*")
+    }
+    shouldRunAfter(tasks.test)
+}
+
 tasks.register<Test>("allCucumberTests") {
     useJUnitPlatform()
     maxHeapSize = "1024m"
     systemProperty("cucumber.junit-platform.naming-strategy", "long")
     systemProperties = System.getProperties().toMap() as Map<String, Any>
     systemProperty("cucumber.filter.tags", "not @ignore")
+
+    filter {
+        includeTestsMatching("*CucumberTestRunner*")
+    }
+    shouldRunAfter(tasks.test)
+}
+
+tasks.register<Test>("lifecycleTests") {
+    useJUnitPlatform()
+    maxHeapSize = "1024m"
+    systemProperty("cucumber.junit-platform.naming-strategy", "long")
+    systemProperties = System.getProperties().toMap() as Map<String, Any>
+    systemProperty("cucumber.filter.tags", "@token-lifecycle")
+
+    filter {
+        includeTestsMatching("*CucumberTestRunner*")
+    }
+    shouldRunAfter(tasks.test)
+}
+
+tasks.register<Test>("predicateMatrixTests") {
+    useJUnitPlatform()
+    maxHeapSize = "1024m"
+    systemProperty("cucumber.junit-platform.naming-strategy", "long")
+    systemProperties = System.getProperties().toMap() as Map<String, Any>
+    systemProperty("cucumber.filter.tags", "@predicate-matrix")
+
+    filter {
+        includeTestsMatching("*CucumberTestRunner*")
+    }
+    shouldRunAfter(tasks.test)
+}
+
+tasks.register<Test>("authorizationTests") {
+    useJUnitPlatform()
+    maxHeapSize = "1024m"
+    systemProperty("cucumber.junit-platform.naming-strategy", "long")
+    systemProperties = System.getProperties().toMap() as Map<String, Any>
+    systemProperty("cucumber.filter.tags", "@authorization")
+
+    filter {
+        includeTestsMatching("*CucumberTestRunner*")
+    }
+    shouldRunAfter(tasks.test)
+}
+
+tasks.register<Test>("splitBoundaryTests") {
+    useJUnitPlatform()
+    maxHeapSize = "1024m"
+    systemProperty("cucumber.junit-platform.naming-strategy", "long")
+    systemProperties = System.getProperties().toMap() as Map<String, Any>
+    systemProperty("cucumber.filter.tags", "@split-boundaries")
+
+    filter {
+        includeTestsMatching("*CucumberTestRunner*")
+    }
+    shouldRunAfter(tasks.test)
+}
+
+tasks.register<Test>("multiLevelSplitTests") {
+    useJUnitPlatform()
+    maxHeapSize = "1024m"
+    systemProperty("cucumber.junit-platform.naming-strategy", "long")
+    systemProperties = System.getProperties().toMap() as Map<String, Any>
+    systemProperty("cucumber.filter.tags", "@multi-level-split")
+
+    filter {
+        includeTestsMatching("*CucumberTestRunner*")
+    }
+    shouldRunAfter(tasks.test)
+}
+
+tasks.register<Test>("edgeCaseTests") {
+    useJUnitPlatform()
+    maxHeapSize = "1024m"
+    systemProperty("cucumber.junit-platform.naming-strategy", "long")
+    systemProperties = System.getProperties().toMap() as Map<String, Any>
+    systemProperty("cucumber.filter.tags", "@edge-cases")
 
     filter {
         includeTestsMatching("*CucumberTestRunner*")

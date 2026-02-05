@@ -7,6 +7,7 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.utility.DockerImageName;
+import org.unicitylabs.sdk.common.CommonTestFlow;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -115,12 +116,6 @@ public class TokenIntegrationTest {
         assertNotNull(blockHeight);
         assertTrue(blockHeight >= 0);
     }
-    
-//    @Test
-//    @Order(3)
-//    void testTransferFlow() throws Exception {
-//        CommonTestFlow.testTransferFlow(client);
-//    }
 //
 //    @Test
 //    @Order(4)
