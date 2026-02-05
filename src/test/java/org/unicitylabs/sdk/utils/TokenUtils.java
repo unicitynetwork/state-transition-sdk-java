@@ -18,9 +18,7 @@ import org.unicitylabs.sdk.token.TokenId;
 import org.unicitylabs.sdk.token.TokenState;
 import org.unicitylabs.sdk.token.TokenType;
 import org.unicitylabs.sdk.token.fungible.TokenCoinData;
-import org.unicitylabs.sdk.transaction.InclusionProof;
-import org.unicitylabs.sdk.transaction.MintCommitment;
-import org.unicitylabs.sdk.transaction.MintTransaction;
+import org.unicitylabs.sdk.transaction.*;
 import org.unicitylabs.sdk.util.InclusionProofUtils;
 
 public class TokenUtils {
@@ -69,8 +67,7 @@ public class TokenUtils {
     Address address = predicate.getReference().toAddress();
     TokenState tokenState = new TokenState(predicate, null);
 
-    MintCommitment<?> commitment = MintCommitment.create(
-        new MintTransaction.Data<>(
+    MintTransaction.Data<?>  transactionData = new MintTransaction.Data<>(
             tokenId,
             tokenType,
             tokenData,
@@ -79,10 +76,12 @@ public class TokenUtils {
             salt,
             dataHash,
             null
-        )
     );
 
-    // Submit mint transaction using StateTransitionClient
+    MintCommitment<?> commitment = MintCommitment.create(
+            transactionData
+    );
+
     SubmitCommitmentResponse response = client
         .submitCommitment(commitment)
         .get();

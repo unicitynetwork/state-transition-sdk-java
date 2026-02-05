@@ -13,6 +13,7 @@ import org.unicitylabs.sdk.token.TokenId;
 import org.unicitylabs.sdk.transaction.Transaction;
 import org.unicitylabs.sdk.transaction.TransferTransaction;
 import org.unicitylabs.sdk.utils.TestUtils;
+import org.unicitylabs.sdk.utils.helpers.AggregatorRequestHelper;
 import org.unicitylabs.sdk.utils.helpers.CommitmentResult;
 import org.unicitylabs.sdk.utils.helpers.PendingTransfer;
 
@@ -34,6 +35,10 @@ public class TestContext {
 
 
     // User management
+    // Preserves the token as it was immediately after minting. Required for
+    // double-spend testing: after a transfer the token object is consumed,
+    // so we need the original to attempt a second spend.
+    private Map<String, Token> originalMintedTokens = new HashMap<>();
     private Map<String, SigningService> userSigningServices = new HashMap<>();
     private Map<String, byte[]> userNonces = new HashMap<>();
     private Map<String, byte[]> userSecrets = new HashMap<>();
@@ -76,9 +81,29 @@ public class TestContext {
     private int expectedSplitCount;
     private int configuredUserCount;
     private int configuredTokensPerUser;
+    private List<String> aggregatorUrls;
+    private AggregatorRequestHelper shardHelper;
+
+    public AggregatorRequestHelper getShardHelper() {
+        return shardHelper;
+    }
+
+    public void setShardHelper(AggregatorRequestHelper shardHelper) {
+        this.shardHelper = shardHelper;
+    }
+
+    public List<String> getAggregatorUrls() {
+        return aggregatorUrls;
+    }
+
+    public void setAggregatorUrls(List<String> aggregatorUrls) {
+        this.aggregatorUrls = aggregatorUrls;
+    }
 
 
     // Getters and Setters
+    public Map<String, Token> getOriginalMintedTokens() { return originalMintedTokens; }
+
     public AggregatorClient getAggregatorClient() { return aggregatorClient; }
     public void setAggregatorClient(AggregatorClient aggregatorClient) { this.aggregatorClient = aggregatorClient; }
 
@@ -118,6 +143,53 @@ public class TestContext {
 
     public Map<String, List<Token>> getUserTokens() { return userTokens; }
     public void setUserTokens(Map<String, List<Token>> userTokens) { this.userTokens = userTokens; }
+
+
+    /**
+     * Removes a token owned by a user using any of:
+     * - the token object itself
+     * - its index in the user's token list
+     * - its token ID
+     *
+     * @param userName name of the user
+     * @param identifier can be Token, Integer (index), or TokenId / String (id)
+     * @return true if a token was removed, false otherwise
+     */
+    public boolean removeUserToken(String userName, Object identifier) {
+        List<Token> tokens = userTokens.get(userName);
+        if (tokens == null || tokens.isEmpty()) {
+            return false;
+        }
+
+        // 1️⃣ Case: remove by token object
+        if (identifier instanceof Token) {
+            return tokens.remove((Token) identifier);
+        }
+
+        // 2️⃣ Case: remove by index (Integer)
+        if (identifier instanceof Integer) {
+            int index = (Integer) identifier;
+            if (index >= 0 && index < tokens.size()) {
+                tokens.remove(index);
+                return true;
+            }
+            return false;
+        }
+
+        // 3️⃣ Case: remove by token ID (TokenId or String)
+        if (identifier instanceof TokenId) {
+            TokenId tokenId = (TokenId) identifier;
+            return tokens.removeIf(t -> t.getId().equals(tokenId));
+        }
+
+        if (identifier instanceof String) {
+            String tokenIdString = (String) identifier;
+            return tokens.removeIf(t -> t.getId().toString().equals(tokenIdString));
+        }
+
+        // 4️⃣ Unknown identifier type
+        return false;
+    }
 
     public Map<String, List<Token>> getNameTagTokens() { return nameTagTokens; }
     public void setNameTagTokens(Map<String, List<Token>> nameTagTokens) { this.nameTagTokens = nameTagTokens; }
@@ -263,6 +335,8 @@ public class TestContext {
     }
 
     public void clearTestState() {
+        originalMintedTokens.clear();
+        aggregatorUrls = null;
         configuredUserCount = 0;
         blockHeight = null;
         randomSecret = null;
@@ -280,6 +354,9 @@ public class TestContext {
         transferCustomData.clear();
         currentUser = null;
         expectedErrorType = null;
+        nameTagTokens.clear();
+        pendingTransfers.clear();
+        userNametagRelations.clear();
     }
 
     public void reset() {
