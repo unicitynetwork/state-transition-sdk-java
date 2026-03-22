@@ -7,10 +7,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.ValueInstantiationException;
-import org.unicitylabs.sdk.hash.DataHash;
-import org.unicitylabs.sdk.hash.HashAlgorithm;
+import org.unicitylabs.sdk.crypto.hash.DataHash;
+import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.unicitylabs.sdk.mtree.MerkleTreePathVerificationResult;
-import org.unicitylabs.sdk.serializer.UnicityObjectMapper;
+import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.util.HexConverter;
 import java.math.BigInteger;
 import java.util.List;
@@ -29,36 +29,6 @@ public class MerkleTreePathTest {
         () -> new SparseMerkleTreePath(new DataHash(HashAlgorithm.SHA256, new byte[32]), null)
     );
     assertEquals("steps cannot be null", exception.getMessage());
-  }
-
-  @Test
-  public void testJsonSerialization() throws JsonProcessingException {
-    ObjectMapper objectMapper = UnicityObjectMapper.JSON;
-
-    Assertions.assertThrows(JsonMappingException.class,
-        () -> objectMapper.readValue("{\"root\":\"00000000\"}", SparseMerkleTreePath.class));
-    Assertions.assertThrows(JsonMappingException.class,
-        () -> objectMapper.readValue("{\"steps\":[]}", SparseMerkleTreePath.class));
-    Assertions.assertThrows(ValueInstantiationException.class,
-        () -> objectMapper.readValue("{\"root\": null, \"steps\":[]}", SparseMerkleTreePath.class));
-    Assertions.assertThrows(JsonMappingException.class,
-        () -> objectMapper.readValue("{\"root\": \"asd\", \"steps\":[]}",
-            SparseMerkleTreePath.class));
-    Assertions.assertThrows(JsonMappingException.class, () -> objectMapper.readValue(
-        "{\"root\": \"000001\", \"steps\":[{\"sibling\": null, \"branch\": [\"asd\"], \"path\": \"5\"}]}",
-        SparseMerkleTreePath.class));
-
-    SparseMerkleTreePath path = new SparseMerkleTreePath(
-        new DataHash(HashAlgorithm.SHA256, new byte[32]),
-        List.of(
-            new SparseMerkleTreePathStep(
-                BigInteger.ONE,
-                new DataHash(HashAlgorithm.SHA384, new byte[5]).getImprint()
-            )
-        ));
-
-    Assertions.assertEquals(path,
-        objectMapper.readValue(objectMapper.writeValueAsString(path), SparseMerkleTreePath.class));
   }
 
   @Test
@@ -97,9 +67,23 @@ public class MerkleTreePathTest {
 
   @Test
   public void testEmptyPathVerification() throws JsonProcessingException {
-    SparseMerkleTreePath path = UnicityObjectMapper.JSON.readValue(
-        "{\"root\":\"00001e54402898172f2948615fb17627733abbd120a85381c624ad060d28321be672\",\"steps\":[{\"path\":\"1\",\"data\":null},{\"path\":\"1\",\"data\":null}]}",
-        SparseMerkleTreePath.class);
+    byte[] cbor = CborSerializer.encodeArray(
+        DataHash.fromImprint(
+            HexConverter.decode("00001e54402898172f2948615fb17627733abbd120a85381c624ad060d28321be672")
+        ).toCbor(),
+        CborSerializer.encodeArray(
+            CborSerializer.encodeArray(
+                CborSerializer.encodeByteString(HexConverter.decode("01")),
+                CborSerializer.encodeNull()
+            ),
+            CborSerializer.encodeArray(
+                CborSerializer.encodeByteString(HexConverter.decode("01")),
+                CborSerializer.encodeNull()
+            )
+        )
+    );
+
+    SparseMerkleTreePath path = SparseMerkleTreePath.fromCbor(cbor);
 
     MerkleTreePathVerificationResult result = path.verify(BigInteger.valueOf(101));
     Assertions.assertTrue(result.isPathValid());

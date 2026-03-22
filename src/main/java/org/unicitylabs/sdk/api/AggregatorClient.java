@@ -12,13 +12,9 @@ public interface AggregatorClient {
    * Submit certification request.
    *
    * @param certificationData certification data
-   * @param receipt            whether to request a receipt
    * @return certification response
    */
-  CompletableFuture<CertificationResponse> submitCertificationRequest(
-      CertificationData certificationData,
-      boolean receipt
-  );
+  CompletableFuture<CertificationResponse> submitCertificationRequest(CertificationData certificationData);
 
   /**
    * Get inclusion proof for state id.

@@ -1,8 +1,5 @@
 package org.unicitylabs.sdk.mtree.plain;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.List;
@@ -10,7 +7,6 @@ import java.util.Objects;
 import java.util.Optional;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
-import org.unicitylabs.sdk.serializer.json.BigIntegerAsStringSerializer;
 import org.unicitylabs.sdk.util.BigIntegerConverter;
 import org.unicitylabs.sdk.util.HexConverter;
 
@@ -28,10 +24,9 @@ public class SparseMerkleTreePathStep {
    * @param path step path, must be greater than or equal to zero
    * @param data step data
    */
-  @JsonCreator
   public SparseMerkleTreePathStep(
-      @JsonProperty("path") BigInteger path,
-      @JsonProperty("data") byte[] data
+      BigInteger path,
+      byte[] data
   ) {
     Objects.requireNonNull(path, "path cannot be null");
     if (path.compareTo(BigInteger.ZERO) < 0) {
@@ -47,7 +42,6 @@ public class SparseMerkleTreePathStep {
    *
    * @return step path
    */
-  @JsonSerialize(using = BigIntegerAsStringSerializer.class)
   public BigInteger getPath() {
     return this.path;
   }
@@ -68,11 +62,11 @@ public class SparseMerkleTreePathStep {
    * @return sparse Merkle tree path step
    */
   public static SparseMerkleTreePathStep fromCbor(byte[] bytes) {
-    List<byte[]> data = CborDeserializer.readArray(bytes);
+    List<byte[]> data = CborDeserializer.decodeArray(bytes);
 
     return new SparseMerkleTreePathStep(
-        BigIntegerConverter.decode(CborDeserializer.readByteString(data.get(0))),
-        CborDeserializer.readOptional(data.get(1), CborDeserializer::readByteString)
+        BigIntegerConverter.decode(CborDeserializer.decodeByteString(data.get(0))),
+        CborDeserializer.decodeNullable(data.get(1), CborDeserializer::decodeByteString)
     );
   }
 

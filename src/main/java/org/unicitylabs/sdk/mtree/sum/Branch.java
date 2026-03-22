@@ -1,7 +1,7 @@
 package org.unicitylabs.sdk.mtree.sum;
 
 import java.math.BigInteger;
-import org.unicitylabs.sdk.hash.HashAlgorithm;
+import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 
 /**
  * Branch in a sparse merkle sum tree.

@@ -1,6 +1,6 @@
 package org.unicitylabs.sdk.mtree.plain;
 
-import org.unicitylabs.sdk.hash.DataHash;
+import org.unicitylabs.sdk.crypto.hash.DataHash;
 
 /**
  * Finalized branch in sparse merkle tree.

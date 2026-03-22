@@ -3,7 +3,7 @@ package org.unicitylabs.sdk.mtree.plain;
 import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.Objects;
-import org.unicitylabs.sdk.hash.HashAlgorithm;
+import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 
 /**
  * Pending leaf branch in a sparse merkle tree.

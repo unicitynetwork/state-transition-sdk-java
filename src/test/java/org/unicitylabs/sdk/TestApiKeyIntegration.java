@@ -19,10 +19,15 @@ import org.unicitylabs.sdk.api.CertificationData;
 import org.unicitylabs.sdk.api.CertificationResponse;
 import org.unicitylabs.sdk.api.CertificationStatus;
 import org.unicitylabs.sdk.api.JsonRpcAggregatorClient;
-import org.unicitylabs.sdk.hash.DataHash;
-import org.unicitylabs.sdk.hash.HashAlgorithm;
-import org.unicitylabs.sdk.jsonrpc.JsonRpcNetworkException;
-import org.unicitylabs.sdk.signing.SigningService;
+import org.unicitylabs.sdk.crypto.hash.DataHash;
+import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
+import org.unicitylabs.sdk.api.jsonrpc.JsonRpcNetworkException;
+import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
+import org.unicitylabs.sdk.predicate.builtin.PayToPublicKeyPredicate;
+import org.unicitylabs.sdk.transaction.Address;
+import org.unicitylabs.sdk.transaction.MintTransaction;
+import org.unicitylabs.sdk.transaction.TokenId;
+import org.unicitylabs.sdk.transaction.TokenType;
 import org.unicitylabs.sdk.util.HexConverter;
 
 public class TestApiKeyIntegration {
@@ -48,13 +53,13 @@ public class TestApiKeyIntegration {
     SigningService signingService = new SigningService(
         HexConverter.decode("0000000000000000000000000000000000000000000000000000000000000001"));
 
-    certificationData = CertificationData.create(
-        new DataHash(HashAlgorithm.SHA256,
-            HexConverter.decode("fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321")),
-        new DataHash(HashAlgorithm.SHA256,
-            HexConverter.decode("abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")),
-        signingService
+    var transaction = MintTransaction.create(
+            Address.fromPredicate(PayToPublicKeyPredicate.fromSigningService(signingService)),
+            TokenId.generate(),
+            TokenType.generate(),
+            new byte[32]
     );
+    certificationData = CertificationData.fromMintTransaction(transaction);
   }
 
   @AfterEach
@@ -65,8 +70,7 @@ public class TestApiKeyIntegration {
   @Test
   public void testSubmitCommitmentWithApiKey() throws Exception {
     CompletableFuture<CertificationResponse> future = clientWithApiKey.submitCertificationRequest(
-        certificationData,
-        false
+        certificationData
     );
 
     CertificationResponse response = future.get(5, TimeUnit.SECONDS);
@@ -79,8 +83,7 @@ public class TestApiKeyIntegration {
   @Test
   public void testSubmitCommitmentWithoutApiKeyThrowsUnauthorized() throws Exception {
     CompletableFuture<CertificationResponse> future = clientWithoutApiKey.submitCertificationRequest(
-        certificationData,
-        false
+        certificationData
     );
 
     try {
@@ -101,8 +104,7 @@ public class TestApiKeyIntegration {
     mockServer.setExpectedApiKey("different-api-key");
 
     CompletableFuture<CertificationResponse> future = clientWithApiKey.submitCertificationRequest(
-        certificationData,
-        false
+        certificationData
     );
 
     try {
@@ -123,8 +125,7 @@ public class TestApiKeyIntegration {
     mockServer.simulateRateLimitForNextRequest(30);
 
     CompletableFuture<CertificationResponse> future = clientWithApiKey.submitCertificationRequest(
-        certificationData,
-        false
+        certificationData
     );
 
     try {

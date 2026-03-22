@@ -6,7 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
-import org.unicitylabs.sdk.hash.HashAlgorithm;
+import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.unicitylabs.sdk.mtree.BranchExistsException;
 import org.unicitylabs.sdk.mtree.LeafOutOfBoundsException;
 import org.unicitylabs.sdk.mtree.MerkleTreePathVerificationResult;

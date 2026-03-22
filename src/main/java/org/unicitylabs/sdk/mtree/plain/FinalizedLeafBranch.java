@@ -3,9 +3,9 @@ package org.unicitylabs.sdk.mtree.plain;
 import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.Objects;
-import org.unicitylabs.sdk.hash.DataHash;
-import org.unicitylabs.sdk.hash.DataHasher;
-import org.unicitylabs.sdk.hash.HashAlgorithm;
+import org.unicitylabs.sdk.crypto.hash.DataHash;
+import org.unicitylabs.sdk.crypto.hash.DataHasher;
+import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.util.BigIntegerConverter;
 

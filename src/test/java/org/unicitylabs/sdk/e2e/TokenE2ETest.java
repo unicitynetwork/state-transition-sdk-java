@@ -1,14 +1,17 @@
 package org.unicitylabs.sdk.e2e;
 
 import java.io.IOException;
+import java.io.InputStream;
+
 import org.unicitylabs.sdk.StateTransitionClient;
 import org.unicitylabs.sdk.api.JsonRpcAggregatorClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.unicitylabs.sdk.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.common.CommonTestFlow;
+import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -31,9 +34,11 @@ public class TokenE2ETest extends CommonTestFlow {
 
     this.aggregatorClient = new JsonRpcAggregatorClient(aggregatorUrl);
     this.client = new StateTransitionClient(this.aggregatorClient);
-    this.trustBase = RootTrustBase.fromJson(
-        new String(getClass().getResourceAsStream("/trust-base.json").readAllBytes())
-    );
+    try (InputStream stream = getClass().getResourceAsStream("/trust-base.json")) {
+      assertNotNull(stream, "trust-base.json not found");
+      this.trustBase = RootTrustBase.fromJson(new String(stream.readAllBytes()));
+      this.predicateVerifier = PredicateVerifierService.create(this.trustBase);
+    }
   }
 
   @Test

@@ -18,7 +18,8 @@ public class CborDeserializer {
   private static final byte MAJOR_TYPE_MASK = (byte) 0b11100000;
   private static final byte ADDITIONAL_INFORMATION_MASK = (byte) 0b00011111;
 
-  private CborDeserializer() {}
+  private CborDeserializer() {
+  }
 
   /**
    * Read optional value from CBOR bytes.
@@ -28,7 +29,7 @@ public class CborDeserializer {
    * @param <T>    parsed value type
    * @return parsed value
    */
-  public static <T> T readOptional(byte[] data, Function<byte[], T> reader) {
+  public static <T> T decodeNullable(byte[] data, Function<byte[], T> reader) {
     if (Byte.compareUnsigned(new CborReader(data).readByte(), (byte) 0xf6) == 0) {
       return null;
     }
@@ -42,7 +43,7 @@ public class CborDeserializer {
    * @param data bytes
    * @return unsigned number
    */
-  public static CborNumber readUnsignedInteger(byte[] data) {
+  public static CborNumber decodeUnsignedInteger(byte[] data) {
     CborReader reader = new CborReader(data);
     return new CborNumber(reader.readLength(CborMajorType.UNSIGNED_INTEGER));
   }
@@ -53,7 +54,7 @@ public class CborDeserializer {
    * @param data bytes
    * @return bytes
    */
-  public static byte[] readByteString(byte[] data) {
+  public static byte[] decodeByteString(byte[] data) {
     CborReader reader = new CborReader(data);
     return reader.read((int) reader.readLength(CborMajorType.BYTE_STRING));
   }
@@ -64,7 +65,7 @@ public class CborDeserializer {
    * @param data bytes
    * @return text
    */
-  public static String readTextString(byte[] data) {
+  public static String decodeTextString(byte[] data) {
     CborReader reader = new CborReader(data);
     return new String(
         reader.read((int) reader.readLength(CborMajorType.TEXT_STRING)));
@@ -76,7 +77,7 @@ public class CborDeserializer {
    * @param data bytes
    * @return CBOR element array
    */
-  public static List<byte[]> readArray(byte[] data) {
+  public static List<byte[]> decodeArray(byte[] data) {
     CborReader reader = new CborReader(data);
     long length = reader.readLength(CborMajorType.ARRAY);
 
@@ -94,7 +95,7 @@ public class CborDeserializer {
    * @param data bytes
    * @return CBOR element map
    */
-  public static Set<CborMap.Entry> readMap(byte[] data) {
+  public static Set<CborMap.Entry> decodeMap(byte[] data) {
     CborReader reader = new CborReader(data);
     long length = (int) reader.readLength(CborMajorType.MAP);
 
@@ -114,7 +115,7 @@ public class CborDeserializer {
    * @param data bytes
    * @return CBOR tag
    */
-  public static CborTag readTag(byte[] data) {
+  public static CborTag decodeTag(byte[] data) {
     CborReader reader = new CborReader(data);
     long tag = (int) reader.readLength(CborMajorType.TAG);
     return new CborTag(tag, reader.readRawCbor());
@@ -126,7 +127,7 @@ public class CborDeserializer {
    * @param data bytes
    * @return boolean
    */
-  public static boolean readBoolean(byte[] data) {
+  public static boolean decodeBoolean(byte[] data) {
     byte byteValue = new CborReader(data).readByte();
     if (byteValue == (byte) 0xf5) {
       return true;

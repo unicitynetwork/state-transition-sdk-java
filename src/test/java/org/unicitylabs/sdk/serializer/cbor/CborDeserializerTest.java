@@ -16,32 +16,32 @@ public class CborDeserializerTest {
   void testReadUnsignedInteger() {
     Assertions.assertEquals(
         5,
-        CborDeserializer.readUnsignedInteger(HexConverter.decode("05")).asLong()
+        CborDeserializer.decodeUnsignedInteger(HexConverter.decode("05")).asLong()
     );
 
     Assertions.assertEquals(
         100,
-        CborDeserializer.readUnsignedInteger(HexConverter.decode("1864")).asLong()
+        CborDeserializer.decodeUnsignedInteger(HexConverter.decode("1864")).asLong()
     );
 
     Assertions.assertEquals(
         10000,
-        CborDeserializer.readUnsignedInteger(HexConverter.decode("192710")).asLong()
+        CborDeserializer.decodeUnsignedInteger(HexConverter.decode("192710")).asLong()
     );
 
     Assertions.assertEquals(
         66000,
-        CborDeserializer.readUnsignedInteger(HexConverter.decode("1a000101d0")).asLong()
+        CborDeserializer.decodeUnsignedInteger(HexConverter.decode("1a000101d0")).asLong()
     );
 
     Assertions.assertEquals(
         8147483647L,
-        CborDeserializer.readUnsignedInteger(HexConverter.decode("1b00000001e5a0bbff")).asLong()
+        CborDeserializer.decodeUnsignedInteger(HexConverter.decode("1b00000001e5a0bbff")).asLong()
     );
 
     Assertions.assertEquals(
         -5,
-        CborDeserializer.readUnsignedInteger(HexConverter.decode("1bfffffffffffffffb")).asLong()
+        CborDeserializer.decodeUnsignedInteger(HexConverter.decode("1bfffffffffffffffb")).asLong()
     );
   }
 
@@ -49,12 +49,12 @@ public class CborDeserializerTest {
   void testReadByteString() {
     Assertions.assertArrayEquals(
         new byte[5],
-        CborDeserializer.readByteString(HexConverter.decode("450000000000"))
+        CborDeserializer.decodeByteString(HexConverter.decode("450000000000"))
     );
 
     Assertions.assertArrayEquals(
         new byte[25],
-        CborDeserializer.readByteString(
+        CborDeserializer.decodeByteString(
             HexConverter.decode("581900000000000000000000000000000000000000000000000000"))
     );
   }
@@ -63,31 +63,31 @@ public class CborDeserializerTest {
   void testReadTextString() {
     Assertions.assertEquals(
         "Hello, world!",
-        CborDeserializer.readTextString(HexConverter.decode("6d48656c6c6f2c20776f726c6421"))
+        CborDeserializer.decodeTextString(HexConverter.decode("6d48656c6c6f2c20776f726c6421"))
     );
 
     Assertions.assertEquals(
         new String(new byte[25]),
-        CborDeserializer.readTextString(
+        CborDeserializer.decodeTextString(
             HexConverter.decode("781900000000000000000000000000000000000000000000000000"))
     );
   }
 
   @Test
   void testReadArray() {
-    List<byte[]> data = CborDeserializer.readArray(
+    List<byte[]> data = CborDeserializer.decodeArray(
         HexConverter.decode(
             "98196d48656c6c6f2c20776f726c64216d48656c6c6f2c20776f726c64216d48656c6c6f2c20776f726c64216d48656c6c6f2c20776f726c64216d48656c6c6f2c20776f726c64216d48656c6c6f2c20776f726c64216d48656c6c6f2c20776f726c64216d48656c6c6f2c20776f726c64216d48656c6c6f2c20776f726c64216d48656c6c6f2c20776f726c64216d48656c6c6f2c20776f726c64216d48656c6c6f2c20776f726c64216d48656c6c6f2c20776f726c64216d48656c6c6f2c20776f726c64216d48656c6c6f2c20776f726c64216d48656c6c6f2c20776f726c64216d48656c6c6f2c20776f726c64216d48656c6c6f2c20776f726c64216d48656c6c6f2c20776f726c64216d48656c6c6f2c20776f726c64216d48656c6c6f2c20776f726c64216d48656c6c6f2c20776f726c64216d48656c6c6f2c20776f726c64216d48656c6c6f2c20776f726c64216d48656c6c6f2c20776f726c6421")
     );
 
     for (byte[] item : data) {
-      Assertions.assertEquals("Hello, world!", CborDeserializer.readTextString(item));
+      Assertions.assertEquals("Hello, world!", CborDeserializer.decodeTextString(item));
     }
   }
 
   @Test
   void testReadMap() {
-    Set<CborMap.Entry> data = CborDeserializer.readMap(
+    Set<CborMap.Entry> data = CborDeserializer.decodeMap(
         HexConverter.decode(
             "a4430000006d48656c6c6f2c20776f726c6421430000016d48656c6c6f2c20776f726c64216454657374f66d48656c6c6f2c20776f726c6421581900000000000000000000000000000000000000000000000000")
     );
@@ -136,24 +136,24 @@ public class CborDeserializerTest {
 
   @Test
   void testReadBoolean() {
-    Assertions.assertTrue(CborDeserializer.readBoolean(HexConverter.decode("f5")));
+    Assertions.assertTrue(CborDeserializer.decodeBoolean(HexConverter.decode("f5")));
 
-    Assertions.assertFalse(CborDeserializer.readBoolean(HexConverter.decode("f4")));
+    Assertions.assertFalse(CborDeserializer.decodeBoolean(HexConverter.decode("f4")));
   }
 
   @Test
   void testReadOptional() {
     Assertions.assertNull(
-        CborDeserializer.readOptional(
+        CborDeserializer.decodeNullable(
             HexConverter.decode("f6"),
-            CborDeserializer::readUnsignedInteger
+            CborDeserializer::decodeUnsignedInteger
         )
     );
   }
 
   @Test
   void testEncodeTag() {
-    CborTag tag = CborDeserializer.readTag(
+    CborTag tag = CborDeserializer.decodeTag(
         HexConverter.decode("d4781a746167206e756d62657220736d616c6c6572207468616e203234")
     );
     Assertions.assertEquals(

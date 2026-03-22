@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.unicitylabs.sdk.api.jsonrpc.JsonRpcRequest;
 import org.unicitylabs.sdk.serializer.UnicityObjectMapper;
 
 public class JsonRpcRequestTest {

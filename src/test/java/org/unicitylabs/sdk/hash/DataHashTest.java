@@ -1,9 +1,12 @@
 package org.unicitylabs.sdk.hash;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.unicitylabs.sdk.crypto.hash.DataHash;
+import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
+import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.serializer.json.JsonSerializationException;
+import org.unicitylabs.sdk.util.HexConverter;
 
 public class DataHashTest {
 
@@ -18,22 +21,20 @@ public class DataHashTest {
   }
 
   @Test
-  public void testDataHashJsonSerialization() {
-    Assertions.assertEquals(
-        "\"00000000000000000000000000000000000000000000000000000000000000000000\"",
-
-        new DataHash(HashAlgorithm.SHA256, new byte[32]).toJson()
-    );
-    Assertions.assertEquals(
-        "\"000200000000000000000000000000000000\"",
-        new DataHash(HashAlgorithm.SHA384, new byte[16]).toJson()
+  public void testDataHashCborSerialization() {
+    Assertions.assertArrayEquals(
+            HexConverter.decode("582200000000000000000000000000000000000000000000000000000000000000000000"),
+            new DataHash(HashAlgorithm.SHA256, new byte[32]).toCbor()
     );
 
-    Assertions.assertEquals(
-        new DataHash(HashAlgorithm.SHA256, new byte[32]),
-        DataHash.fromJson("\"00000000000000000000000000000000000000000000000000000000000000000000\"")
+    Assertions.assertArrayEquals(
+            HexConverter.decode("58320002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+            new DataHash(HashAlgorithm.SHA384, new byte[48]).toCbor()
     );
-    Assertions.assertThrows(JsonSerializationException.class, () -> DataHash.fromJson("[]"));
-    Assertions.assertThrows(JsonSerializationException.class, () -> DataHash.fromJson("\"AABBGG\""));
+
+    Assertions.assertEquals(
+            new DataHash(HashAlgorithm.SHA256, new byte[32]),
+            DataHash.fromCbor(HexConverter.decode("582200000000000000000000000000000000000000000000000000000000000000000000"))
+    );
   }
 }

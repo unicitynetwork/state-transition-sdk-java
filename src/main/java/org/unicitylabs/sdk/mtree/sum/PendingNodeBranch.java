@@ -2,7 +2,7 @@ package org.unicitylabs.sdk.mtree.sum;
 
 import java.math.BigInteger;
 import java.util.Objects;
-import org.unicitylabs.sdk.hash.HashAlgorithm;
+import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 
 /**
  * Pending node branch in a sparse merkle sum tree.

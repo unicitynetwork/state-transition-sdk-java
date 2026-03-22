@@ -1,11 +1,11 @@
 package org.unicitylabs.sdk.util;
 
 import java.math.BigInteger;
-import org.unicitylabs.sdk.hash.DataHash;
+import org.unicitylabs.sdk.api.StateId;
 
 /**
- * Represents a bit string as a BigInteger. This class is used to ensure that leading zero bits are
- * retained when converting between byte arrays and BigInteger.
+ * Represents a bit string as a BigInteger. This class is used to ensure that leading zero bits are retained when
+ * converting between byte arrays and BigInteger.
  */
 public class BitString {
 
@@ -23,19 +23,13 @@ public class BitString {
     this.value = new BigInteger(1, dataWithPrefix);
   }
 
-  /**
-   * Creates a BitString from a DataHash imprint.
-   *
-   * @param dataHash DataHash
-   * @return A BitString instance
-   */
-  public static BitString fromDataHash(DataHash dataHash) {
-    return new BitString(dataHash.getImprint());
+  public static BitString fromStateId(StateId stateId) {
+    return new BitString(stateId.getImprint());
   }
 
   /**
-   * Converts BitString to BigInteger by adding a leading byte 1 to input byte array. This is to
-   * ensure that the BigInteger will retain the leading zero bits.
+   * Converts BitString to BigInteger by adding a leading byte 1 to input byte array. This is to ensure that the
+   * BigInteger will retain the leading zero bits.
    *
    * @return The BigInteger representation of the bit string
    */

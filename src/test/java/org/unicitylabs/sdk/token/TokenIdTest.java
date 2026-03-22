@@ -4,6 +4,7 @@ package org.unicitylabs.sdk.token;
 import java.math.BigInteger;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.unicitylabs.sdk.transaction.TokenId;
 
 class TokenIdTest {
 

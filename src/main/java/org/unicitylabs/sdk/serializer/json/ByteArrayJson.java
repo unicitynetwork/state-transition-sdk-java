@@ -62,8 +62,7 @@ public class ByteArrayJson {
      * Deserialize byte array.
      *
      * @param p   Parser used for reading JSON content
-     * @param ctx Context that can be used to access information about this deserialization
-     *            activity.
+     * @param ctx Context that can be used to access information about this deserialization activity.
      * @return bytes
      * @throws IOException on deserialization failure
      */

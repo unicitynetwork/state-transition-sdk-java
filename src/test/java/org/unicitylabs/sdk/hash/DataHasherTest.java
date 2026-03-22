@@ -1,6 +1,9 @@
 package org.unicitylabs.sdk.hash;
 
 import org.junit.jupiter.api.Test;
+import org.unicitylabs.sdk.crypto.hash.DataHash;
+import org.unicitylabs.sdk.crypto.hash.DataHasher;
+import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 
 import java.nio.charset.StandardCharsets;
 

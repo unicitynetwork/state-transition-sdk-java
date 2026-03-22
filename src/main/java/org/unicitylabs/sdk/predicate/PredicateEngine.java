@@ -1,15 +1,24 @@
 package org.unicitylabs.sdk.predicate;
 
-/**
- * Predicate engine structure.
- */
-public interface PredicateEngine {
+public enum PredicateEngine {
+  BUILT_IN(1);
 
-  /**
-   * Create predicate from serializable predicate.
-   *
-   * @param predicate serializable predicate.
-   * @return parsed predicate
-   */
-  Predicate create(SerializablePredicate predicate);
+  public final int id;
+
+  PredicateEngine(int id) {
+    this.id = id;
+  }
+
+  public int getId() {
+    return this.id;
+  }
+
+  public static PredicateEngine fromId(int id) {
+    for (PredicateEngine engine : PredicateEngine.values()) {
+      if (engine.id == id) {
+        return engine;
+      }
+    }
+    return null;
+  }
 }

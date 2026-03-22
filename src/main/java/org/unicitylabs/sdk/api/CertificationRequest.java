@@ -1,10 +1,6 @@
 package org.unicitylabs.sdk.api;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import org.unicitylabs.sdk.serializer.UnicityObjectMapper;
-import org.unicitylabs.sdk.serializer.json.JsonSerializationException;
+import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 
 /**
  * Submit certification request.
@@ -13,23 +9,19 @@ public class CertificationRequest {
 
   private final StateId stateId;
   private final CertificationData certificationData;
-  private final Boolean receipt;
 
   /**
    * Create certification request.
    *
    * @param stateId           state id
    * @param certificationData transaction hash
-   * @param receipt           get receipt
    */
-  @JsonCreator
   private CertificationRequest(
-      @JsonProperty("stateId") StateId stateId,
-      @JsonProperty("certificationData") CertificationData certificationData,
-      @JsonProperty("receipt") Boolean receipt) {
+      StateId stateId,
+      CertificationData certificationData
+  ) {
     this.stateId = stateId;
     this.certificationData = certificationData;
-    this.receipt = receipt;
   }
 
   /**
@@ -51,35 +43,26 @@ public class CertificationRequest {
   }
 
   /**
-   * Is getting receipt from unicity service.
-   *
-   * @return true if receipt unicity service should return receipt
-   */
-  public Boolean getReceipt() {
-    return this.receipt;
-  }
-
-  /**
    * Create certification request.
    *
    * @param certificationData certification data
-   * @param receipt           get receipt
    * @return certification request
    */
-  public static CertificationRequest create(CertificationData certificationData, boolean receipt) {
-    return new CertificationRequest(certificationData.calculateStateId(), certificationData, receipt);
+  public static CertificationRequest create(CertificationData certificationData) {
+    return new CertificationRequest(StateId.fromCertificationData(certificationData),
+        certificationData);
   }
 
   /**
-   * Convert certification request to JSON string.
+   * Convert the request to a CBOR bytes.
    *
-   * @return JSON string
+   * @return CBOR bytes
    */
-  public String toJson() {
-    try {
-      return UnicityObjectMapper.JSON.writeValueAsString(this);
-    } catch (JsonProcessingException e) {
-      throw new JsonSerializationException(CertificationRequest.class, e);
-    }
+  public byte[] toCBOR() {
+    return CborSerializer.encodeArray(
+        this.stateId.toCbor(),
+        this.certificationData.toCbor(),
+        CborSerializer.encodeUnsignedInteger(0)
+    );
   }
 }

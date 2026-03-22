@@ -1,17 +1,19 @@
 package org.unicitylabs.sdk.api;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
-import org.unicitylabs.sdk.hash.DataHash;
-import org.unicitylabs.sdk.hash.DataHasher;
-import org.unicitylabs.sdk.hash.HashAlgorithm;
+import org.unicitylabs.sdk.crypto.MintSigningService;
+import org.unicitylabs.sdk.crypto.hash.DataHash;
+import org.unicitylabs.sdk.crypto.hash.DataHasher;
+import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
+import org.unicitylabs.sdk.predicate.EncodedPredicate;
+import org.unicitylabs.sdk.predicate.Predicate;
+import org.unicitylabs.sdk.predicate.builtin.PayToPublicKeyPredicateUnlockScript;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
-import org.unicitylabs.sdk.signing.Signature;
-import org.unicitylabs.sdk.signing.SigningService;
+import org.unicitylabs.sdk.transaction.MintTransaction;
+import org.unicitylabs.sdk.transaction.Transaction;
 import org.unicitylabs.sdk.util.HexConverter;
 
 /**
@@ -19,39 +21,25 @@ import org.unicitylabs.sdk.util.HexConverter;
  */
 public class CertificationData {
 
-  private final byte[] publicKey;
+  private final Predicate lockScript;
   private final DataHash sourceStateHash;
   private final DataHash transactionHash;
-  private final Signature signature;
+  private final byte[] unlockScript;
 
-  /**
-   * Certification data.
-   *
-   * @param publicKey       public key.
-   * @param sourceStateHash source state hash.
-   * @param transactionHash transaction hash.
-   * @param signature       signature.
-   */
-  @JsonCreator
-  private CertificationData(
-      @JsonProperty("publicKey") byte[] publicKey,
-      @JsonProperty("sourceStateHash") DataHash sourceStateHash,
-      @JsonProperty("transactionHash") DataHash transactionHash,
-      @JsonProperty("signature") Signature signature
+  CertificationData(
+      Predicate lockScript,
+      DataHash sourceStateHash,
+      DataHash transactionHash,
+      byte[] unlockScript
   ) {
-    this.publicKey = publicKey;
+    this.lockScript = lockScript;
     this.sourceStateHash = sourceStateHash;
     this.transactionHash = transactionHash;
-    this.signature = signature;
+    this.unlockScript = Arrays.copyOf(unlockScript, unlockScript.length);
   }
 
-  /**
-   * Get copy of public key.
-   *
-   * @return public key
-   */
-  public byte[] getPublicKey() {
-    return Arrays.copyOf(this.publicKey, this.publicKey.length);
+  public Predicate getLockScript() {
+    return this.lockScript;
   }
 
   /**
@@ -72,44 +60,9 @@ public class CertificationData {
     return this.transactionHash;
   }
 
-  /**
-   * Get signature.
-   *
-   * @return signature
-   */
-  public Signature getSignature() {
-    return this.signature;
+  public byte[] getUnlockScript() {
+    return Arrays.copyOf(this.unlockScript, this.unlockScript.length);
   }
-
-  /**
-   * Create CertificationData from signing service.
-   *
-   * @param sourceStateHash source state hash
-   * @param transactionHash transaction hash
-   * @param signingService  signing service
-   * @return CertificationData
-   */
-  public static CertificationData create(
-      DataHash sourceStateHash,
-      DataHash transactionHash,
-      SigningService signingService
-  ) {
-    Objects.requireNonNull(sourceStateHash, "Source state hash cannot be null");
-    Objects.requireNonNull(transactionHash, "Transaction hash cannot be null");
-
-    return new CertificationData(
-        signingService.getPublicKey(),
-        sourceStateHash,
-        transactionHash,
-        signingService.sign(
-            new DataHasher(HashAlgorithm.SHA256)
-                .update(
-                    CborSerializer.encodeArray(sourceStateHash.toCbor(), transactionHash.toCbor())
-                )
-                .digest()
-        ));
-  }
-
 
   /**
    * Create CertificationData from CBOR bytes.
@@ -118,23 +71,33 @@ public class CertificationData {
    * @return CertificationData
    */
   public static CertificationData fromCbor(byte[] bytes) {
-    List<byte[]> data = CborDeserializer.readArray(bytes);
+    List<byte[]> data = CborDeserializer.decodeArray(bytes);
 
     return new CertificationData(
-        CborDeserializer.readByteString(data.get(0)),
+        EncodedPredicate.fromCbor(data.get(0)),
         DataHash.fromCbor(data.get(1)),
         DataHash.fromCbor(data.get(2)),
-        Signature.fromCbor(data.get(3))
+        CborDeserializer.decodeByteString(data.get(3))
     );
   }
 
-  /**
-   * Calculate state ID.
-   *
-   * @return state ID
-   */
-  public StateId calculateStateId() {
-    return StateId.create(this.publicKey, this.sourceStateHash);
+  public static CertificationData fromMintTransaction(MintTransaction transaction) {
+    var signingService = MintSigningService.create(transaction.getTokenId());
+
+    return CertificationData.fromTransaction(
+        transaction,
+        PayToPublicKeyPredicateUnlockScript.create(transaction, signingService).getSignature()
+            .encode()
+    );
+  }
+
+  public static CertificationData fromTransaction(Transaction transaction, byte[] unlockScript) {
+    return new CertificationData(
+        transaction.getLockScript(),
+        transaction.getSourceStateHash(),
+        transaction.calculateTransactionHash(),
+        unlockScript
+    );
   }
 
   /**
@@ -149,31 +112,16 @@ public class CertificationData {
   }
 
   /**
-   * Verifies current certification data.
-   *
-   * @return true if valid, false otherwise
-   */
-  public boolean verify() {
-    return SigningService.verifyWithPublicKey(
-        new DataHasher(HashAlgorithm.SHA256)
-            .update(CborSerializer.encodeArray(this.sourceStateHash.toCbor(), this.transactionHash.toCbor()))
-            .digest(),
-        this.signature.getBytes(),
-        this.publicKey
-    );
-  }
-
-  /**
    * Convert the certification data to CBOR bytes.
    *
    * @return CBOR bytes
    */
   public byte[] toCbor() {
     return CborSerializer.encodeArray(
-        CborSerializer.encodeByteString(this.publicKey),
+        EncodedPredicate.fromPredicate(this.getLockScript()).toCbor(),
         this.sourceStateHash.toCbor(),
         this.transactionHash.toCbor(),
-        this.signature.toCbor()
+        CborSerializer.encodeByteString(this.unlockScript)
     );
   }
 
@@ -183,20 +131,17 @@ public class CertificationData {
       return false;
     }
     CertificationData that = (CertificationData) o;
-    return Arrays.equals(this.publicKey, that.publicKey)
+    return this.lockScript.isEqualTo(that.lockScript)
         && Objects.equals(this.sourceStateHash, that.sourceStateHash)
         && Objects.equals(this.transactionHash, that.transactionHash)
-        && Objects.equals(this.signature, that.signature);
-  }
-
-  @Override
-  public int hashCode() {
-    return Objects.hash(Arrays.hashCode(this.publicKey), this.sourceStateHash, this.transactionHash, this.signature);
+        && Arrays.equals(this.unlockScript, that.unlockScript);
   }
 
   @Override
   public String toString() {
-    return String.format("Commitment{publicKey=%s, sourceStateHash=%s, transactionHash=%s, signature=%s}",
-        HexConverter.encode(this.publicKey), this.sourceStateHash, this.transactionHash, this.signature);
+    return String.format(
+        "CertificationData{lockScript=%s, sourceStateHash=%s, transactionHash=%s, unlockScript=%s}",
+        this.lockScript, this.sourceStateHash, this.transactionHash,
+        HexConverter.encode(this.unlockScript));
   }
 }

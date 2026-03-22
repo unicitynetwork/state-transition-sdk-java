@@ -1,13 +1,12 @@
 package org.unicitylabs.sdk.transaction;
 
-import org.unicitylabs.sdk.api.StateId;
-import org.unicitylabs.sdk.hash.DataHash;
-import org.unicitylabs.sdk.token.TokenId;
+import java.util.Objects;
+import org.unicitylabs.sdk.crypto.hash.DataHash;
+import org.unicitylabs.sdk.crypto.hash.DataHasher;
+import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
+import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.util.HexConverter;
 
-/**
- * Token mint state.
- */
 public class MintTransactionState extends DataHash {
 
   private static final byte[] MINT_SUFFIX = HexConverter.decode(
@@ -17,13 +16,19 @@ public class MintTransactionState extends DataHash {
     super(hash.getAlgorithm(), hash.getData());
   }
 
-  /**
-   * Create token initial state from token id.
-   *
-   * @param tokenId token id
-   * @return mint state
-   */
   public static MintTransactionState create(TokenId tokenId) {
-    return new MintTransactionState(StateId.create(tokenId.getBytes(), MINT_SUFFIX));
+    Objects.requireNonNull(tokenId, "Token ID cannot be null");
+
+    return new MintTransactionState(
+        new DataHasher(HashAlgorithm.SHA256)
+            .update(
+                CborSerializer.encodeArray(
+                    CborSerializer.encodeByteString(tokenId.getBytes()),
+                    CborSerializer.encodeByteString(MintTransactionState.MINT_SUFFIX)
+                )
+            )
+            .digest()
+    );
   }
+
 }

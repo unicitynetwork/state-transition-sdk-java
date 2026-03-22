@@ -1,12 +1,12 @@
 package org.unicitylabs.sdk;
 
-import org.unicitylabs.sdk.hash.DataHasher;
-import org.unicitylabs.sdk.hash.HashAlgorithm;
-import org.unicitylabs.sdk.signing.SigningService;
-import org.unicitylabs.sdk.token.TokenType;
+import org.unicitylabs.sdk.crypto.hash.DataHasher;
+import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
+import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
+import org.unicitylabs.sdk.transaction.TokenType;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -25,9 +25,7 @@ public class AndroidCompatibilityTest {
         assertEquals(HashAlgorithm.SHA256, hash.getAlgorithm());
         
         // Test 2: Signing Service (uses Bouncy Castle)
-        byte[] secret = "test secret".getBytes(StandardCharsets.UTF_8);
-        byte[] nonce = new byte[32];
-        var signingService = SigningService.createFromMaskedSecret(secret, nonce);
+        var signingService = SigningService.generate();
         assertNotNull(signingService.getPublicKey());
         
         // Test 3: Token IDs and Types

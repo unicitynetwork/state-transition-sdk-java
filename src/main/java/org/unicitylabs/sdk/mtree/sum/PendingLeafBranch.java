@@ -2,7 +2,7 @@ package org.unicitylabs.sdk.mtree.sum;
 
 import java.math.BigInteger;
 import java.util.Objects;
-import org.unicitylabs.sdk.hash.HashAlgorithm;
+import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.unicitylabs.sdk.mtree.sum.SparseMerkleSumTree.LeafValue;
 
 /**

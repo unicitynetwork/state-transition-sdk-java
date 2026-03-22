@@ -1,8 +1,8 @@
 package org.unicitylabs.sdk.mtree.plain;
 
 import java.util.List;
-import org.unicitylabs.sdk.hash.DataHasher;
-import org.unicitylabs.sdk.hash.HashAlgorithm;
+import org.unicitylabs.sdk.crypto.hash.DataHasher;
+import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 
 public class SparseMerkleTreePathFixture {
 

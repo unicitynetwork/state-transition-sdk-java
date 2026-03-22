@@ -2,7 +2,7 @@ package org.unicitylabs.sdk.mtree.plain;
 
 import java.math.BigInteger;
 import java.util.Arrays;
-import org.unicitylabs.sdk.hash.HashAlgorithm;
+import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.unicitylabs.sdk.mtree.BranchExistsException;
 import org.unicitylabs.sdk.mtree.CommonPath;
 import org.unicitylabs.sdk.mtree.LeafOutOfBoundsException;
@@ -31,9 +31,9 @@ public class SparseMerkleTree {
    *
    * @param path path of the leaf
    * @param data data of the leaf
-   * @throws BranchExistsException     if branch already exists at the path
-   * @throws LeafOutOfBoundsException  if leaf is out of bounds
-   * @throws IllegalArgumentException  if path is less than 1
+   * @throws BranchExistsException    if branch already exists at the path
+   * @throws LeafOutOfBoundsException if leaf is out of bounds
+   * @throws IllegalArgumentException if path is less than 1
    */
   public synchronized void addLeaf(BigInteger path, byte[] data)
       throws BranchExistsException, LeafOutOfBoundsException {

@@ -3,7 +3,7 @@ package org.unicitylabs.sdk.mtree.sum;
 import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.Objects;
-import org.unicitylabs.sdk.hash.HashAlgorithm;
+import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.unicitylabs.sdk.mtree.BranchExistsException;
 import org.unicitylabs.sdk.mtree.CommonPath;
 import org.unicitylabs.sdk.mtree.LeafOutOfBoundsException;
@@ -34,8 +34,7 @@ public class SparseMerkleSumTree {
    * @param value value stored in the leaf
    * @throws BranchExistsException    if a branch already exists at the given path
    * @throws LeafOutOfBoundsException if a leaf already exists at the given path
-   * @throws IllegalArgumentException if the path is less than or equal to 0 or if the counter is
-   *                                  negative
+   * @throws IllegalArgumentException if the path is less than or equal to 0 or if the counter is negative
    * @throws NullPointerException     if the path or value is null
    */
   public synchronized void addLeaf(BigInteger path, LeafValue value)

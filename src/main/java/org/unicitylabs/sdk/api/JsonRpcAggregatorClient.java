@@ -4,8 +4,9 @@ import static com.google.common.net.HttpHeaders.AUTHORIZATION;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import org.unicitylabs.sdk.jsonrpc.JsonRpcHttpTransport;
+import org.unicitylabs.sdk.api.jsonrpc.JsonRpcHttpTransport;
 
 /**
  * Default aggregator client.
@@ -33,15 +34,18 @@ public class JsonRpcAggregatorClient implements AggregatorClient {
    *
    */
   public JsonRpcAggregatorClient(String url, String apiKey) {
+    Objects.requireNonNull(url, "url cannot be null");
+
     this.transport = new JsonRpcHttpTransport(url);
     this.apiKey = apiKey;
   }
 
   public CompletableFuture<CertificationResponse> submitCertificationRequest(
-      CertificationData certificationData,
-      boolean receipt
+      CertificationData certificationData
   ) {
-    CertificationRequest request = CertificationRequest.create(certificationData,receipt);
+    Objects.requireNonNull(certificationData, "certificationData cannot be null");
+
+    CertificationRequest request = CertificationRequest.create(certificationData);
 
     Map<String, List<String>> headers = this.apiKey == null
         ? Map.of()
@@ -62,9 +66,11 @@ public class JsonRpcAggregatorClient implements AggregatorClient {
    * @return inclusion / non inclusion proof
    */
   public CompletableFuture<InclusionProofResponse> getInclusionProof(StateId stateId) {
+    Objects.requireNonNull(stateId, "stateId cannot be null");
+
     InclusionProofRequest request = new InclusionProofRequest(stateId);
 
-    return this.transport.request("get_inclusion_proof", request, InclusionProofResponse.class);
+    return this.transport.request("get_inclusion_proof.v2", request, InclusionProofResponse.class);
   }
 
   /**

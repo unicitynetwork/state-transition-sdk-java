@@ -1,45 +1,22 @@
 package org.unicitylabs.sdk.predicate;
 
-import org.unicitylabs.sdk.bft.RootTrustBase;
-import org.unicitylabs.sdk.hash.DataHash;
-import org.unicitylabs.sdk.token.Token;
-import org.unicitylabs.sdk.transaction.TransferTransaction;
+import java.util.Arrays;
 
-/**
- * Predicate structure.
- */
-public interface Predicate extends SerializablePredicate {
+public interface Predicate {
 
-  /**
-   * Calculate predicate hash representation.
-   *
-   * @return predicate hash
-   */
-  DataHash calculateHash();
+  PredicateEngine getEngine();
 
-  /**
-   * Get predicate as reference.
-   *
-   * @return predicate reference
-   */
-  PredicateReference getReference();
+  byte[] encodeCode();
 
-  /**
-   * Is given public key owner of current predicate.
-   *
-   * @param publicKey public key of potential owner
-   * @return true if is owner
-   */
-  boolean isOwner(byte[] publicKey);
+  byte[] encodeParameters();
 
-  /**
-   * Verify if predicate is valid for given token state.
-   *
-   * @param token       current token state
-   * @param transaction current transaction
-   * @param trustBase   trust base to verify against.
-   * @return true if successful
-   */
-  boolean verify(Token<?> token, TransferTransaction transaction, RootTrustBase trustBase);
+  default boolean isEqualTo(Predicate other) {
+    if (other == null) {
+      return false;
+    }
+
+    return this.getEngine() == other.getEngine()
+        && Arrays.equals(this.encodeCode(), other.encodeCode())
+        && Arrays.equals(this.encodeParameters(), other.encodeParameters());
+  }
 }
-

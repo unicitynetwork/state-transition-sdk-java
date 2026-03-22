@@ -16,7 +16,8 @@ public class UnicityObjectMapper {
    */
   public static final ObjectMapper JSON = createJsonObjectMapper();
 
-  private UnicityObjectMapper() {}
+  private UnicityObjectMapper() {
+  }
 
   private static ObjectMapper createJsonObjectMapper() {
     SimpleModule module = new SimpleModule();

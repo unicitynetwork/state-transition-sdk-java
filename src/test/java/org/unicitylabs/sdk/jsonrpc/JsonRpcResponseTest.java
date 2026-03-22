@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.unicitylabs.sdk.api.BlockHeightResponse;
+import org.unicitylabs.sdk.api.jsonrpc.JsonRpcResponse;
 import org.unicitylabs.sdk.serializer.UnicityObjectMapper;
 
 public class JsonRpcResponseTest {

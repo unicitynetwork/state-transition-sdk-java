@@ -1,8 +1,5 @@
 package org.unicitylabs.sdk.mtree.sum;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.List;
@@ -10,7 +7,6 @@ import java.util.Objects;
 import java.util.Optional;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
-import org.unicitylabs.sdk.serializer.json.BigIntegerAsStringSerializer;
 import org.unicitylabs.sdk.util.BigIntegerConverter;
 import org.unicitylabs.sdk.util.HexConverter;
 
@@ -23,11 +19,10 @@ public class SparseMerkleSumTreePathStep {
   private final byte[] data;
   private final BigInteger value;
 
-  @JsonCreator
   SparseMerkleSumTreePathStep(
-      @JsonProperty("path") BigInteger path,
-      @JsonProperty("data") byte[] data,
-      @JsonProperty("value") BigInteger value
+      BigInteger path,
+      byte[] data,
+      BigInteger value
   ) {
     Objects.requireNonNull(path, "path cannot be null");
     Objects.requireNonNull(value, "value cannot be null");
@@ -42,7 +37,6 @@ public class SparseMerkleSumTreePathStep {
    *
    * @return path
    */
-  @JsonSerialize(using = BigIntegerAsStringSerializer.class)
   public BigInteger getPath() {
     return this.path;
   }
@@ -61,7 +55,6 @@ public class SparseMerkleSumTreePathStep {
    *
    * @return value
    */
-  @JsonSerialize(using = BigIntegerAsStringSerializer.class)
   public BigInteger getValue() {
     return this.value;
   }
@@ -73,12 +66,12 @@ public class SparseMerkleSumTreePathStep {
    * @return step
    */
   public static SparseMerkleSumTreePathStep fromCbor(byte[] bytes) {
-    List<byte[]> data = CborDeserializer.readArray(bytes);
+    List<byte[]> data = CborDeserializer.decodeArray(bytes);
 
     return new SparseMerkleSumTreePathStep(
-        BigIntegerConverter.decode(CborDeserializer.readByteString(data.get(0))),
-        CborDeserializer.readOptional(data.get(1), CborDeserializer::readByteString),
-        BigIntegerConverter.decode(CborDeserializer.readByteString(data.get(2)))
+        BigIntegerConverter.decode(CborDeserializer.decodeByteString(data.get(0))),
+        CborDeserializer.decodeNullable(data.get(1), CborDeserializer::decodeByteString),
+        BigIntegerConverter.decode(CborDeserializer.decodeByteString(data.get(2)))
     );
   }
 

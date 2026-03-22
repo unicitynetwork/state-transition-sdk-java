@@ -1,99 +1,66 @@
 package org.unicitylabs.sdk.api;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import org.unicitylabs.sdk.hash.DataHash;
-import org.unicitylabs.sdk.hash.DataHasher;
-import org.unicitylabs.sdk.hash.HashAlgorithm;
-import org.unicitylabs.sdk.serializer.UnicityObjectMapper;
+import java.util.Objects;
+import org.unicitylabs.sdk.crypto.hash.DataHash;
+import org.unicitylabs.sdk.crypto.hash.DataHasher;
+import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
+import org.unicitylabs.sdk.predicate.EncodedPredicate;
+import org.unicitylabs.sdk.predicate.Predicate;
+import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
-import org.unicitylabs.sdk.serializer.json.JsonSerializationException;
-import org.unicitylabs.sdk.token.TokenState;
+import org.unicitylabs.sdk.transaction.Transaction;
 import org.unicitylabs.sdk.util.BitString;
 import org.unicitylabs.sdk.util.HexConverter;
 
-/**
- * Represents a unique state identifier derived from a public key and state hash.
- */
-@JsonDeserialize(using = StateIdJson.Deserializer.class)
-public class StateId extends DataHash {
+public class StateId {
 
-  /**
-   * Constructs a StateId instance.
-   *
-   * @param hash The DataHash representing the state ID.
-   */
-  protected StateId(DataHash hash) {
-    super(hash.getAlgorithm(), hash.getData());
+  private final DataHash hash;
+
+  private StateId(DataHash hash) {
+    this.hash = hash;
   }
 
-  /**
-   * Creates a StateId from public key and state.
-   *
-   * @param publicKey public key as a byte array.
-   * @param state     token state.
-   * @return state id
-   */
-  public static StateId create(byte[] publicKey, TokenState state) {
-    return StateId.create(publicKey, state.calculateHash());
+  public byte[] getData() {
+    return this.hash.getData();
   }
 
-  /**
-   * Creates a StateId from public key and hash.
-   *
-   * @param publicKey public key as a byte array.
-   * @param hash      hash.
-   * @return state id
-   */
-  public static StateId create(byte[] publicKey, DataHash hash) {
-    return StateId.create(publicKey, hash.getImprint());
+  public byte[] getImprint() {
+    return this.hash.getImprint();
   }
 
-  /**
-   * Creates a StateId from identifier bytes and hash imprint.
-   *
-   * @param publicKey   public key bytes.
-   * @param hashImprint state bytes.
-   * @return state id.
-   */
-  public static StateId create(byte[] publicKey, byte[] hashImprint) {
+  public static StateId fromCbor(byte[] bytes) {
     return new StateId(
-        new DataHasher(HashAlgorithm.SHA256)
-            .update(
-                CborSerializer.encodeArray(
-                    CborSerializer.encodeByteString(hashImprint),
-                    CborSerializer.encodeByteString(publicKey)
-                )
+        new DataHash(HashAlgorithm.SHA256, CborDeserializer.decodeByteString(bytes)));
+  }
+
+  public static StateId fromCertificationData(CertificationData certificationData) {
+    Objects.requireNonNull(certificationData, "Certification data cannot be null");
+
+    return StateId.create(certificationData.getLockScript(),
+        certificationData.getSourceStateHash());
+  }
+
+  public static StateId fromTransaction(Transaction transaction) {
+    Objects.requireNonNull(transaction, "Transaction cannot be null");
+
+    return StateId.create(transaction.getLockScript(), transaction.getSourceStateHash());
+  }
+
+  private static StateId create(Predicate predicate, DataHash stateHash) {
+    DataHash hash = new DataHasher(HashAlgorithm.SHA256)
+        .update(
+            CborSerializer.encodeArray(
+                EncodedPredicate.fromPredicate(predicate).toCbor(),
+                CborSerializer.encodeByteString(stateHash.getData())
             )
-            .digest()
-    );
+        )
+        .digest();
+
+    return new StateId(hash);
   }
 
-  /**
-   * Create a state id from JSON string.
-   *
-   * @param input JSON string
-   * @return state id
-   */
-  public static StateId fromJson(String input) {
-    try {
-      return UnicityObjectMapper.JSON.readValue(input, StateId.class);
-    } catch (JsonProcessingException e) {
-      throw new JsonSerializationException(StateId.class, e);
-    }
-  }
-
-  /**
-   * Converts the state id to a JSON string.
-   *
-   * @return JSON string
-   */
-  public String toJson() {
-    try {
-      return UnicityObjectMapper.JSON.writeValueAsString(this);
-    } catch (JsonProcessingException e) {
-      throw new JsonSerializationException(StateId.class, e);
-    }
+  public byte[] toCbor() {
+    return CborSerializer.encodeByteString(this.getData());
   }
 
   /**
@@ -102,7 +69,21 @@ public class StateId extends DataHash {
    * @return The BitString representation of the StateId.
    */
   public BitString toBitString() {
-    return BitString.fromDataHash(this);
+    return BitString.fromStateId(this);
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (!(o instanceof StateId)) {
+      return false;
+    }
+    StateId stateId = (StateId) o;
+    return Objects.equals(this.hash, stateId.hash);
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hashCode(this.hash);
   }
 
   /**
