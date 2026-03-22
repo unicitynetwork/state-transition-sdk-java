@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import org.unicitylabs.sdk.api.jsonrpc.JsonRpcHttpTransport;
+import org.unicitylabs.sdk.util.HexConverter;
 
 /**
  * Default aggregator client.
@@ -53,7 +54,7 @@ public class JsonRpcAggregatorClient implements AggregatorClient {
 
     return this.transport.request(
         "certification_request",
-        request,
+        HexConverter.encode(request.toCBOR()),
         CertificationResponse.class,
         headers
     );
@@ -70,7 +71,9 @@ public class JsonRpcAggregatorClient implements AggregatorClient {
 
     InclusionProofRequest request = new InclusionProofRequest(stateId);
 
-    return this.transport.request("get_inclusion_proof.v2", request, InclusionProofResponse.class);
+    return this.transport
+        .request("get_inclusion_proof.v2", request, String.class)
+        .thenApply(response -> InclusionProofResponse.fromCbor(HexConverter.decode(response)));
   }
 
   /**

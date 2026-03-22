@@ -5,7 +5,7 @@ public class VerificationException extends RuntimeException {
   private final VerificationResult<?> result;
 
   public VerificationException(String message, VerificationResult<?> result) {
-    super(message);
+    super(String.format("Verification exception { message: '%s', result: %s", message, result.toString()));
 
     this.result = result;
   }

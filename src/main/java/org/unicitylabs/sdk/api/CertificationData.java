@@ -75,8 +75,8 @@ public class CertificationData {
 
     return new CertificationData(
         EncodedPredicate.fromCbor(data.get(0)),
-        DataHash.fromCbor(data.get(1)),
-        DataHash.fromCbor(data.get(2)),
+        new DataHash(HashAlgorithm.SHA256, CborDeserializer.decodeByteString(data.get(1))),
+        new DataHash(HashAlgorithm.SHA256, CborDeserializer.decodeByteString(data.get(2))),
         CborDeserializer.decodeByteString(data.get(3))
     );
   }
@@ -119,8 +119,8 @@ public class CertificationData {
   public byte[] toCbor() {
     return CborSerializer.encodeArray(
         EncodedPredicate.fromPredicate(this.getLockScript()).toCbor(),
-        this.sourceStateHash.toCbor(),
-        this.transactionHash.toCbor(),
+        CborSerializer.encodeByteString(this.sourceStateHash.getData()),
+        CborSerializer.encodeByteString(this.transactionHash.getData()),
         CborSerializer.encodeByteString(this.unlockScript)
     );
   }

@@ -2,13 +2,14 @@ package org.unicitylabs.sdk.api;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import java.util.Arrays;
 
 /**
  * Inclusion proof request.
  */
 public class InclusionProofRequest {
 
-  private final StateId stateId;
+  private final byte[] stateId;
 
   /**
    * Create inclusion proof request.
@@ -19,15 +20,10 @@ public class InclusionProofRequest {
   public InclusionProofRequest(
       @JsonProperty("stateId") StateId stateId
   ) {
-    this.stateId = stateId;
+    this.stateId = stateId.getData();
   }
 
-  /**
-   * Get state id.
-   *
-   * @return state id
-   */
-  public StateId getStateId() {
-    return this.stateId;
+  public byte[] getStateId() {
+    return Arrays.copyOf(this.stateId, this.stateId.length);
   }
 }
