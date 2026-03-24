@@ -29,11 +29,65 @@ public class TokenUtils {
       PredicateVerifierService predicateVerifier,
       Address recipient
   ) throws Exception {
+    return TokenUtils.mintToken(
+        client,
+        trustBase,
+        predicateVerifier,
+        recipient,
+        CborSerializer.encodeArray()
+    );
+  }
+
+  public static Token mintToken(
+      StateTransitionClient client,
+      RootTrustBase trustBase,
+      PredicateVerifierService predicateVerifier,
+      Address recipient,
+      byte[] data
+      ) throws Exception {
+    return TokenUtils.mintToken(
+        client,
+        trustBase,
+        predicateVerifier,
+        TokenId.generate(),
+        recipient,
+        data
+    );
+  }
+
+  public static Token mintToken(
+      StateTransitionClient client,
+      RootTrustBase trustBase,
+      PredicateVerifierService predicateVerifier,
+      TokenId tokenId,
+      Address recipient,
+      byte[] data
+  ) throws Exception {
+    return TokenUtils.mintToken(
+        client,
+        trustBase,
+        predicateVerifier,
+        tokenId,
+        TokenType.generate(),
+        recipient,
+        data
+    );
+  }
+
+  public static Token mintToken(
+      StateTransitionClient client,
+      RootTrustBase trustBase,
+      PredicateVerifierService predicateVerifier,
+      TokenId tokenId,
+      TokenType tokenType,
+      Address recipient,
+      byte[] data
+  ) throws Exception {
     MintTransaction transaction = MintTransaction.create(
         recipient,
-        TokenId.generate(),
-        TokenType.generate(),
-        CborSerializer.encodeArray()
+        tokenId,
+        tokenType,
+        data
     );
 
     CertificationData certificationData = CertificationData.fromMintTransaction(transaction);
@@ -78,10 +132,21 @@ public class TokenUtils {
         CborSerializer.encodeArray()
     );
 
+    return TokenUtils.transferToken(client, trustBase, predicateVerifier, token, transaction, signingService);
+  }
+
+  public static Token transferToken(
+      StateTransitionClient client,
+      RootTrustBase trustBase,
+      PredicateVerifierService predicateVerifier,
+      Token token,
+      TransferTransaction transaction,
+      SigningService signingService
+  ) throws Exception {
     CertificationResponse response = client.submitCertificationRequest(
         CertificationData.fromTransaction(
             transaction,
-            PayToPublicKeyPredicateUnlockScript.create(transaction, signingService).encode()
+            PayToPublicKeyPredicateUnlockScript.create(transaction, signingService)
         )
     ).get();
 

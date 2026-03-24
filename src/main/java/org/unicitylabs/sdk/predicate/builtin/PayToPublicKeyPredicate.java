@@ -16,11 +16,6 @@ public class PayToPublicKeyPredicate implements BuiltInPredicate {
     this.publicKey = publicKey;
   }
 
-  @Override
-  public PredicateEngine getEngine() {
-    return PredicateEngine.BUILT_IN;
-  }
-
   public byte[] getPublicKey() {
     return Arrays.copyOf(this.publicKey, this.publicKey.length);
   }
@@ -51,11 +46,6 @@ public class PayToPublicKeyPredicate implements BuiltInPredicate {
   public static PayToPublicKeyPredicate fromSigningService(SigningService signingService) {
     Objects.requireNonNull(signingService, "Signing service cannot be null");
     return new PayToPublicKeyPredicate(signingService.getPublicKey());
-  }
-
-  @Override
-  public byte[] encodeCode() {
-    return CborSerializer.encodeUnsignedInteger(this.getType().getId());
   }
 
   @Override

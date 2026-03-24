@@ -2,7 +2,8 @@ package org.unicitylabs.sdk.predicate.builtin;
 
 public enum BuiltInPredicateType {
   PAY_TO_PUBLIC_KEY(1),
-  UNICITY_ID(2);
+  UNICITY_ID(2),
+  BURN(3);
 
   private final int id;
 

@@ -10,6 +10,7 @@ import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
 import org.unicitylabs.sdk.predicate.EncodedPredicate;
 import org.unicitylabs.sdk.predicate.Predicate;
+import org.unicitylabs.sdk.predicate.UnlockScript;
 import org.unicitylabs.sdk.predicate.builtin.PayToPublicKeyPredicateUnlockScript;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
@@ -90,6 +91,10 @@ public class CertificationData {
         PayToPublicKeyPredicateUnlockScript.create(transaction, signingService).getSignature()
             .encode()
     );
+  }
+
+  public static CertificationData fromTransaction(Transaction transaction, UnlockScript unlockScript) {
+    return CertificationData.fromTransaction(transaction, unlockScript.encode());
   }
 
   public static CertificationData fromTransaction(Transaction transaction, byte[] unlockScript) {

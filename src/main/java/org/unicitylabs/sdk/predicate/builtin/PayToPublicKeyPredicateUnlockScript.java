@@ -5,10 +5,11 @@ import org.unicitylabs.sdk.crypto.hash.DataHasher;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.unicitylabs.sdk.crypto.secp256k1.Signature;
 import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
+import org.unicitylabs.sdk.predicate.UnlockScript;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.transaction.Transaction;
 
-public class PayToPublicKeyPredicateUnlockScript {
+public class PayToPublicKeyPredicateUnlockScript implements UnlockScript {
 
   private final Signature signature;
 

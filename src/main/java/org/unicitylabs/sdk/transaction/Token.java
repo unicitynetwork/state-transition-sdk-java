@@ -35,6 +35,10 @@ public class Token {
     return this.genesis.getTokenType();
   }
 
+  public CertifiedMintTransaction getGenesis() {
+    return this.genesis;
+  }
+
   public Transaction getLatestTransaction() {
     if (this.transactions.isEmpty()) {
       return this.genesis;
