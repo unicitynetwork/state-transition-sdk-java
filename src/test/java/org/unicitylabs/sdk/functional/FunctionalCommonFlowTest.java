@@ -10,7 +10,7 @@ public class FunctionalCommonFlowTest extends CommonTestFlow {
 
   @BeforeEach
   void setUp() {
-    var aggregatorClient = TestAggregatorClient.create();
+    TestAggregatorClient aggregatorClient = TestAggregatorClient.create();
     this.client = new StateTransitionClient(aggregatorClient);
     this.trustBase = aggregatorClient.getTrustBase();
     this.predicateVerifier = PredicateVerifierService.create(this.trustBase);

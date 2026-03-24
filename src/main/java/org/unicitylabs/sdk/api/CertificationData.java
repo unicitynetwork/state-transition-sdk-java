@@ -7,6 +7,7 @@ import org.unicitylabs.sdk.crypto.MintSigningService;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.crypto.hash.DataHasher;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
+import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
 import org.unicitylabs.sdk.predicate.EncodedPredicate;
 import org.unicitylabs.sdk.predicate.Predicate;
 import org.unicitylabs.sdk.predicate.builtin.PayToPublicKeyPredicateUnlockScript;
@@ -82,7 +83,7 @@ public class CertificationData {
   }
 
   public static CertificationData fromMintTransaction(MintTransaction transaction) {
-    var signingService = MintSigningService.create(transaction.getTokenId());
+    SigningService signingService = MintSigningService.create(transaction.getTokenId());
 
     return CertificationData.fromTransaction(
         transaction,

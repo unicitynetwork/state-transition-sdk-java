@@ -34,12 +34,12 @@ public class PayToPublicKeyPredicate implements BuiltInPredicate {
   }
 
   public static PayToPublicKeyPredicate fromPredicate(Predicate predicate) {
-    var engine = predicate.getEngine();
+    PredicateEngine engine = predicate.getEngine();
     if (engine != PredicateEngine.BUILT_IN) {
       throw new IllegalArgumentException("Predicate engine must be BUILT_IN.");
     }
 
-    var type = BuiltInPredicateType.fromId(
+    BuiltInPredicateType type = BuiltInPredicateType.fromId(
         CborDeserializer.decodeUnsignedInteger(predicate.encodeCode()).asInt());
     if (type != BuiltInPredicateType.PAY_TO_PUBLIC_KEY) {
       throw new IllegalArgumentException("Predicate type must be PAY_TO_PUBLIC_KEY.");

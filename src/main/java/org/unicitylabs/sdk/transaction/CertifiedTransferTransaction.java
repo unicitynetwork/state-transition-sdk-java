@@ -1,5 +1,6 @@
 package org.unicitylabs.sdk.transaction;
 
+import java.util.List;
 import org.unicitylabs.sdk.api.InclusionProof;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
@@ -10,6 +11,7 @@ import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.transaction.verification.InclusionProofVerificationRule;
 import org.unicitylabs.sdk.transaction.verification.InclusionProofVerificationStatus;
 import org.unicitylabs.sdk.util.verification.VerificationException;
+import org.unicitylabs.sdk.util.verification.VerificationResult;
 
 public class CertifiedTransferTransaction implements Transaction {
 
@@ -54,7 +56,7 @@ public class CertifiedTransferTransaction implements Transaction {
   }
 
   public static CertifiedTransferTransaction fromCbor(byte[] bytes) {
-    var data = CborDeserializer.decodeArray(bytes);
+    List<byte[]> data = CborDeserializer.decodeArray(bytes);
 
     return new CertifiedTransferTransaction(TransferTransaction.fromCbor(data.get(0)),
         InclusionProof.fromCbor(data.get(1)));
@@ -63,7 +65,7 @@ public class CertifiedTransferTransaction implements Transaction {
   public static CertifiedTransferTransaction fromTransaction(RootTrustBase trustBase,
       PredicateVerifierService predicateVerifier, TransferTransaction transaction,
       InclusionProof inclusionProof) {
-    var result = InclusionProofVerificationRule.verify(
+    VerificationResult<InclusionProofVerificationStatus> result = InclusionProofVerificationRule.verify(
         trustBase,
         predicateVerifier,
         inclusionProof,

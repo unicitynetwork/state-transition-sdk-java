@@ -1,6 +1,7 @@
 package org.unicitylabs.sdk.predicate;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
@@ -24,8 +25,8 @@ public class EncodedPredicate implements Predicate {
   }
 
   public static EncodedPredicate fromCbor(byte[] bytes) {
-    var data = CborDeserializer.decodeArray(bytes);
-    var engine = PredicateEngine.fromId(
+    List<byte[]> data = CborDeserializer.decodeArray(bytes);
+    PredicateEngine engine = PredicateEngine.fromId(
         CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt());
     Objects.requireNonNull(engine, "Predicate engine must not be null.");
 

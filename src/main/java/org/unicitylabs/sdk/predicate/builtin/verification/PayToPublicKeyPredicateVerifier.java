@@ -24,9 +24,9 @@ public class PayToPublicKeyPredicateVerifier implements BuiltInPredicateVerifier
   public VerificationResult<VerificationStatus> verify(Predicate encodedPredicate,
       DataHash sourceStateHash,
       DataHash transactionHash, byte[] unlockScript) {
-    var predicate = PayToPublicKeyPredicate.fromPredicate(encodedPredicate);
+    PayToPublicKeyPredicate predicate = PayToPublicKeyPredicate.fromPredicate(encodedPredicate);
 
-    var result = SigningService.verifyWithPublicKey(
+    boolean result = SigningService.verifyWithPublicKey(
         new DataHasher(HashAlgorithm.SHA256)
             .update(
                 CborSerializer.encodeArray(

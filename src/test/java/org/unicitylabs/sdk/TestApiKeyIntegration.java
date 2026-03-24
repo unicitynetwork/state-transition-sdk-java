@@ -53,7 +53,7 @@ public class TestApiKeyIntegration {
     SigningService signingService = new SigningService(
         HexConverter.decode("0000000000000000000000000000000000000000000000000000000000000001"));
 
-    var transaction = MintTransaction.create(
+    MintTransaction transaction = MintTransaction.create(
             Address.fromPredicate(PayToPublicKeyPredicate.fromSigningService(signingService)),
             TokenId.generate(),
             TokenType.generate(),

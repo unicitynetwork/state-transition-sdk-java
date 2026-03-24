@@ -1,5 +1,6 @@
 package org.unicitylabs.sdk.predicate.builtin;
 
+import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.crypto.hash.DataHasher;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.unicitylabs.sdk.crypto.secp256k1.Signature;
@@ -23,7 +24,7 @@ public class PayToPublicKeyPredicateUnlockScript {
       Transaction transaction,
       SigningService signingService
   ) {
-    var hash = new DataHasher(HashAlgorithm.SHA256)
+    DataHash hash = new DataHasher(HashAlgorithm.SHA256)
         .update(
             CborSerializer.encodeArray(
                 CborSerializer.encodeByteString(transaction.getSourceStateHash().getData()),

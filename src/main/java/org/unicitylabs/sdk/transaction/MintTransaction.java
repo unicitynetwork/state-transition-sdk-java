@@ -1,6 +1,7 @@
 package org.unicitylabs.sdk.transaction;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 import org.unicitylabs.sdk.api.InclusionProof;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
@@ -8,6 +9,7 @@ import org.unicitylabs.sdk.crypto.MintSigningService;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.crypto.hash.DataHasher;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
+import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
 import org.unicitylabs.sdk.predicate.Predicate;
 import org.unicitylabs.sdk.predicate.builtin.PayToPublicKeyPredicate;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
@@ -81,7 +83,7 @@ public class MintTransaction implements Transaction {
     Objects.requireNonNull(tokenType, "Token type cannot be null");
     Objects.requireNonNull(data, "Data cannot be null");
 
-    var signingService = MintSigningService.create(tokenId);
+    SigningService signingService = MintSigningService.create(tokenId);
     return new MintTransaction(
         MintTransactionState.create(tokenId),
         PayToPublicKeyPredicate.fromSigningService(signingService),
@@ -93,8 +95,8 @@ public class MintTransaction implements Transaction {
   }
 
   public static MintTransaction fromCbor(byte[] bytes) {
-    var data = CborDeserializer.decodeArray(bytes);
-    var aux = CborDeserializer.decodeArray(data.get(2));
+    List<byte[]> data = CborDeserializer.decodeArray(bytes);
+    List<byte[]> aux = CborDeserializer.decodeArray(data.get(2));
 
     return MintTransaction.create(
         Address.fromCbor(data.get(0)),

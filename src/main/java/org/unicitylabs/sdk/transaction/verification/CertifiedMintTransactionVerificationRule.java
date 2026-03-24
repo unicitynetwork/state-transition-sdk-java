@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.crypto.MintSigningService;
+import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
 import org.unicitylabs.sdk.predicate.EncodedPredicate;
 import org.unicitylabs.sdk.predicate.builtin.PayToPublicKeyPredicate;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
@@ -15,9 +16,9 @@ public class CertifiedMintTransactionVerificationRule {
 
   public static VerificationResult<VerificationStatus> verify(RootTrustBase trustBase,
       PredicateVerifierService predicateVerifier, CertifiedMintTransaction transaction) {
-    var results = new ArrayList<VerificationResult<?>>();
+    ArrayList<VerificationResult<?>> results = new ArrayList<VerificationResult<?>>();
 
-    var signingService = MintSigningService.create(transaction.getTokenId());
+    SigningService signingService = MintSigningService.create(transaction.getTokenId());
     VerificationResult<?> result = Arrays.equals(
         EncodedPredicate.fromPredicate(PayToPublicKeyPredicate.fromSigningService(signingService))
             .toCbor(),

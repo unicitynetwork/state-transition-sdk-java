@@ -11,11 +11,13 @@ import org.unicitylabs.sdk.api.InclusionProofFixture;
 import org.unicitylabs.sdk.api.StateId;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.api.bft.RootTrustBaseUtils;
+import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
 import org.unicitylabs.sdk.mtree.plain.SparseMerkleTree;
 import org.unicitylabs.sdk.mtree.plain.SparseMerkleTreeRootNode;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
+import org.unicitylabs.sdk.util.verification.VerificationResult;
 import org.unicitylabs.sdk.util.verification.VerificationStatus;
 
 public class TestAggregatorClient implements AggregatorClient {
@@ -62,7 +64,7 @@ public class TestAggregatorClient implements AggregatorClient {
     try {
       StateId stateId = StateId.fromCertificationData(certificationData);
 
-      var result = this.predicateVerifier.verify(
+      VerificationResult<VerificationStatus> result = this.predicateVerifier.verify(
           certificationData.getLockScript(),
           certificationData.getSourceStateHash(),
           certificationData.getTransactionHash(),
@@ -74,7 +76,7 @@ public class TestAggregatorClient implements AggregatorClient {
       }
 
       if (!this.requests.containsKey(stateId)) {
-        var leafValue = certificationData.calculateLeafValue();
+        DataHash leafValue = certificationData.calculateLeafValue();
         this.sparseMerkleTree.addLeaf(stateId.toBitString().toBigInteger(), leafValue.getImprint());
         this.requests.put(stateId, certificationData);
       }

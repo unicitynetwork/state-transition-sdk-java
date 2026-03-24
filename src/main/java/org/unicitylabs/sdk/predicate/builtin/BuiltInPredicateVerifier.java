@@ -51,10 +51,10 @@ public class BuiltInPredicateVerifier implements PredicateVerifier {
   public VerificationResult<VerificationStatus> verify(Predicate predicate,
       DataHash sourceStateHash,
       DataHash transactionHash, byte[] unlockScript) {
-    var type = BuiltInPredicateType.fromId(
+    BuiltInPredicateType type = BuiltInPredicateType.fromId(
         CborDeserializer.decodeUnsignedInteger(predicate.encodeCode()).asInt());
 
-    var verifier = this.verifiers.get(type);
+    org.unicitylabs.sdk.predicate.builtin.verification.BuiltInPredicateVerifier verifier = this.verifiers.get(type);
     if (verifier == null) {
       throw new IllegalArgumentException("No verifier registered for predicate type: " + type);
     }

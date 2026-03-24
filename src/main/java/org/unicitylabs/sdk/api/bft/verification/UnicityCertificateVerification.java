@@ -13,8 +13,8 @@ public class UnicityCertificateVerification {
 
   public static UnicityCertificateVerificationResult verify(RootTrustBase trustBase,
       InclusionProof inclusionProof) {
-    var results = new ArrayList<VerificationResult<?>>();
-    var result = InputRecordCurrentHashVerificationRule.verify(inclusionProof);
+    ArrayList<VerificationResult<?>> results = new ArrayList<VerificationResult<?>>();
+    VerificationResult<VerificationStatus> result = InputRecordCurrentHashVerificationRule.verify(inclusionProof);
     results.add(result);
     if (result.getStatus() != VerificationStatus.OK) {
       return UnicityCertificateVerificationResult.fail(results);

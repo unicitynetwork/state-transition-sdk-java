@@ -48,8 +48,8 @@ public class Token {
   }
 
   public static Token fromCbor(byte[] bytes) {
-    var data = CborDeserializer.decodeArray(bytes);
-    var transactions = CborDeserializer.decodeArray(data.get(1));
+    List<byte[]> data = CborDeserializer.decodeArray(bytes);
+    List<byte[]> transactions = CborDeserializer.decodeArray(data.get(1));
 
     return new Token(
         CertifiedMintTransaction.fromCbor(data.get(0)),
@@ -60,8 +60,8 @@ public class Token {
 
   public static Token mint(RootTrustBase trustBase, PredicateVerifierService predicateVerifier,
       CertifiedMintTransaction genesis) {
-    var token = new Token(genesis);
-    var result = token.verify(trustBase, predicateVerifier);
+    Token token = new Token(genesis);
+    VerificationResult<VerificationStatus> result = token.verify(trustBase, predicateVerifier);
     if (result.getStatus() != VerificationStatus.OK) {
       throw new VerificationException("Invalid token genesis", result);
     }
@@ -71,7 +71,7 @@ public class Token {
 
   public Token transfer(RootTrustBase trustBase, PredicateVerifierService predicateVerifier,
       CertifiedTransferTransaction transaction) {
-    var result = CertifiedTransferTransactionVerificationRule.verify(
+    VerificationResult<VerificationStatus> result = CertifiedTransferTransactionVerificationRule.verify(
         trustBase,
         predicateVerifier,
         this.getLatestTransaction(),
@@ -81,7 +81,7 @@ public class Token {
       throw new VerificationException("Invalid token transfer transaction", result);
     }
 
-    var transactions = new ArrayList<>(this.transactions);
+    ArrayList<CertifiedTransferTransaction> transactions = new ArrayList<>(this.transactions);
     transactions.add(transaction);
     return new Token(this.genesis, transactions);
   }
@@ -99,7 +99,7 @@ public class Token {
 
     List<VerificationResult<?>> transferResults = new ArrayList<>();
     for (int i = 0; i < this.transactions.size(); i++) {
-      var transaction = this.transactions.get(i);
+      CertifiedTransferTransaction transaction = this.transactions.get(i);
       result = CertifiedTransferTransactionVerificationRule.verify(trustBase, predicateVerifier,
           i == 0 ? this.genesis : this.transactions.get(i - 1), transaction);
       transferResults.add(result);

@@ -16,7 +16,7 @@ public class CertifiedTransferTransactionVerificationRule {
       PredicateVerifierService predicateVerifier,
       Transaction latestTransaction,
       CertifiedTransferTransaction transaction) {
-    var results = new ArrayList<VerificationResult<?>>();
+    ArrayList<VerificationResult<?>> results = new ArrayList<VerificationResult<?>>();
 
     VerificationResult<?> result = InclusionProofVerificationRule.verify(trustBase,
         predicateVerifier, transaction.getInclusionProof(), transaction);
@@ -26,7 +26,7 @@ public class CertifiedTransferTransactionVerificationRule {
           VerificationStatus.FAIL, "Inclusion proof verification failed", results);
     }
 
-    var payToScriptHash = Address.fromPredicate(transaction.getLockScript());
+    Address payToScriptHash = Address.fromPredicate(transaction.getLockScript());
     result = new VerificationResult<>("RecipientVerificationRule",
         latestTransaction.getRecipient().equals(payToScriptHash) ? VerificationStatus.OK
             : VerificationStatus.FAIL);

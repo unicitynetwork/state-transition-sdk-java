@@ -1,5 +1,6 @@
 package org.unicitylabs.sdk;
 
+import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.crypto.hash.DataHasher;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.junit.jupiter.api.Test;
@@ -20,12 +21,12 @@ public class AndroidCompatibilityTest {
     void testCoreSDKFeaturesWorkOnAndroid() throws Exception {
         // Test 1: Hashing (uses Bouncy Castle, not Java crypto)
         byte[] data = "test data".getBytes(StandardCharsets.UTF_8);
-        var hash = new DataHasher(HashAlgorithm.SHA256).update(data).digest();
+      DataHash hash = new DataHasher(HashAlgorithm.SHA256).update(data).digest();
         assertNotNull(hash);
         assertEquals(HashAlgorithm.SHA256, hash.getAlgorithm());
         
         // Test 2: Signing Service (uses Bouncy Castle)
-        var signingService = SigningService.generate();
+      SigningService signingService = SigningService.generate();
         assertNotNull(signingService.getPublicKey());
         
         // Test 3: Token IDs and Types

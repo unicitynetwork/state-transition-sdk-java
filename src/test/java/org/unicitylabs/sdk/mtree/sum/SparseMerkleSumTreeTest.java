@@ -2,6 +2,7 @@ package org.unicitylabs.sdk.mtree.sum;
 
 
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
+import org.unicitylabs.sdk.mtree.MerkleTreePathVerificationResult;
 import org.unicitylabs.sdk.mtree.sum.SparseMerkleSumTree.LeafValue;
 import java.math.BigInteger;
 import java.util.Map;
@@ -14,31 +15,31 @@ class SparseMerkleSumTreeTest {
 
   @Test
   void shouldAgreeWithSpecExamples() throws Exception {
-    var treeLeftOnly = new SparseMerkleSumTree(HashAlgorithm.SHA256);
+    SparseMerkleSumTree treeLeftOnly = new SparseMerkleSumTree(HashAlgorithm.SHA256);
     treeLeftOnly.addLeaf(new BigInteger("100", 2), new LeafValue("a".getBytes(), BigInteger.valueOf(1)));
-    var rootLeftOnly = treeLeftOnly.calculateRoot();
+    SparseMerkleSumTreeRootNode rootLeftOnly = treeLeftOnly.calculateRoot();
     Assertions.assertEquals(BigInteger.valueOf(1), rootLeftOnly.getValue());
     Assertions.assertArrayEquals(HexConverter.decode("5822" + "0000" + "34e0cf342d70c0d10e3ba481f72db532ecfd723afa3c25812a4bef61b5198d0b"), rootLeftOnly.getRootHash().toCbor());
 
-    var treeRightOnly = new SparseMerkleSumTree(HashAlgorithm.SHA256);
+    SparseMerkleSumTree treeRightOnly = new SparseMerkleSumTree(HashAlgorithm.SHA256);
     treeRightOnly.addLeaf(new BigInteger("111", 2), new LeafValue("b".getBytes(), BigInteger.valueOf(2)));
-    var rootRightOnly = treeRightOnly.calculateRoot();
+    SparseMerkleSumTreeRootNode rootRightOnly = treeRightOnly.calculateRoot();
     Assertions.assertEquals(BigInteger.valueOf(2), rootRightOnly.getValue());
     Assertions.assertArrayEquals(HexConverter.decode("5822" + "0000" + "da47d1cda8dab5159b2bed1ea27c3d24ed990989fac3c62ace05273fea51f958"), rootRightOnly.getRootHash().toCbor());
 
-    var treeFourLeaves = new SparseMerkleSumTree(HashAlgorithm.SHA256);
+    SparseMerkleSumTree treeFourLeaves = new SparseMerkleSumTree(HashAlgorithm.SHA256);
     treeFourLeaves.addLeaf(new BigInteger("1000", 2), new LeafValue("a".getBytes(), BigInteger.valueOf(1)));
     treeFourLeaves.addLeaf(new BigInteger("1100", 2), new LeafValue("b".getBytes(), BigInteger.valueOf(2)));
     treeFourLeaves.addLeaf(new BigInteger("1011", 2), new LeafValue("c".getBytes(), BigInteger.valueOf(3)));
     treeFourLeaves.addLeaf(new BigInteger("1111", 2), new LeafValue("d".getBytes(), BigInteger.valueOf(4)));
-    var rootFourLeaves = treeFourLeaves.calculateRoot();
+    SparseMerkleSumTreeRootNode rootFourLeaves = treeFourLeaves.calculateRoot();
     Assertions.assertEquals(BigInteger.valueOf(10), rootFourLeaves.getValue());
     Assertions.assertArrayEquals(HexConverter.decode("5822" + "0000" + "adfefa7c86b18d1216eece9fe0ce82ca58fd8cf482305c3c4e1a0a1361dc9d15"), rootFourLeaves.getRootHash().toCbor());
   }
 
   @Test
   void shouldBuildTreeWithNumericValues() throws Exception {
-    var leaves = Map.of(
+    Map<BigInteger, LeafValue> leaves = Map.of(
         new BigInteger("1000", 2), new LeafValue("left-1".getBytes(), BigInteger.valueOf(10)),
         new BigInteger("1001", 2), new LeafValue("right-1".getBytes(), BigInteger.valueOf(20)),
         new BigInteger("1010", 2), new LeafValue("left-2".getBytes(), BigInteger.valueOf(30)),
@@ -50,12 +51,12 @@ class SparseMerkleSumTreeTest {
       tree.addLeaf(entry.getKey(), entry.getValue());
     }
 
-    var root = tree.calculateRoot();
+    SparseMerkleSumTreeRootNode root = tree.calculateRoot();
     Assertions.assertEquals(BigInteger.valueOf(100), root.getValue());
 
-    for (var entry : leaves.entrySet()) {
-      var path = root.getPath(entry.getKey());
-      var verificationResult = path.verify(entry.getKey());
+    for (Entry<BigInteger, LeafValue> entry : leaves.entrySet()) {
+      SparseMerkleSumTreePath path = root.getPath(entry.getKey());
+      MerkleTreePathVerificationResult verificationResult = path.verify(entry.getKey());
       Assertions.assertTrue(verificationResult.isPathIncluded());
       Assertions.assertTrue(verificationResult.isPathValid());
       Assertions.assertTrue(verificationResult.isSuccessful());
@@ -78,7 +79,7 @@ class SparseMerkleSumTreeTest {
 
   @Test
   void shouldThrowErrorOnNonPositivePathOrSum() {
-    var tree = new SparseMerkleSumTree(HashAlgorithm.SHA256);
+    SparseMerkleSumTree tree = new SparseMerkleSumTree(HashAlgorithm.SHA256);
     Assertions.assertThrows(IllegalArgumentException.class,
         () -> tree.addLeaf(BigInteger.valueOf(-1),
             new LeafValue(new byte[32], BigInteger.valueOf(100))));

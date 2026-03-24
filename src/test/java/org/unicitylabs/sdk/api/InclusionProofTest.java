@@ -140,7 +140,7 @@ public class InclusionProofTest {
                 ).getStatus()
         );
 
-        var invalidTransactionHashInclusionProof = new InclusionProof(
+      InclusionProof invalidTransactionHashInclusionProof = new InclusionProof(
                 this.merkleTreePath,
                 new CertificationData(
                         this.certificationData.getLockScript(),

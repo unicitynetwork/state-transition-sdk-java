@@ -1,5 +1,6 @@
 package org.unicitylabs.sdk.api;
 
+import java.util.List;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 
@@ -40,7 +41,7 @@ public class InclusionProofResponse {
    * @return inclusion proof response
    */
   public static InclusionProofResponse fromCbor(byte[] bytes) {
-    var data = CborDeserializer.decodeArray(bytes);
+    List<byte[]> data = CborDeserializer.decodeArray(bytes);
     return new InclusionProofResponse(
         CborDeserializer.decodeUnsignedInteger(data.get(0)).asLong(),
         InclusionProof.fromCbor(data.get(1))

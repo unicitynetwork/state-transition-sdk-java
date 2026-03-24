@@ -19,7 +19,7 @@ public class PredicateVerifierService {
   }
 
   public static PredicateVerifierService create(RootTrustBase trustBase) {
-    var verifier = new PredicateVerifierService();
+    PredicateVerifierService verifier = new PredicateVerifierService();
     verifier.addVerifier(BuiltInPredicateVerifier.create(verifier, trustBase));
 
     return verifier;
@@ -38,7 +38,7 @@ public class PredicateVerifierService {
 
   public VerificationResult<VerificationStatus> verify(Predicate predicate,
       DataHash sourceStateHash, DataHash transactionHash, byte[] unlockScript) {
-    var verifier = this.verifiers.get(predicate.getEngine());
+    PredicateVerifier verifier = this.verifiers.get(predicate.getEngine());
     if (verifier == null) {
       throw new IllegalArgumentException(
           "No verifier registered for predicate engine: " + predicate.getEngine());

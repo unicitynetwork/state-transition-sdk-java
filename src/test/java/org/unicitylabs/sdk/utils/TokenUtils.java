@@ -4,6 +4,7 @@ import java.security.SecureRandom;
 import org.junit.jupiter.api.Assertions;
 import org.unicitylabs.sdk.StateTransitionClient;
 import org.unicitylabs.sdk.api.CertificationData;
+import org.unicitylabs.sdk.api.CertificationResponse;
 import org.unicitylabs.sdk.api.CertificationStatus;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
@@ -28,16 +29,16 @@ public class TokenUtils {
       PredicateVerifierService predicateVerifier,
       Address recipient
   ) throws Exception {
-    var transaction = MintTransaction.create(
+    MintTransaction transaction = MintTransaction.create(
         recipient,
         TokenId.generate(),
         TokenType.generate(),
         CborSerializer.encodeArray()
     );
 
-    var certificationData = CertificationData.fromMintTransaction(transaction);
+    CertificationData certificationData = CertificationData.fromMintTransaction(transaction);
 
-    var response = client.submitCertificationRequest(certificationData).get();
+    CertificationResponse response = client.submitCertificationRequest(certificationData).get();
     if (response.getStatus() != CertificationStatus.SUCCESS) {
       throw new RuntimeException(
           String.format("Certification Request failed with status '%s'", response.getStatus()));
@@ -69,7 +70,7 @@ public class TokenUtils {
     byte[] x = new byte[32];
     new SecureRandom().nextBytes(x);
 
-    var transaction = TransferTransaction.create(
+    TransferTransaction transaction = TransferTransaction.create(
         token,
         PayToPublicKeyPredicate.create(signingService.getPublicKey()),
         recipient,
@@ -77,7 +78,7 @@ public class TokenUtils {
         CborSerializer.encodeArray()
     );
 
-    var response = client.submitCertificationRequest(
+    CertificationResponse response = client.submitCertificationRequest(
         CertificationData.fromTransaction(
             transaction,
             PayToPublicKeyPredicateUnlockScript.create(transaction, signingService).encode()

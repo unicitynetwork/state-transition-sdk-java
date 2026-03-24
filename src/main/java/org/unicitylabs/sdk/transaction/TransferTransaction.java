@@ -1,6 +1,7 @@
 package org.unicitylabs.sdk.transaction;
 
 import java.util.Arrays;
+import java.util.List;
 import org.unicitylabs.sdk.api.InclusionProof;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
@@ -59,7 +60,7 @@ public class TransferTransaction implements Transaction {
 
   public static TransferTransaction create(Token token, Predicate owner, Address recipient,
       byte[] x, byte[] data) {
-    var transaction = token.getLatestTransaction();
+    Transaction transaction = token.getLatestTransaction();
     if (!transaction.getRecipient().equals(Address.fromPredicate(owner))) {
       throw new RuntimeException("Predicate does not match pay to script hash.");
     }
@@ -74,7 +75,7 @@ public class TransferTransaction implements Transaction {
   }
 
   public static TransferTransaction fromCbor(byte[] bytes) {
-    var data = CborDeserializer.decodeArray(bytes);
+    List<byte[]> data = CborDeserializer.decodeArray(bytes);
 
     return new TransferTransaction(
         new DataHash(HashAlgorithm.SHA256, CborDeserializer.decodeByteString(data.get(0))),
