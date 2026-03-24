@@ -6,7 +6,7 @@ import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.predicate.Predicate;
 import org.unicitylabs.sdk.predicate.PredicateEngine;
-import org.unicitylabs.sdk.predicate.builtin.BuiltInPredicateVerifier;
+import org.unicitylabs.sdk.predicate.builtin.DefaultBuiltInPredicateVerifier;
 import org.unicitylabs.sdk.util.verification.VerificationResult;
 import org.unicitylabs.sdk.util.verification.VerificationStatus;
 
@@ -20,7 +20,7 @@ public class PredicateVerifierService {
 
   public static PredicateVerifierService create(RootTrustBase trustBase) {
     PredicateVerifierService verifier = new PredicateVerifierService();
-    verifier.addVerifier(BuiltInPredicateVerifier.create(verifier, trustBase));
+    verifier.addVerifier(DefaultBuiltInPredicateVerifier.create(verifier, trustBase));
 
     return verifier;
   }

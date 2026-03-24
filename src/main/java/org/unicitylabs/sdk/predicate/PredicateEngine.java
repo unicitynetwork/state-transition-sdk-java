@@ -19,6 +19,6 @@ public enum PredicateEngine {
         return engine;
       }
     }
-    return null;
+    throw new IllegalArgumentException("Invalid predicate engine: " + id);
   }
 }

@@ -7,6 +7,7 @@ import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.predicate.Predicate;
 import org.unicitylabs.sdk.predicate.PredicateEngine;
+import org.unicitylabs.sdk.predicate.builtin.verification.BuiltInPredicateVerifier;
 import org.unicitylabs.sdk.predicate.builtin.verification.PayToPublicKeyPredicateVerifier;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifier;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
@@ -14,15 +15,15 @@ import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.util.verification.VerificationResult;
 import org.unicitylabs.sdk.util.verification.VerificationStatus;
 
-public class BuiltInPredicateVerifier implements PredicateVerifier {
+public class DefaultBuiltInPredicateVerifier implements PredicateVerifier {
 
-  private final Map<BuiltInPredicateType, org.unicitylabs.sdk.predicate.builtin.verification.BuiltInPredicateVerifier> verifiers;
+  private final Map<BuiltInPredicateType, BuiltInPredicateVerifier> verifiers;
 
 
-  public BuiltInPredicateVerifier(
-      List<org.unicitylabs.sdk.predicate.builtin.verification.BuiltInPredicateVerifier> verifiers) {
-    Map<BuiltInPredicateType, org.unicitylabs.sdk.predicate.builtin.verification.BuiltInPredicateVerifier> result = new HashMap<>();
-    for (org.unicitylabs.sdk.predicate.builtin.verification.BuiltInPredicateVerifier verifier : verifiers) {
+  public DefaultBuiltInPredicateVerifier(
+      List<BuiltInPredicateVerifier> verifiers) {
+    Map<BuiltInPredicateType, BuiltInPredicateVerifier> result = new HashMap<>();
+    for (BuiltInPredicateVerifier verifier : verifiers) {
       if (result.containsKey(verifier.getType())) {
         throw new IllegalArgumentException("Duplicate verifier for type " + verifier.getType());
       }
@@ -38,9 +39,8 @@ public class BuiltInPredicateVerifier implements PredicateVerifier {
     return PredicateEngine.BUILT_IN;
   }
 
-  public static BuiltInPredicateVerifier create(PredicateVerifierService service,
-      RootTrustBase trustBase) {
-    return new BuiltInPredicateVerifier(
+  public static DefaultBuiltInPredicateVerifier create(PredicateVerifierService service, RootTrustBase trustBase) {
+    return new DefaultBuiltInPredicateVerifier(
         List.of(
             new PayToPublicKeyPredicateVerifier()
         )
@@ -54,7 +54,7 @@ public class BuiltInPredicateVerifier implements PredicateVerifier {
     BuiltInPredicateType type = BuiltInPredicateType.fromId(
         CborDeserializer.decodeUnsignedInteger(predicate.encodeCode()).asInt());
 
-    org.unicitylabs.sdk.predicate.builtin.verification.BuiltInPredicateVerifier verifier = this.verifiers.get(type);
+    BuiltInPredicateVerifier verifier = this.verifiers.get(type);
     if (verifier == null) {
       throw new IllegalArgumentException("No verifier registered for predicate type: " + type);
     }

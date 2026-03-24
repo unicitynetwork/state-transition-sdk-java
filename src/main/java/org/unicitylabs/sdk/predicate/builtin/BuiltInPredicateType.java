@@ -21,6 +21,6 @@ public enum BuiltInPredicateType {
         return type;
       }
     }
-    return null;
+    throw new IllegalArgumentException("Invalid predicate type: " + id);
   }
 }
