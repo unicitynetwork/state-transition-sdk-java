@@ -32,7 +32,7 @@ public class Address {
   }
 
   public static Address fromCbor(byte[] bytes) {
-    return new Address(CborDeserializer.decodeByteString(bytes));
+    return Address.fromBytes(CborDeserializer.decodeByteString(bytes));
   }
 
   public static Address fromPredicate(Predicate predicate) {

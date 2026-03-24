@@ -28,7 +28,6 @@ public class EncodedPredicate implements Predicate {
     List<byte[]> data = CborDeserializer.decodeArray(bytes);
     PredicateEngine engine = PredicateEngine.fromId(
         CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt());
-    Objects.requireNonNull(engine, "Predicate engine must not be null.");
 
     return new EncodedPredicate(
         engine,

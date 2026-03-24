@@ -1,5 +1,6 @@
 package org.unicitylabs.sdk.transaction.verification;
 
+import java.util.Arrays;
 import org.unicitylabs.sdk.api.CertificationData;
 import org.unicitylabs.sdk.api.InclusionProof;
 import org.unicitylabs.sdk.api.StateId;
@@ -37,30 +38,30 @@ public class InclusionProofVerificationRule {
           InclusionProofVerificationStatus.PATH_NOT_INCLUDED);
     }
 
-    CertificationData certficationData = inclusionProof.getCertificationData().orElse(null);
-    if (certficationData == null) {
+    CertificationData certificationData = inclusionProof.getCertificationData().orElse(null);
+    if (certificationData == null) {
       return new VerificationResult<>("InclusionProofVerificationRule",
           InclusionProofVerificationStatus.MISSING_CERTIFICATION_DATA);
     }
 
-    if (!certficationData.getTransactionHash().equals(transaction.calculateTransactionHash())) {
+    if (!certificationData.getTransactionHash().equals(transaction.calculateTransactionHash())) {
       return new VerificationResult<>("InclusionProofVerificationRule",
           InclusionProofVerificationStatus.TRANSACTION_HASH_MISMATCH);
     }
 
-    result = predicateVerifier.verify(certficationData.getLockScript(),
-        certficationData.getSourceStateHash(), certficationData.getTransactionHash(),
-        certficationData.getUnlockScript());
+    result = predicateVerifier.verify(certificationData.getLockScript(),
+        certificationData.getSourceStateHash(), certificationData.getTransactionHash(),
+        certificationData.getUnlockScript());
 
     if (result.getStatus() != VerificationStatus.OK) {
       return new VerificationResult<>("InclusionProofVerificationRule",
           InclusionProofVerificationStatus.NOT_AUTHENTICATED, "", result);
     }
 
-    DataHash leafValue = certficationData.calculateLeafValue();
+    DataHash leafValue = certificationData.calculateLeafValue();
     byte[] pathValue = inclusionProof.getMerkleTreePath().getSteps().stream().findFirst()
         .flatMap(SparseMerkleTreePathStep::getData).orElse(null);
-    if (pathValue == null || !leafValue.equals(DataHash.fromImprint(pathValue))) {
+    if (pathValue == null || !Arrays.equals(leafValue.getImprint(), pathValue)) {
       return new VerificationResult<>("InclusionProofVerificationRule",
           InclusionProofVerificationStatus.LEAF_VALUE_MISMATCH);
     }
