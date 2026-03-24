@@ -74,7 +74,7 @@ public class UnicitySealHashMatchesWithRootHashRule {
 
     byte[] unicitySealHash = unicityCertificate.getUnicitySeal().getHash();
 
-    if (Arrays.compareUnsigned(unicitySealHash, result.getData()) != 0) {
+    if (!Arrays.equals(unicitySealHash, result.getData())) {
       return new VerificationResult<>("UnicitySealHashMatchesWithRootHashRule",
           VerificationStatus.FAIL);
     }
