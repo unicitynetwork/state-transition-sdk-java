@@ -87,6 +87,11 @@ public class SigningService {
     return privateKey;
   }
 
+  /**
+   * Generate a signing service instance with a randomly generated private key.
+   *
+   * @return signing service instance
+   */
   public static SigningService generate() {
     return new SigningService(SigningService.generatePrivateKey());
   }

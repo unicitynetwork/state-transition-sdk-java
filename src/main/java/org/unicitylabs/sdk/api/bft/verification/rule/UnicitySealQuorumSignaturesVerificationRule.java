@@ -19,6 +19,15 @@ import org.unicitylabs.sdk.util.verification.VerificationStatus;
  */
 public class UnicitySealQuorumSignaturesVerificationRule {
 
+  private UnicitySealQuorumSignaturesVerificationRule() {}
+
+  /**
+   * Verifies unicity seal signatures and checks that the quorum threshold is reached.
+   *
+   * @param trustBase trust base containing root nodes and quorum threshold
+   * @param unicitySeal unicity seal with node signatures
+   * @return verification result with per-signature details
+   */
   public static VerificationResult<VerificationStatus> verify(RootTrustBase trustBase,
       UnicitySeal unicitySeal) {
     List<VerificationResult<?>> results = new ArrayList<>();

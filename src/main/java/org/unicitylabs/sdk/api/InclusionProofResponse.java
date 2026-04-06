@@ -35,7 +35,7 @@ public class InclusionProofResponse {
   }
 
   /**
-   * Create response from CBOR bytes.
+   * Deserialize response from CBOR bytes.
    *
    * @param bytes CBOR bytes
    * @return inclusion proof response
@@ -48,6 +48,11 @@ public class InclusionProofResponse {
     );
   }
 
+  /**
+   * Serialize inclusion proof response to CBOR bytes.
+   *
+   * @return CBOR bytes
+   */
   public byte[] toCbor() {
     return CborSerializer.encodeArray(
         CborSerializer.encodeUnsignedInteger(this.blockNumber),

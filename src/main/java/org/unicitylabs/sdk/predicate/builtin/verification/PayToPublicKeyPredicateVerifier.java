@@ -12,7 +12,15 @@ import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.util.verification.VerificationResult;
 import org.unicitylabs.sdk.util.verification.VerificationStatus;
 
+/**
+ * Verifies {@link PayToPublicKeyPredicate} unlock scripts using secp256k1 signatures.
+ */
 public class PayToPublicKeyPredicateVerifier implements BuiltInPredicateVerifier {
+
+  /**
+   * Creates a verifier instance for pay-to-public-key predicates.
+   */
+  public PayToPublicKeyPredicateVerifier() {}
 
   @Override
   public BuiltInPredicateType getType() {

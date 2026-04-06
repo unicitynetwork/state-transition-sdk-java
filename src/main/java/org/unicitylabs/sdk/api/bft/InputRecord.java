@@ -144,7 +144,7 @@ public class InputRecord {
   }
 
   /**
-   * Create InputRecord from CBOR bytes.
+   * Deserialize InputRecord from CBOR bytes.
    *
    * @param bytes CBOR bytes
    * @return input record
@@ -168,7 +168,7 @@ public class InputRecord {
   }
 
   /**
-   * Convert InputRecord to CBOR bytes.
+   * Serialize InputRecord to CBOR bytes.
    *
    * @return CBOR bytes
    */

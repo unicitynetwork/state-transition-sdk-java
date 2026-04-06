@@ -18,6 +18,14 @@ import org.unicitylabs.sdk.util.verification.VerificationStatus;
  */
 public class UnicitySealHashMatchesWithRootHashRule {
 
+  private UnicitySealHashMatchesWithRootHashRule() {}
+
+  /**
+   * Verifies that the unicity seal hash matches the recomputed root hash of the unicity tree.
+   *
+   * @param unicityCertificate unicity certificate containing tree and seal data
+   * @return verification result with {@link VerificationStatus#OK} on match, otherwise fail
+   */
   public static VerificationResult<VerificationStatus> verify(
       UnicityCertificate unicityCertificate) {
     DataHash shardTreeCertificateRootHash = UnicityCertificate

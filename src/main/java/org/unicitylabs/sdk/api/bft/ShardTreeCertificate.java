@@ -47,7 +47,7 @@ public class ShardTreeCertificate {
   }
 
   /**
-   * Create shard tree certificate from CBOR bytes.
+   * Deserialize shard tree certificate from CBOR bytes.
    *
    * @param bytes CBOR bytes
    * @return shard tree certificate
@@ -64,7 +64,7 @@ public class ShardTreeCertificate {
   }
 
   /**
-   * Convert shard tree certificate to CBOR bytes.
+   * Serialize shard tree certificate to CBOR bytes.
    *
    * @return CBOR bytes
    */

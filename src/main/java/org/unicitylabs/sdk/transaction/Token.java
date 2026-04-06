@@ -13,7 +13,10 @@ import org.unicitylabs.sdk.util.verification.VerificationException;
 import org.unicitylabs.sdk.util.verification.VerificationResult;
 import org.unicitylabs.sdk.util.verification.VerificationStatus;
 
-public class Token {
+/**
+ * Immutable token aggregate containing the certified genesis mint transaction and transfer history.
+ */
+public final class Token {
 
   private final CertifiedMintTransaction genesis;
   private final List<CertifiedTransferTransaction> transactions;
@@ -27,18 +30,38 @@ public class Token {
     this(genesis, List.of());
   }
 
+  /**
+   * Returns the token identifier.
+   *
+   * @return token id
+   */
   public TokenId getId() {
     return this.genesis.getTokenId();
   }
 
+  /**
+   * Returns the token type.
+   *
+   * @return token type
+   */
   public TokenType getType() {
     return this.genesis.getTokenType();
   }
 
+  /**
+   * Returns the certified genesis mint transaction.
+   *
+   * @return genesis transaction
+   */
   public CertifiedMintTransaction getGenesis() {
     return this.genesis;
   }
 
+  /**
+   * Returns the most recent transaction in the token history.
+   *
+   * @return latest transfer transaction, or genesis transaction when no transfers exist
+   */
   public Transaction getLatestTransaction() {
     if (this.transactions.isEmpty()) {
       return this.genesis;
@@ -47,10 +70,21 @@ public class Token {
     return this.transactions.get(this.transactions.size() - 1);
   }
 
+  /**
+   * Returns the certified transfer transactions.
+   *
+   * @return immutable list of transfer transactions
+   */
   public List<CertifiedTransferTransaction> getTransactions() {
     return this.transactions;
   }
 
+  /**
+   * Deserializes a token from CBOR.
+   *
+   * @param bytes CBOR-encoded token bytes
+   * @return decoded token
+   */
   public static Token fromCbor(byte[] bytes) {
     List<byte[]> data = CborDeserializer.decodeArray(bytes);
     List<byte[]> transactions = CborDeserializer.decodeArray(data.get(1));
@@ -62,6 +96,15 @@ public class Token {
     );
   }
 
+  /**
+   * Creates a token from a certified genesis transaction and verifies it.
+   *
+   * @param trustBase trust base used for certification checks
+   * @param predicateVerifier predicate verifier service
+   * @param genesis certified mint transaction
+   * @return verified token instance
+   * @throws VerificationException if genesis verification fails
+   */
   public static Token mint(RootTrustBase trustBase, PredicateVerifierService predicateVerifier,
       CertifiedMintTransaction genesis) {
     Token token = new Token(genesis);
@@ -73,6 +116,15 @@ public class Token {
     return token;
   }
 
+  /**
+   * Returns a new token instance with an additional verified transfer transaction.
+   *
+   * @param trustBase trust base used for certification checks
+   * @param predicateVerifier predicate verifier service
+   * @param transaction certified transfer transaction to append
+   * @return new token instance with appended transfer
+   * @throws VerificationException if transfer verification fails
+   */
   public Token transfer(RootTrustBase trustBase, PredicateVerifierService predicateVerifier,
       CertifiedTransferTransaction transaction) {
     VerificationResult<VerificationStatus> result = CertifiedTransferTransactionVerificationRule.verify(
@@ -90,6 +142,13 @@ public class Token {
     return new Token(this.genesis, transactions);
   }
 
+  /**
+   * Verifies genesis and transfer transaction chain integrity.
+   *
+   * @param trustBase trust base used for certification checks
+   * @param predicateVerifier predicate verifier service
+   * @return verification result with nested per-step verification details
+   */
   public VerificationResult<VerificationStatus> verify(RootTrustBase trustBase,
       PredicateVerifierService predicateVerifier) {
     List<VerificationResult<?>> results = new ArrayList<>();
@@ -123,6 +182,11 @@ public class Token {
     return new VerificationResult<>("TokenVerification", VerificationStatus.OK, "", results);
   }
 
+  /**
+   * Serializes this token to CBOR bytes.
+   *
+   * @return CBOR-encoded token bytes
+   */
   public byte[] toCbor() {
     return CborSerializer.encodeArray(
         this.genesis.toCbor(),
@@ -131,6 +195,7 @@ public class Token {
     );
   }
 
+  @Override
   public String toString() {
     return String.format("Token{genesis=%s, transactions=%s}", this.genesis, this.transactions);
   }

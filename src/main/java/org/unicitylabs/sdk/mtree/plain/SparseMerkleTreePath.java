@@ -115,7 +115,7 @@ public class SparseMerkleTreePath {
   }
 
   /**
-   * Create sparse merkle tree path from CBOR bytes.
+   * Deserialize sparse merkle tree path from CBOR bytes.
    *
    * @param bytes CBOR bytes
    * @return path
@@ -132,7 +132,7 @@ public class SparseMerkleTreePath {
   }
 
   /**
-   * Convert sparse merkle tree path to CBOR bytes.
+   * Serialize sparse merkle tree path to CBOR bytes.
    *
    * @return CBOR bytes
    */

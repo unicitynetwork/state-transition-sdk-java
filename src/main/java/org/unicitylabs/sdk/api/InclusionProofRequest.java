@@ -26,6 +26,11 @@ public class InclusionProofRequest {
     this.stateId = stateId.getData();
   }
 
+  /**
+   * Get state id.
+   *
+   * @return state id
+   */
   public byte[] getStateId() {
     return Arrays.copyOf(this.stateId, this.stateId.length);
   }

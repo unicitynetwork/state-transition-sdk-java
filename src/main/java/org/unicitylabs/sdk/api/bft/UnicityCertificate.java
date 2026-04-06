@@ -163,7 +163,7 @@ public class UnicityCertificate {
   }
 
   /**
-   * Create unicity certificate from CBOR bytes.
+   * Deserialize unicity certificate from CBOR bytes.
    *
    * @param bytes CBOR bytes
    * @return unicity certificate
@@ -184,7 +184,7 @@ public class UnicityCertificate {
   }
 
   /**
-   * Convert unicity certificate to CBOR bytes.
+   * Serialize unicity certificate to CBOR bytes.
    *
    * @return CBOR bytes
    */

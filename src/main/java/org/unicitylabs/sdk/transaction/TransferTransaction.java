@@ -14,21 +14,28 @@ import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.util.HexConverter;
 
+/**
+ * Transfer transaction that moves token ownership from a source state to a recipient.
+ */
 public class TransferTransaction implements Transaction {
 
   private final DataHash sourceStateHash;
   private final Predicate lockScript;
   private final Address recipient;
-  private final byte[] x;
+  private final byte[] nonce;
   private final byte[] data;
 
-  private TransferTransaction(DataHash sourceStateHash, Predicate lockScript, Address recipient,
+  private TransferTransaction(
+      DataHash sourceStateHash,
+      Predicate lockScript,
+      Address recipient,
       byte[] x,
-      byte[] data) {
+      byte[] data
+  ) {
     this.sourceStateHash = sourceStateHash;
     this.lockScript = lockScript;
     this.recipient = recipient;
-    this.x = x;
+    this.nonce = x;
     this.data = data;
   }
 
@@ -54,10 +61,21 @@ public class TransferTransaction implements Transaction {
   }
 
   @Override
-  public byte[] getX() {
-    return Arrays.copyOf(this.x, this.x.length);
+  public byte[] getNonce() {
+    return Arrays.copyOf(this.nonce, this.nonce.length);
   }
 
+  /**
+   * Creates a transfer transaction from the latest state of the provided token.
+   *
+   * @param token token whose latest transaction is used as the source
+   * @param owner current owner predicate
+   * @param recipient recipient address
+   * @param x transaction randomness component
+   * @param data transfer payload
+   * @return created transfer transaction
+   * @throws RuntimeException if the owner predicate does not match the latest recipient
+   */
   public static TransferTransaction create(Token token, Predicate owner, Address recipient,
       byte[] x, byte[] data) {
     Transaction transaction = token.getLatestTransaction();
@@ -74,6 +92,12 @@ public class TransferTransaction implements Transaction {
     );
   }
 
+  /**
+   * Deserializes a transfer transaction from CBOR bytes.
+   *
+   * @param bytes CBOR-encoded transfer transaction
+   * @return decoded transfer transaction
+   */
   public static TransferTransaction fromCbor(byte[] bytes) {
     List<byte[]> data = CborDeserializer.decodeArray(bytes);
 
@@ -92,7 +116,7 @@ public class TransferTransaction implements Transaction {
         .update(
             CborSerializer.encodeArray(
                 CborSerializer.encodeByteString(this.sourceStateHash.getImprint()),
-                CborSerializer.encodeByteString(this.x)
+                CborSerializer.encodeByteString(this.nonce)
             )
         )
         .digest();
@@ -104,7 +128,7 @@ public class TransferTransaction implements Transaction {
         .update(
             CborSerializer.encodeArray(
                 this.recipient.toCbor(),
-                CborSerializer.encodeByteString(this.x),
+                CborSerializer.encodeByteString(this.nonce),
                 CborSerializer.encodeByteString(this.data)
             )
         )
@@ -117,11 +141,19 @@ public class TransferTransaction implements Transaction {
         CborSerializer.encodeByteString(this.sourceStateHash.getData()),
         EncodedPredicate.fromPredicate(this.lockScript).toCbor(),
         this.recipient.toCbor(),
-        CborSerializer.encodeByteString(this.x),
+        CborSerializer.encodeByteString(this.nonce),
         CborSerializer.encodeByteString(this.data)
     );
   }
 
+  /**
+   * Converts this transfer transaction to a certified transfer transaction.
+   *
+   * @param trustBase trust base used for proof verification
+   * @param predicateVerifier predicate verifier service
+   * @param inclusionProof inclusion proof for this transaction
+   * @return certified transfer transaction
+   */
   public CertifiedTransferTransaction toCertifiedTransaction(
       RootTrustBase trustBase,
       PredicateVerifierService predicateVerifier,
@@ -135,7 +167,7 @@ public class TransferTransaction implements Transaction {
   public String toString() {
     return String.format(
         "TransferTransaction{sourceStateHash=%s, lockScript=%s, recipient=%s, x=%s, data=%s}",
-        this.sourceStateHash, this.lockScript, this.recipient, HexConverter.encode(this.x),
+        this.sourceStateHash, this.lockScript, this.recipient, HexConverter.encode(this.nonce),
         HexConverter.encode(this.data));
   }
 }

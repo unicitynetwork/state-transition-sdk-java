@@ -19,16 +19,24 @@ import org.unicitylabs.sdk.payment.TokenSplit;
 import org.unicitylabs.sdk.payment.asset.Asset;
 import org.unicitylabs.sdk.payment.asset.AssetId;
 import org.unicitylabs.sdk.predicate.builtin.PayToPublicKeyPredicate;
+import org.unicitylabs.sdk.predicate.builtin.PayToPublicKeyPredicateUnlockScript;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
 import org.unicitylabs.sdk.transaction.Address;
 import org.unicitylabs.sdk.transaction.Token;
 import org.unicitylabs.sdk.transaction.TokenId;
-import org.unicitylabs.sdk.util.verification.VerificationResult;
 import org.unicitylabs.sdk.util.verification.VerificationStatus;
 import org.unicitylabs.sdk.utils.TokenUtils;
 
+/**
+ * Functional tests for minting and splitting tokens with proof verification.
+ */
 public class SplitBuilderTest {
 
+  /**
+   * Verifies end-to-end mint, split, burn and validation flow.
+   *
+   * @throws Exception when async client interactions fail
+   */
   @Test
   public void testMintAndSplitToken() throws Exception {
     TestAggregatorClient aggregatorClient = TestAggregatorClient.create();
@@ -99,7 +107,12 @@ public class SplitBuilderTest {
     SplitResult result = TokenSplit.split(token, predicate, TestPaymentData::decode, splitTokens);
 
     Token burnToken = TokenUtils.transferToken(
-        client, trustBase, predicateVerifier, token, result.getBurnTransaction(), signingService
+        client,
+        trustBase,
+        predicateVerifier,
+        token,
+        result.getBurnTransaction(),
+        PayToPublicKeyPredicateUnlockScript.create(result.getBurnTransaction(), signingService)
     );
 
     for (Entry<TokenId, Set<Asset>> entry : splitTokens.entrySet()) {
@@ -131,5 +144,4 @@ public class SplitBuilderTest {
           ).getStatus());
     }
   }
-
 }

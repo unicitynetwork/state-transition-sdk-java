@@ -7,24 +7,53 @@ import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.util.BigIntegerConverter;
 
-public class Asset {
+/**
+ * Represents an asset with an ID and a value.
+ */
+public final class Asset {
 
   private final BigInteger value;
   private final AssetId id;
 
+  /**
+   * Create a new asset with the given ID and value.
+   *
+   * @param id asset ID
+   * @param value asset value
+   */
   public Asset(AssetId id, BigInteger value) {
-    this.id = id;
-    this.value = value;
+    this.id = Objects.requireNonNull(id, "Asset ID cannot be null");
+    this.value = Objects.requireNonNull(value, "Asset value cannot be null");
+
+    if (this.value.compareTo(BigInteger.ZERO) < 0) {
+      throw new IllegalArgumentException("Asset value cannot be negative");
+    }
   }
 
+  /**
+   * Get asset ID.
+   *
+   * @return asset ID
+   */
   public AssetId getId() {
     return this.id;
   }
 
+  /**
+   * Get asset value.
+   *
+   * @return asset value
+   */
   public BigInteger getValue() {
     return this.value;
   }
 
+  /**
+   * Deserialize asset from CBOR bytes.
+   *
+   * @param bytes CBOR bytes
+   * @return asset
+   */
   public static Asset fromCbor(byte[] bytes) {
     List<byte[]> data = CborDeserializer.decodeArray(bytes);
 
@@ -34,6 +63,11 @@ public class Asset {
     );
   }
 
+  /**
+   * Serialize asset to CBOR bytes.
+   *
+   * @return CBOR bytes
+   */
   public byte[] toCbor() {
     return CborSerializer.encodeArray(
         this.id.toCbor(),
@@ -47,14 +81,15 @@ public class Asset {
       return false;
     }
     Asset asset = (Asset) o;
-    return Objects.equals(this.value, asset.value) && Objects.equals(this.id, asset.id);
+    return Objects.equals(this.id, asset.id);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(this.value, this.id);
+    return Objects.hash(this.id);
   }
 
+  @Override
   public String toString() {
     return String.format("Asset{value=%s, id=%s}", this.value, this.id);
   }

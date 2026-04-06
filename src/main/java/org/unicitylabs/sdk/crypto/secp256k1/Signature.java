@@ -75,7 +75,7 @@ public class Signature {
   }
 
   /**
-   * Create Signature from CBOR bytes.
+   * Deserialize Signature from CBOR bytes.
    *
    * @param bytes CBOR bytes
    * @return signature

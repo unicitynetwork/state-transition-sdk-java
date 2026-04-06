@@ -12,8 +12,26 @@ import org.unicitylabs.sdk.transaction.CertifiedMintTransaction;
 import org.unicitylabs.sdk.util.verification.VerificationResult;
 import org.unicitylabs.sdk.util.verification.VerificationStatus;
 
+/**
+ * Verification rule set for certified mint transactions.
+ *
+ * <p>The verification checks that the lock script in certification data matches the expected
+ * mint lock script derived from the token id, and that the inclusion proof is valid.
+ */
 public class CertifiedMintTransactionVerificationRule {
 
+  private CertifiedMintTransactionVerificationRule() {
+  }
+
+  /**
+   * Verify a certified mint transaction.
+   *
+   * @param trustBase root trust base used for inclusion proof verification
+   * @param predicateVerifier predicate verifier used by inclusion proof verification
+   * @param transaction certified mint transaction to verify
+   *
+   * @return verification result with child results for each validation step
+   */
   public static VerificationResult<VerificationStatus> verify(RootTrustBase trustBase,
       PredicateVerifierService predicateVerifier, CertifiedMintTransaction transaction) {
     ArrayList<VerificationResult<?>> results = new ArrayList<VerificationResult<?>>();

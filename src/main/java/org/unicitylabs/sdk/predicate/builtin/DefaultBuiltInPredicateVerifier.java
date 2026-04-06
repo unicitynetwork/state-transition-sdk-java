@@ -15,11 +15,20 @@ import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.util.verification.VerificationResult;
 import org.unicitylabs.sdk.util.verification.VerificationStatus;
 
+/**
+ * Default {@link PredicateVerifier} implementation for built-in predicates.
+ */
 public class DefaultBuiltInPredicateVerifier implements PredicateVerifier {
 
   private final Map<BuiltInPredicateType, BuiltInPredicateVerifier> verifiers;
 
 
+  /**
+   * Creates a verifier registry from built-in predicate verifiers.
+   *
+   * @param verifiers verifiers to register, one per predicate type
+   * @throws IllegalArgumentException if multiple verifiers are provided for the same type
+   */
   public DefaultBuiltInPredicateVerifier(
       List<BuiltInPredicateVerifier> verifiers) {
     Map<BuiltInPredicateType, BuiltInPredicateVerifier> result = new HashMap<>();
@@ -39,6 +48,13 @@ public class DefaultBuiltInPredicateVerifier implements PredicateVerifier {
     return PredicateEngine.BUILT_IN;
   }
 
+  /**
+   * Creates the default built-in predicate verifier set.
+   *
+   * @param service predicate verifier service
+   * @param trustBase root trust base
+   * @return default built-in predicate verifier
+   */
   public static DefaultBuiltInPredicateVerifier create(PredicateVerifierService service, RootTrustBase trustBase) {
     return new DefaultBuiltInPredicateVerifier(
         List.of(

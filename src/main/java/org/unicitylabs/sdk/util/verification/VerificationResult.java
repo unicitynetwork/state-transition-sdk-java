@@ -3,6 +3,11 @@ package org.unicitylabs.sdk.util.verification;
 import java.util.List;
 import java.util.Objects;
 
+/**
+ * Generic verification result containing status, message and optional nested rule results.
+ *
+ * @param <S> status enum/type used by the verification rule
+ */
 public class VerificationResult<S> {
 
   private final String rule;
@@ -10,6 +15,13 @@ public class VerificationResult<S> {
   private final String message;
   private final List<VerificationResult<?>> results;
 
+  /**
+   * Create verification result with no nested results.
+   *
+   * @param rule verification rule name
+   * @param status verification status
+   * @param message descriptive message
+   */
   public VerificationResult(
       String rule,
       S status,
@@ -18,6 +30,12 @@ public class VerificationResult<S> {
     this(rule, status, message, List.of());
   }
 
+  /**
+   * Create verification result with empty message and no nested results.
+   *
+   * @param rule verification rule name
+   * @param status verification status
+   */
   public VerificationResult(
       String rule,
       S status
@@ -25,6 +43,14 @@ public class VerificationResult<S> {
     this(rule, status, "", List.of());
   }
 
+  /**
+   * Create verification result with nested results as varargs.
+   *
+   * @param rule verification rule name
+   * @param status verification status
+   * @param message descriptive message
+   * @param results nested verification results
+   */
   public VerificationResult(
       String rule,
       S status,
@@ -34,6 +60,14 @@ public class VerificationResult<S> {
     this(rule, status, message, List.of(results));
   }
 
+  /**
+   * Create verification result.
+   *
+   * @param rule verification rule name
+   * @param status verification status
+   * @param message descriptive message
+   * @param results nested verification results
+   */
   public VerificationResult(
       String rule,
       S status,
@@ -51,18 +85,38 @@ public class VerificationResult<S> {
     this.results = List.copyOf(results);
   }
 
+  /**
+   * Get verification rule name.
+   *
+   * @return rule name
+   */
   public String getRule() {
     return this.rule;
   }
 
+  /**
+   * Get verification status.
+   *
+   * @return verification status
+   */
   public S getStatus() {
     return this.status;
   }
 
+  /**
+   * Get verification message.
+   *
+   * @return verification message
+   */
   public String getMessage() {
     return this.message;
   }
 
+  /**
+   * Get nested verification results.
+   *
+   * @return nested results
+   */
   public List<VerificationResult<?>> getResults() {
     return this.results;
   }
@@ -70,11 +124,12 @@ public class VerificationResult<S> {
 
   @Override
   public String toString() {
-    return "VerificationResult{" +
-        "rule='" + this.rule + '\'' +
-        ", status=" + this.status +
-        ", message='" + this.message + '\'' +
-        ", results=" + this.results +
-        '}';
+    return String.format(
+        "VerificationResult{rule=%s, status=%s, message=%s, results=%s}",
+        this.rule,
+        this.status,
+        this.message,
+        this.results
+    );
   }
 }

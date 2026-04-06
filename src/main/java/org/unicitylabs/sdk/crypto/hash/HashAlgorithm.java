@@ -53,6 +53,11 @@ public enum HashAlgorithm {
     return this.algorithm;
   }
 
+  /**
+   * Hash algorithm length in bytes.
+   *
+   * @return length
+   */
   public int getLength() {
     return this.length;
   }

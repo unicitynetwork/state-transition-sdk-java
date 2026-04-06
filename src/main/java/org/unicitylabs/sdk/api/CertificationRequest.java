@@ -54,11 +54,11 @@ public class CertificationRequest {
   }
 
   /**
-   * Convert the request to a CBOR bytes.
+   * Serialize request to a CBOR bytes.
    *
    * @return CBOR bytes
    */
-  public byte[] toCBOR() {
+  public byte[] toCbor() {
     return CborSerializer.encodeArray(
         this.stateId.toCbor(),
         this.certificationData.toCbor(),

@@ -1,5 +1,11 @@
 package org.unicitylabs.sdk.util.verification;
 
+/**
+ * Outcome status of a verification step.
+ */
 public enum VerificationStatus {
-  OK, FAIL
+  /** Verification succeeded. */
+  OK,
+  /** Verification failed. */
+  FAIL
 }

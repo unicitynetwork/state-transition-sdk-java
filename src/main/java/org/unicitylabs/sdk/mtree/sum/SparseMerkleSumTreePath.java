@@ -142,7 +142,7 @@ public class SparseMerkleSumTreePath {
   }
 
   /**
-   * Convert path to CBOR bytes.
+   * Serialize path to CBOR bytes.
    *
    * @return CBOR bytes
    */
@@ -226,7 +226,7 @@ public class SparseMerkleSumTreePath {
     }
 
     /**
-     * Convert root to CBOR bytes.
+     * Serialize root to CBOR bytes.
      *
      * @return CBOR bytes
      */
