@@ -233,7 +233,7 @@ public class TokenSplit {
     }
 
     Transaction burnTokenLastTransaction = data.getReason().getToken().getLatestTransaction();
-    DataHash root = data.getReason().getProofs().get(0).getAssetTreePath().getRootHash();
+    DataHash root = data.getReason().getProofs().get(0).getAggregationPath().getRootHash();
     for (SplitReasonProof proof : data.getReason().getProofs()) {
       MerkleTreePathVerificationResult aggregationPathResult = proof.getAggregationPath()
           .verify(proof.getAssetId().toBitString().toBigInteger());
@@ -255,7 +255,7 @@ public class TokenSplit {
         );
       }
 
-      if (!proof.getAssetTreePath().getRootHash().equals(root)) {
+      if (!proof.getAggregationPath().getRootHash().equals(root)) {
         return new VerificationResult<>(
             "TokenSplitReasonVerificationRule",
             VerificationStatus.FAIL,
@@ -264,7 +264,7 @@ public class TokenSplit {
       }
 
       if (!Arrays.equals(
-          root.getImprint(),
+          proof.getAssetTreePath().getRootHash().getImprint(),
           proof.getAggregationPath().getSteps().get(0).getData().orElse(null)
       )) {
         return new VerificationResult<>(

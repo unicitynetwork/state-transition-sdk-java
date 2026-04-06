@@ -10,7 +10,7 @@ import org.unicitylabs.sdk.transaction.Token;
 /**
  * The reason for token splitting represented by an input token and inclusion proofs.
  */
-public class SplitReason {
+public final class SplitReason {
 
   private final Token token;
   private final List<SplitReasonProof> proofs;
@@ -53,7 +53,7 @@ public class SplitReason {
     Objects.requireNonNull(token, "token cannot be null");
     Objects.requireNonNull(proofs, "proofs cannot be null");
 
-    if (proofs.size() == 0) {
+    if (proofs.isEmpty()) {
       throw new IllegalArgumentException("proofs cannot be empty");
     }
 
