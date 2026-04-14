@@ -23,10 +23,6 @@ public class BitString {
     this.value = new BigInteger(1, dataWithPrefix);
   }
 
-  public static BitString fromStateId(StateId stateId) {
-    return new BitString(stateId.getImprint());
-  }
-
   /**
    * Converts BitString to BigInteger by adding a leading byte 1 to input byte array. This is to ensure that the
    * BigInteger will retain the leading zero bits.

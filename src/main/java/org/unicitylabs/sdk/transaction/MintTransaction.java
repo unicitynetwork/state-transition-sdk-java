@@ -17,6 +17,13 @@ import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.util.HexConverter;
 
+
+/**
+ * Represents a Mint Transaction.
+ *
+ * <p>This transaction is responsible for minting new tokens with specific attributes and assigns
+ * it to an initial owner.
+ */
 public class MintTransaction implements Transaction {
 
   private final MintTransactionState sourceStateHash;
@@ -42,22 +49,48 @@ public class MintTransaction implements Transaction {
     this.data = data;
   }
 
+
+  /**
+   * Retrieves the state hash of the source state.
+   *
+   * @return the source state hash represented as a {@code MintTransactionState}.
+   */
   public MintTransactionState getSourceStateHash() {
     return this.sourceStateHash;
   }
 
+  /**
+   * Retrieves the lock script.
+   *
+   * @return a {@code Predicate} representing the lock script.
+   */
   public Predicate getLockScript() {
     return this.lockScript;
   }
 
+  /**
+   * Retrieves the initial owner address.
+   *
+   * @return the recipient address as an {@code Address}.
+   */
   public Address getRecipient() {
     return this.recipient;
   }
 
+  /**
+   * Retrieves the unique token identifier.
+   *
+   * @return the token identifier as a {@code TokenId}.
+   */
   public TokenId getTokenId() {
     return this.tokenId;
   }
 
+  /**
+   * Retrieves the type identifier of the token.
+   *
+   * @return the token type as a {@code TokenType}.
+   */
   public TokenType getTokenType() {
     return this.tokenType;
   }
@@ -68,10 +101,20 @@ public class MintTransaction implements Transaction {
   }
 
   @Override
-  public byte[] getX() {
+  public byte[] getNonce() {
     return this.tokenId.getBytes();
   }
 
+  /**
+   * Create a mint transaction.
+   *
+   * @param recipient recipient address
+   * @param tokenId token identifier
+   * @param tokenType token type identifier
+   * @param data payload bytes
+   *
+   * @return mint transaction
+   */
   public static MintTransaction create(
       Address recipient,
       TokenId tokenId,
@@ -94,6 +137,13 @@ public class MintTransaction implements Transaction {
     );
   }
 
+  /**
+   * Deserialize mint transaction from CBOR bytes.
+   *
+   * @param bytes CBOR bytes
+   *
+   * @return mint transaction
+   */
   public static MintTransaction fromCbor(byte[] bytes) {
     List<byte[]> data = CborDeserializer.decodeArray(bytes);
     List<byte[]> aux = CborDeserializer.decodeArray(data.get(2));
@@ -106,23 +156,38 @@ public class MintTransaction implements Transaction {
     );
   }
 
+  /**
+   * Calculate mint transaction state hash.
+   *
+   * @return state hash
+   */
   @Override
   public DataHash calculateStateHash() {
     return new DataHasher(HashAlgorithm.SHA256)
         .update(
             CborSerializer.encodeArray(
                 CborSerializer.encodeByteString(this.sourceStateHash.getImprint()),
-                CborSerializer.encodeByteString(this.getX())
+                CborSerializer.encodeByteString(this.getNonce())
             )
         )
         .digest();
   }
 
+  /**
+   * Calculate hash of serialized mint transaction.
+   *
+   * @return transaction hash
+   */
   @Override
   public DataHash calculateTransactionHash() {
     return new DataHasher(HashAlgorithm.SHA256).update(this.toCbor()).digest();
   }
 
+  /**
+   * Serialize mint transaction to CBOR bytes.
+   *
+   * @return CBOR bytes
+   */
   @Override
   public byte[] toCbor() {
     return CborSerializer.encodeArray(
@@ -133,6 +198,15 @@ public class MintTransaction implements Transaction {
     );
   }
 
+  /**
+   * Build certified mint transaction by attaching and verifying inclusion proof.
+   *
+   * @param trustBase root trust base
+   * @param predicateVerifier predicate verifier
+   * @param inclusionProof inclusion proof
+   *
+   * @return certified mint transaction
+   */
   public CertifiedMintTransaction toCertifiedTransaction(
       RootTrustBase trustBase,
       PredicateVerifierService predicateVerifier,

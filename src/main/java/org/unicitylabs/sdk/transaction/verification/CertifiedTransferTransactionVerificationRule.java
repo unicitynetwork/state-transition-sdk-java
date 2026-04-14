@@ -9,8 +9,27 @@ import org.unicitylabs.sdk.transaction.Transaction;
 import org.unicitylabs.sdk.util.verification.VerificationResult;
 import org.unicitylabs.sdk.util.verification.VerificationStatus;
 
+/**
+ * Verification rule set for certified transfer transactions.
+ *
+ * <p>The verification checks inclusion proof validity, validates that the current transaction
+ * is spent by previous recipient and ensures source-state-hash continuity.
+ */
 public class CertifiedTransferTransactionVerificationRule {
 
+  private CertifiedTransferTransactionVerificationRule() {
+  }
+
+  /**
+   * Verify a certified transfer transaction against the previous transaction.
+   *
+   * @param trustBase root trust base used for inclusion proof verification
+   * @param predicateVerifier predicate verifier used by inclusion proof verification
+   * @param latestTransaction latest transaction in token history
+   * @param transaction certified transfer transaction to verify
+   *
+   * @return verification result with child results for each validation step
+   */
   public static VerificationResult<VerificationStatus> verify(
       RootTrustBase trustBase,
       PredicateVerifierService predicateVerifier,

@@ -22,12 +22,9 @@ public class InclusionProof {
       CertificationData certificationData,
       UnicityCertificate unicityCertificate
   ) {
-    Objects.requireNonNull(merkleTreePath, "Merkle tree path cannot be null.");
-    Objects.requireNonNull(unicityCertificate, "Unicity certificate cannot be null.");
-
-    this.merkleTreePath = merkleTreePath;
+    this.merkleTreePath = Objects.requireNonNull(merkleTreePath, "Merkle tree path cannot be null.");;
     this.certificationData = certificationData;
-    this.unicityCertificate = unicityCertificate;
+    this.unicityCertificate = Objects.requireNonNull(unicityCertificate, "Unicity certificate cannot be null.");;
   }
 
   /**
@@ -58,7 +55,7 @@ public class InclusionProof {
   }
 
   /**
-   * Create inclusion proof from CBOR bytes.
+   * Deserialize inclusion proof from CBOR bytes.
    *
    * @param bytes CBOR bytes
    * @return inclusion proof
@@ -74,7 +71,7 @@ public class InclusionProof {
   }
 
   /**
-   * Convert inclusion proof to CBOR bytes.
+   * Serialize inclusion proof to CBOR bytes.
    *
    * @return CBOR bytes
    */

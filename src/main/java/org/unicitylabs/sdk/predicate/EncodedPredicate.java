@@ -7,6 +7,9 @@ import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.util.HexConverter;
 
+/**
+ * Generic predicate representation that stores engine, code, and parameters as encoded bytes.
+ */
 public class EncodedPredicate implements Predicate {
 
   private final PredicateEngine engine;
@@ -24,6 +27,12 @@ public class EncodedPredicate implements Predicate {
     return this.engine;
   }
 
+  /**
+   * Deserializes an encoded predicate from CBOR.
+   *
+   * @param bytes CBOR-encoded predicate bytes
+   * @return decoded encoded predicate
+   */
   public static EncodedPredicate fromCbor(byte[] bytes) {
     List<byte[]> data = CborDeserializer.decodeArray(bytes);
     PredicateEngine engine = PredicateEngine.fromId(
@@ -36,9 +45,18 @@ public class EncodedPredicate implements Predicate {
     );
   }
 
+  /**
+   * Creates an encoded predicate snapshot from any predicate implementation.
+   *
+   * @param predicate source predicate
+   * @return encoded predicate containing engine, code, and parameters
+   */
   public static EncodedPredicate fromPredicate(Predicate predicate) {
-    return new EncodedPredicate(predicate.getEngine(), predicate.encodeCode(),
-        predicate.encodeParameters());
+    return new EncodedPredicate(
+        predicate.getEngine(),
+        predicate.encodeCode(),
+        predicate.encodeParameters()
+    );
   }
 
   @Override
@@ -51,6 +69,11 @@ public class EncodedPredicate implements Predicate {
     return Arrays.copyOf(this.parameters, this.parameters.length);
   }
 
+  /**
+   * Serializes this predicate into CBOR.
+   *
+   * @return CBOR-encoded predicate bytes
+   */
   public byte[] toCbor() {
     return CborSerializer.encodeArray(
         CborSerializer.encodeUnsignedInteger(this.engine.getId()),
@@ -76,10 +99,11 @@ public class EncodedPredicate implements Predicate {
 
   @Override
   public String toString() {
-    return "EncodedPredicate{" +
-        "engine=" + this.engine +
-        ", code=" + HexConverter.encode(this.code) +
-        ", parameters=" + HexConverter.encode(this.parameters) +
-        '}';
+    return String.format(
+        "EncodedPredicate{engine=%s, code=%s, parameters=%s}",
+        this.engine,
+        HexConverter.encode(this.code),
+        HexConverter.encode(this.parameters)
+    );
   }
 }

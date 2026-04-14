@@ -6,8 +6,10 @@ import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
 import org.unicitylabs.sdk.predicate.Predicate;
 import org.unicitylabs.sdk.predicate.PredicateEngine;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
-import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 
+/**
+ * Built-in predicate that locks an output to a secp256k1 public key.
+ */
 public class PayToPublicKeyPredicate implements BuiltInPredicate {
 
   private final byte[] publicKey;
@@ -16,23 +18,42 @@ public class PayToPublicKeyPredicate implements BuiltInPredicate {
     this.publicKey = publicKey;
   }
 
-  @Override
-  public PredicateEngine getEngine() {
-    return PredicateEngine.BUILT_IN;
-  }
-
+  /**
+   * Get public key bytes.
+   *
+   * @return public key bytes
+   */
   public byte[] getPublicKey() {
     return Arrays.copyOf(this.publicKey, this.publicKey.length);
   }
 
+  /**
+   * Get built-in predicate type.
+   *
+   * @return predicate type
+   */
   public BuiltInPredicateType getType() {
     return BuiltInPredicateType.PAY_TO_PUBLIC_KEY;
   }
 
+  /**
+   * Create predicate from public key bytes.
+   *
+   * @param publicKey public key bytes
+   *
+   * @return pay-to-public-key predicate
+   */
   public static PayToPublicKeyPredicate create(byte[] publicKey) {
     return new PayToPublicKeyPredicate(Arrays.copyOf(publicKey, publicKey.length));
   }
 
+  /**
+   * Parse pay-to-public-key predicate from generic predicate.
+   *
+   * @param predicate generic predicate
+   *
+   * @return pay-to-public-key predicate
+   */
   public static PayToPublicKeyPredicate fromPredicate(Predicate predicate) {
     PredicateEngine engine = predicate.getEngine();
     if (engine != PredicateEngine.BUILT_IN) {
@@ -48,16 +69,23 @@ public class PayToPublicKeyPredicate implements BuiltInPredicate {
     return new PayToPublicKeyPredicate(predicate.encodeParameters());
   }
 
+  /**
+   * Create predicate from signing service public key.
+   *
+   * @param signingService signing service
+   *
+   * @return pay-to-public-key predicate
+   */
   public static PayToPublicKeyPredicate fromSigningService(SigningService signingService) {
     Objects.requireNonNull(signingService, "Signing service cannot be null");
     return new PayToPublicKeyPredicate(signingService.getPublicKey());
   }
 
-  @Override
-  public byte[] encodeCode() {
-    return CborSerializer.encodeUnsignedInteger(this.getType().getId());
-  }
-
+  /**
+   * Encode predicate parameters.
+   *
+   * @return encoded parameter bytes
+   */
   @Override
   public byte[] encodeParameters() {
     return this.getPublicKey();

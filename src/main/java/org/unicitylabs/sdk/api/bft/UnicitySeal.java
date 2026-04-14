@@ -171,7 +171,7 @@ public class UnicitySeal {
   }
 
   /**
-   * Create unicity seal from CBOR bytes.
+   * Deserialize unicity seal from CBOR bytes.
    *
    * @param bytes CBOR bytes
    * @return unicity seal
@@ -200,7 +200,7 @@ public class UnicitySeal {
   }
 
   /**
-   * Convert unicity seal to CBOR bytes.
+   * Serialize unicity seal to CBOR bytes.
    *
    * @return CBOR bytes
    */

@@ -58,7 +58,7 @@ public class UnicityTreeCertificate {
   }
 
   /**
-   * Create certificate from CBOR bytes.
+   * Deserialize certificate from CBOR bytes.
    *
    * @param bytes CBOR bytes
    * @return certificate
@@ -77,7 +77,7 @@ public class UnicityTreeCertificate {
   }
 
   /**
-   * Convert certificate to CBOR bytes.
+   * Serialize certificate to CBOR bytes.
    *
    * @return CBOR bytes
    */
@@ -149,7 +149,7 @@ public class UnicityTreeCertificate {
     }
 
     /**
-     * Create hash step from CBOR bytes.
+     * Deserialize hash step from CBOR bytes.
      *
      * @param bytes CBOR bytes
      * @return hash step
@@ -164,7 +164,7 @@ public class UnicityTreeCertificate {
     }
 
     /**
-     * Convert hash step to CBOR bytes.
+     * Serialize hash step to CBOR bytes.
      *
      * @return CBOR bytes
      */

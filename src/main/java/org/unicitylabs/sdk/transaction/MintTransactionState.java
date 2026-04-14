@@ -7,6 +7,9 @@ import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.util.HexConverter;
 
+/**
+ * Represents the state of a mint transaction.
+ */
 public class MintTransactionState extends DataHash {
 
   private static final byte[] MINT_SUFFIX = HexConverter.decode(
@@ -16,6 +19,12 @@ public class MintTransactionState extends DataHash {
     super(hash.getAlgorithm(), hash.getData());
   }
 
+  /**
+   * Create a mint transaction state from token id.
+   *
+   * @param tokenId token id
+   * @return mint transaction state
+   */
   public static MintTransactionState create(TokenId tokenId) {
     Objects.requireNonNull(tokenId, "Token ID cannot be null");
 

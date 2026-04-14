@@ -37,6 +37,12 @@ public class StateTransitionClient {
     return this.client.getInclusionProof(stateId);
   }
 
+  /**
+   * Submits a certification request to the aggregator.
+   *
+   * @param certificationData The certification data to submit.
+   * @return certification response from the aggregator.
+   */
   public CompletableFuture<CertificationResponse> submitCertificationRequest(CertificationData certificationData) {
     return this.client.submitCertificationRequest(certificationData);
   }

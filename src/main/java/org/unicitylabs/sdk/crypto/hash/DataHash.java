@@ -91,7 +91,7 @@ public class DataHash {
   }
 
   /**
-   * Create data hash from CBOR bytes.
+   * Deserialize data hash from CBOR bytes.
    *
    * @param bytes CBOR bytes
    * @return data hash
@@ -101,7 +101,7 @@ public class DataHash {
   }
 
   /**
-   * Convert data hash to CBOR bytes.
+   * Serialize data hash to CBOR bytes.
    *
    * @return CBOR bytes
    */

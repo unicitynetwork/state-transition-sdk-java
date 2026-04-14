@@ -60,7 +60,7 @@ public class SparseMerkleSumTreePathStep {
   }
 
   /**
-   * Create a step from CBOR bytes.
+   * Deserialize a step from CBOR bytes.
    *
    * @param bytes CBOR bytes
    * @return step
@@ -76,7 +76,7 @@ public class SparseMerkleSumTreePathStep {
   }
 
   /**
-   * Convert step to CBOR bytes.
+   * Serialize step to CBOR bytes.
    *
    * @return CBOR bytes
    */

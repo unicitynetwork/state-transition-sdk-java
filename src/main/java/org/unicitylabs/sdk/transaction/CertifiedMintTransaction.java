@@ -13,6 +13,9 @@ import org.unicitylabs.sdk.transaction.verification.InclusionProofVerificationSt
 import org.unicitylabs.sdk.util.verification.VerificationException;
 import org.unicitylabs.sdk.util.verification.VerificationResult;
 
+/**
+ * Mint transaction bundled with an inclusion proof.
+ */
 public class CertifiedMintTransaction implements Transaction {
 
   private final MintTransaction transaction;
@@ -43,34 +46,69 @@ public class CertifiedMintTransaction implements Transaction {
     return this.transaction.getSourceStateHash();
   }
 
+  /**
+   * Returns the token identifier.
+   *
+   * @return token id
+   */
   public TokenId getTokenId() {
     return this.transaction.getTokenId();
   }
 
+  /**
+   * Returns the token type.
+   *
+   * @return token type
+   */
   public TokenType getTokenType() {
     return this.transaction.getTokenType();
   }
 
   @Override
-  public byte[] getX() {
-    return this.transaction.getX();
+  public byte[] getNonce() {
+    return this.transaction.getNonce();
   }
 
+  /**
+   * Returns the inclusion proof certifying this transaction.
+   *
+   * @return inclusion proof
+   */
   public InclusionProof getInclusionProof() {
     return this.inclusionProof;
   }
 
+  /**
+   * Deserializes a certified mint transaction from CBOR.
+   *
+   * @param bytes CBOR-encoded certified mint transaction
+   * @return decoded certified mint transaction
+   */
   public static CertifiedMintTransaction fromCbor(byte[] bytes) {
     List<byte[]> data = CborDeserializer.decodeArray(bytes);
     return new CertifiedMintTransaction(MintTransaction.fromCbor(data.get(0)),
         InclusionProof.fromCbor(data.get(1)));
   }
 
+  /**
+   * Creates a certified mint transaction after verifying the inclusion proof.
+   *
+   * @param trustBase trust base used to verify inclusion proof signatures
+   * @param predicateVerifier service used for predicate verification during proof validation
+   * @param transaction mint transaction to certify
+   * @param inclusionProof inclusion proof for the transaction
+   * @return certified mint transaction
+   * @throws VerificationException if inclusion proof verification fails
+   */
   public static CertifiedMintTransaction fromTransaction(RootTrustBase trustBase,
       PredicateVerifierService predicateVerifier, MintTransaction transaction,
       InclusionProof inclusionProof) {
-    VerificationResult<InclusionProofVerificationStatus> result = InclusionProofVerificationRule.verify(trustBase, predicateVerifier, inclusionProof,
-        transaction);
+    VerificationResult<InclusionProofVerificationStatus> result = InclusionProofVerificationRule.verify(
+        trustBase,
+        predicateVerifier,
+        inclusionProof,
+        transaction
+    );
     if (result.getStatus() != InclusionProofVerificationStatus.OK) {
       throw new VerificationException("Inclusion proof verification failed", result);
     }

@@ -10,6 +10,7 @@ import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
 import org.unicitylabs.sdk.predicate.EncodedPredicate;
 import org.unicitylabs.sdk.predicate.Predicate;
+import org.unicitylabs.sdk.predicate.UnlockScript;
 import org.unicitylabs.sdk.predicate.builtin.PayToPublicKeyPredicateUnlockScript;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
@@ -39,6 +40,11 @@ public class CertificationData {
     this.unlockScript = Arrays.copyOf(unlockScript, unlockScript.length);
   }
 
+  /**
+   * Get lock script of certified transaction output.
+   *
+   * @return lock script
+   */
   public Predicate getLockScript() {
     return this.lockScript;
   }
@@ -61,12 +67,17 @@ public class CertificationData {
     return this.transactionHash;
   }
 
+  /**
+   * Get unlock script used for certification.
+   *
+   * @return unlock script bytes
+   */
   public byte[] getUnlockScript() {
     return Arrays.copyOf(this.unlockScript, this.unlockScript.length);
   }
 
   /**
-   * Create CertificationData from CBOR bytes.
+   * Deserialize CertificationData from CBOR bytes.
    *
    * @param bytes CBOR bytes
    * @return CertificationData
@@ -82,6 +93,13 @@ public class CertificationData {
     );
   }
 
+  /**
+   * Build certification data for a mint transaction using the deterministic mint signing service.
+   *
+   * @param transaction mint transaction
+   *
+   * @return certification data
+   */
   public static CertificationData fromMintTransaction(MintTransaction transaction) {
     SigningService signingService = MintSigningService.create(transaction.getTokenId());
 
@@ -92,6 +110,26 @@ public class CertificationData {
     );
   }
 
+  /**
+   * Build certification data from a transaction and unlock script object.
+   *
+   * @param transaction transaction to certify
+   * @param unlockScript unlock script
+   *
+   * @return certification data
+   */
+  public static CertificationData fromTransaction(Transaction transaction, UnlockScript unlockScript) {
+    return CertificationData.fromTransaction(transaction, unlockScript.encode());
+  }
+
+  /**
+   * Build certification data from a transaction and encoded unlock script bytes.
+   *
+   * @param transaction transaction to certify
+   * @param unlockScript encoded unlock script bytes
+   *
+   * @return certification data
+   */
   public static CertificationData fromTransaction(Transaction transaction, byte[] unlockScript) {
     return new CertificationData(
         transaction.getLockScript(),
@@ -113,7 +151,7 @@ public class CertificationData {
   }
 
   /**
-   * Convert the certification data to CBOR bytes.
+   * Serialize certification data to CBOR bytes.
    *
    * @return CBOR bytes
    */
