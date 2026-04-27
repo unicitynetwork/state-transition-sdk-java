@@ -1,23 +1,22 @@
 package org.unicitylabs.sdk.api.bft;
 
-import java.util.Arrays;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.stream.Collectors;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer.CborTag;
+import org.unicitylabs.sdk.serializer.cbor.CborSerializationException;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer.CborMap;
 import org.unicitylabs.sdk.util.HexConverter;
+
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * UnicitySeal represents a seal in the Unicity BFT system, containing metadata and signatures.
  */
 public class UnicitySeal {
+  public static final long CBOR_TAG = 39005;
+  private static final int VERSION = 1;
 
-  private final int version;
   private final short networkId;
   private final long rootChainRoundNumber;
   private final long epoch;
@@ -27,7 +26,6 @@ public class UnicitySeal {
   private final LinkedHashMap<String, byte[]> signatures;
 
   UnicitySeal(
-      int version,
       short networkId,
       long rootChainRoundNumber,
       long epoch,
@@ -38,7 +36,6 @@ public class UnicitySeal {
   ) {
     Objects.requireNonNull(hash, "Hash cannot be null");
 
-    this.version = version;
     this.networkId = networkId;
     this.rootChainRoundNumber = rootChainRoundNumber;
     this.epoch = epoch;
@@ -71,7 +68,6 @@ public class UnicitySeal {
    */
   public UnicitySeal withSignatures(Map<String, byte[]> signatures) {
     return new UnicitySeal(
-        this.version,
         this.networkId,
         this.rootChainRoundNumber,
         this.epoch,
@@ -82,13 +78,8 @@ public class UnicitySeal {
     );
   }
 
-  /**
-   * Get the version.
-   *
-   * @return version
-   */
   public int getVersion() {
-    return this.version;
+    return UnicitySeal.VERSION;
   }
 
   /**
@@ -178,10 +169,17 @@ public class UnicitySeal {
    */
   public static UnicitySeal fromCbor(byte[] bytes) {
     CborTag tag = CborDeserializer.decodeTag(bytes);
+    if (tag.getTag() != UnicitySeal.CBOR_TAG) {
+      throw new CborSerializationException(String.format("Invalid CBOR tag: %s", tag.getTag()));
+    }
     List<byte[]> data = CborDeserializer.decodeArray(tag.getData());
 
+    int version = CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt();
+    if (version != UnicitySeal.VERSION) {
+      throw new CborSerializationException(String.format("Unsupported version: %s", version));
+    }
+
     return new UnicitySeal(
-        CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt(),
         CborDeserializer.decodeUnsignedInteger(data.get(1)).asShort(),
         CborDeserializer.decodeUnsignedInteger(data.get(2)).asLong(),
         CborDeserializer.decodeUnsignedInteger(data.get(3)).asLong(),
@@ -206,9 +204,9 @@ public class UnicitySeal {
    */
   public byte[] toCbor() {
     return CborSerializer.encodeTag(
-        1001,
+        UnicitySeal.CBOR_TAG,
         CborSerializer.encodeArray(
-            CborSerializer.encodeUnsignedInteger(this.version),
+            CborSerializer.encodeUnsignedInteger(UnicitySeal.VERSION),
             CborSerializer.encodeUnsignedInteger(this.networkId),
             CborSerializer.encodeUnsignedInteger(this.rootChainRoundNumber),
             CborSerializer.encodeUnsignedInteger(this.epoch),
@@ -240,7 +238,6 @@ public class UnicitySeal {
    */
   public byte[] toCborWithoutSignatures() {
     return new UnicitySeal(
-        this.version,
         this.networkId,
         this.rootChainRoundNumber,
         this.epoch,
@@ -257,7 +254,7 @@ public class UnicitySeal {
       return false;
     }
     UnicitySeal that = (UnicitySeal) o;
-    return Objects.equals(this.version, that.version) && Objects.equals(this.networkId,
+    return Objects.equals(this.networkId,
         that.networkId) && Objects.equals(this.rootChainRoundNumber, that.rootChainRoundNumber)
         && Objects.equals(this.epoch, that.epoch) && Objects.equals(this.timestamp,
         that.timestamp) && Objects.deepEquals(this.previousHash, that.previousHash)
@@ -267,7 +264,7 @@ public class UnicitySeal {
 
   @Override
   public int hashCode() {
-    return Objects.hash(this.version, this.networkId, this.rootChainRoundNumber, this.epoch,
+    return Objects.hash(UnicitySeal.VERSION, this.networkId, this.rootChainRoundNumber, this.epoch,
         this.timestamp,
         Arrays.hashCode(this.previousHash), Arrays.hashCode(this.hash), this.signatures);
   }
@@ -275,9 +272,8 @@ public class UnicitySeal {
   @Override
   public String toString() {
     return String.format(
-        "UnicitySeal{version=%s, networkId=%s, rootChainRoundNumber=%s, epoch=%s, timestamp=%s, "
+        "UnicitySeal{networkId=%s, rootChainRoundNumber=%s, epoch=%s, timestamp=%s, "
             + "previousHash=%s, hash=%s, signatures=%s",
-        this.version,
         this.networkId,
         this.rootChainRoundNumber,
         this.epoch,

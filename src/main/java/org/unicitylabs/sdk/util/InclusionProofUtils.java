@@ -1,9 +1,5 @@
 package org.unicitylabs.sdk.util;
 
-import java.time.Duration;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.unicitylabs.sdk.StateTransitionClient;
@@ -17,6 +13,11 @@ import org.unicitylabs.sdk.transaction.verification.InclusionProofVerificationSt
 import org.unicitylabs.sdk.util.verification.VerificationException;
 import org.unicitylabs.sdk.util.verification.VerificationResult;
 
+import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
 /**
  * Utility class for working with inclusion proofs.
  */
@@ -24,7 +25,7 @@ public class InclusionProofUtils {
 
   private static final Logger logger = LoggerFactory.getLogger(InclusionProofUtils.class);
   private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(
-      30);  // 30 seconds should be enough for direct leader
+          30);  // 30 seconds should be enough for direct leader
   private static final Duration DEFAULT_INTERVAL = Duration.ofMillis(1000);
 
   private InclusionProofUtils() {
@@ -40,13 +41,13 @@ public class InclusionProofUtils {
    * @return Completable future with inclusion proof
    */
   public static CompletableFuture<InclusionProof> waitInclusionProof(
-      StateTransitionClient client,
-      RootTrustBase trustBase,
-      PredicateVerifierService predicateVerifier,
-      Transaction transaction
+          StateTransitionClient client,
+          RootTrustBase trustBase,
+          PredicateVerifierService predicateVerifier,
+          Transaction transaction
   ) {
     return waitInclusionProof(client, trustBase, predicateVerifier, transaction, DEFAULT_TIMEOUT,
-        DEFAULT_INTERVAL);
+            DEFAULT_INTERVAL);
   }
 
   /**
@@ -61,12 +62,12 @@ public class InclusionProofUtils {
    * @return Completable future with inclusion proof
    */
   public static CompletableFuture<InclusionProof> waitInclusionProof(
-      StateTransitionClient client,
-      RootTrustBase trustBase,
-      PredicateVerifierService predicateVerifier,
-      Transaction transaction,
-      Duration timeout,
-      Duration interval
+          StateTransitionClient client,
+          RootTrustBase trustBase,
+          PredicateVerifierService predicateVerifier,
+          Transaction transaction,
+          Duration timeout,
+          Duration interval
   ) {
 
     CompletableFuture<InclusionProof> future = new CompletableFuture<>();
@@ -75,21 +76,21 @@ public class InclusionProofUtils {
     long timeoutMillis = timeout.toMillis();
 
     checkInclusionProof(client, trustBase, predicateVerifier, transaction, future, startTime,
-        timeoutMillis,
-        interval.toMillis());
+            timeoutMillis,
+            interval.toMillis());
 
     return future;
   }
 
   private static void checkInclusionProof(
-      StateTransitionClient client,
-      RootTrustBase trustBase,
-      PredicateVerifierService predicateVerifier,
-      Transaction transaction,
-      CompletableFuture<InclusionProof> future,
-      long startTime,
-      long timeoutMillis,
-      long intervalMillis) {
+          StateTransitionClient client,
+          RootTrustBase trustBase,
+          PredicateVerifierService predicateVerifier,
+          Transaction transaction,
+          CompletableFuture<InclusionProof> future,
+          long startTime,
+          long timeoutMillis,
+          long intervalMillis) {
     if (System.currentTimeMillis() - startTime > timeoutMillis) {
       future.completeExceptionally(new TimeoutException("Timeout waiting for inclusion proof"));
     }
@@ -97,21 +98,21 @@ public class InclusionProofUtils {
     StateId stateId = StateId.fromTransaction(transaction);
     client.getInclusionProof(stateId).thenAccept(response -> {
       VerificationResult<InclusionProofVerificationStatus> result = InclusionProofVerificationRule.verify(
-          trustBase, predicateVerifier, response.getInclusionProof(), transaction);
+              trustBase, predicateVerifier, response.getInclusionProof(), transaction);
       switch (result.getStatus()) {
         case OK:
           future.complete(response.getInclusionProof());
           break;
-        case PATH_NOT_INCLUDED:
+        case INCLUSION_CERTIFICATE_MISSING:
           CompletableFuture.delayedExecutor(intervalMillis, TimeUnit.MILLISECONDS)
-              .execute(() -> checkInclusionProof(client, trustBase, predicateVerifier, transaction,
-                  future, startTime,
-                  timeoutMillis,
-                  intervalMillis));
+                  .execute(() -> checkInclusionProof(client, trustBase, predicateVerifier, transaction,
+                          future, startTime,
+                          timeoutMillis,
+                          intervalMillis));
           break;
         default:
           future.completeExceptionally(
-              new VerificationException("Inclusion proof verification failed", result));
+                  new VerificationException("Inclusion proof verification failed", result));
       }
     }).exceptionally(e -> {
       future.completeExceptionally(e);

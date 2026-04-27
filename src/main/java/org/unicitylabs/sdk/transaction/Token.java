@@ -1,11 +1,9 @@
 package org.unicitylabs.sdk.transaction;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.stream.Collectors;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
+import org.unicitylabs.sdk.serializer.cbor.CborSerializationException;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.transaction.verification.CertifiedMintTransactionVerificationRule;
 import org.unicitylabs.sdk.transaction.verification.CertifiedTransferTransactionVerificationRule;
@@ -13,7 +11,13 @@ import org.unicitylabs.sdk.util.verification.VerificationException;
 import org.unicitylabs.sdk.util.verification.VerificationResult;
 import org.unicitylabs.sdk.util.verification.VerificationStatus;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
+
 public class Token {
+  public static final long CBOR_TAG = 39040;
+  private static final int VERSION = 1;
 
   private final CertifiedMintTransaction genesis;
   private final List<CertifiedTransferTransaction> transactions;
@@ -25,6 +29,10 @@ public class Token {
 
   private Token(CertifiedMintTransaction genesis) {
     this(genesis, List.of());
+  }
+
+  public int getVersion() {
+    return Token.VERSION;
   }
 
   public TokenId getId() {
@@ -48,11 +56,20 @@ public class Token {
   }
 
   public static Token fromCbor(byte[] bytes) {
-    List<byte[]> data = CborDeserializer.decodeArray(bytes);
-    List<byte[]> transactions = CborDeserializer.decodeArray(data.get(1));
+    CborDeserializer.CborTag tag = CborDeserializer.decodeTag(bytes);
+    if (tag.getTag() != Token.CBOR_TAG) {
+      throw new CborSerializationException(String.format("Invalid CBOR tag: %s", tag.getTag()));
+    }
+    List<byte[]> data = CborDeserializer.decodeArray(tag.getData());
+
+    int version = CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt();
+    if (version != Token.VERSION) {
+      throw new CborSerializationException(String.format("Unsupported version: %s", version));
+    }
+    List<byte[]> transactions = CborDeserializer.decodeArray(data.get(2));
 
     return new Token(
-        CertifiedMintTransaction.fromCbor(data.get(0)),
+        CertifiedMintTransaction.fromCbor(data.get(1)),
         transactions.stream().map(CertifiedTransferTransaction::fromCbor)
             .collect(Collectors.toList())
     );
@@ -120,10 +137,14 @@ public class Token {
   }
 
   public byte[] toCbor() {
-    return CborSerializer.encodeArray(
-        this.genesis.toCbor(),
-        CborSerializer.encodeArray(
-            this.transactions.stream().map(Transaction::toCbor).toArray(byte[][]::new))
+    return CborSerializer.encodeTag(
+            Token.CBOR_TAG,
+            CborSerializer.encodeArray(
+                    CborSerializer.encodeUnsignedInteger(Token.VERSION),
+                    this.genesis.toCbor(),
+                    CborSerializer.encodeArray(
+                            this.transactions.stream().map(Transaction::toCbor).toArray(byte[][]::new))
+      )
     );
   }
 

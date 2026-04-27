@@ -1,6 +1,5 @@
 package org.unicitylabs.sdk.api;
 
-import java.util.Objects;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.crypto.hash.DataHasher;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
@@ -9,8 +8,9 @@ import org.unicitylabs.sdk.predicate.Predicate;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.transaction.Transaction;
-import org.unicitylabs.sdk.util.BitString;
 import org.unicitylabs.sdk.util.HexConverter;
+
+import java.util.Objects;
 
 public class StateId {
 
@@ -22,10 +22,6 @@ public class StateId {
 
   public byte[] getData() {
     return this.hash.getData();
-  }
-
-  public byte[] getImprint() {
-    return this.hash.getImprint();
   }
 
   public static StateId fromCbor(byte[] bytes) {
@@ -63,15 +59,6 @@ public class StateId {
     return CborSerializer.encodeByteString(this.getData());
   }
 
-  /**
-   * Converts the StateId to a BitString.
-   *
-   * @return The BitString representation of the StateId.
-   */
-  public BitString toBitString() {
-    return BitString.fromStateId(this);
-  }
-
   @Override
   public boolean equals(Object o) {
     if (!(o instanceof StateId)) {
@@ -93,6 +80,6 @@ public class StateId {
    */
   @Override
   public String toString() {
-    return String.format("StateId[%s]", HexConverter.encode(this.getImprint()));
+    return String.format("StateId[%s]", HexConverter.encode(this.getData()));
   }
 }

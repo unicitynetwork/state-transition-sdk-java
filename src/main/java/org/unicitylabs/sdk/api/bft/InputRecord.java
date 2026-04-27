@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Objects;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer.CborTag;
+import org.unicitylabs.sdk.serializer.cbor.CborSerializationException;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.util.HexConverter;
 
@@ -12,8 +13,9 @@ import org.unicitylabs.sdk.util.HexConverter;
  * Input record for UnicityCertificate.
  */
 public class InputRecord {
+  public static final long CBOR_TAG = 39002;
+  private static final int VERSION = 1;
 
-  private final int version;
   private final long roundNumber;
   private final long epoch;
   private final byte[] previousHash;
@@ -25,7 +27,6 @@ public class InputRecord {
   private final byte[] executedTransactionsHash;
 
   InputRecord(
-      int version,
       long roundNumber,
       long epoch,
       byte[] previousHash,
@@ -39,7 +40,6 @@ public class InputRecord {
     Objects.requireNonNull(hash, "Hash cannot be null");
     Objects.requireNonNull(summaryValue, "Summary value cannot be null");
 
-    this.version = version;
     this.roundNumber = roundNumber;
     this.epoch = epoch;
     this.previousHash = previousHash;
@@ -51,13 +51,8 @@ public class InputRecord {
     this.executedTransactionsHash = executedTransactionsHash;
   }
 
-  /**
-   * Get version.
-   *
-   * @return version
-   */
   public int getVersion() {
-    return this.version;
+    return InputRecord.VERSION;
   }
 
   /**
@@ -151,10 +146,17 @@ public class InputRecord {
    */
   public static InputRecord fromCbor(byte[] bytes) {
     CborTag tag = CborDeserializer.decodeTag(bytes);
+    if (tag.getTag() != InputRecord.CBOR_TAG) {
+      throw new CborSerializationException(String.format("Invalid CBOR tag: %s", tag.getTag()));
+    }
     List<byte[]> data = CborDeserializer.decodeArray(tag.getData());
 
+    int version = CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt();
+    if (version != InputRecord.VERSION) {
+      throw new CborSerializationException(String.format("Unsupported version: %s", version));
+    }
+
     return new InputRecord(
-        CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt(),
         CborDeserializer.decodeUnsignedInteger(data.get(1)).asLong(),
         CborDeserializer.decodeUnsignedInteger(data.get(2)).asLong(),
         CborDeserializer.decodeNullable(data.get(3), CborDeserializer::decodeByteString),
@@ -174,9 +176,9 @@ public class InputRecord {
    */
   public byte[] toCbor() {
     return CborSerializer.encodeTag(
-        1008,
+        InputRecord.CBOR_TAG,
         CborSerializer.encodeArray(
-            CborSerializer.encodeUnsignedInteger(this.version),
+            CborSerializer.encodeUnsignedInteger(InputRecord.VERSION),
             CborSerializer.encodeUnsignedInteger(this.roundNumber),
             CborSerializer.encodeUnsignedInteger(this.epoch),
             CborSerializer.encodeOptional(this.previousHash, CborSerializer::encodeByteString),
@@ -196,7 +198,7 @@ public class InputRecord {
       return false;
     }
     InputRecord that = (InputRecord) o;
-    return Objects.equals(this.version, that.version) && Objects.equals(this.roundNumber,
+    return Objects.equals(this.roundNumber,
         that.roundNumber) && Objects.equals(this.epoch, that.epoch)
         && Objects.deepEquals(this.previousHash, that.previousHash)
         && Objects.deepEquals(this.hash, that.hash) && Objects.deepEquals(this.summaryValue,
@@ -208,7 +210,7 @@ public class InputRecord {
 
   @Override
   public int hashCode() {
-    return Objects.hash(this.version, this.roundNumber, this.epoch,
+    return Objects.hash(InputRecord.VERSION, this.roundNumber, this.epoch,
         Arrays.hashCode(this.previousHash),
         Arrays.hashCode(this.hash), Arrays.hashCode(this.summaryValue), this.timestamp,
         Arrays.hashCode(this.blockHash),
@@ -217,10 +219,9 @@ public class InputRecord {
 
   @Override
   public String toString() {
-    return String.format("InputRecord{version=%s, roundNumber=%s, epoch=%s, previousHash=%s, "
+    return String.format("InputRecord{roundNumber=%s, epoch=%s, previousHash=%s, "
             + "hash=%s, summaryValue=%s, timestamp=%s, blockHash=%s, sumOfEarnedFees=%s, "
             + "executedTransactionsHash=%s}",
-        this.version,
         this.roundNumber,
         this.epoch,
         this.previousHash != null ? HexConverter.encode(this.previousHash) : null,

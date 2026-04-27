@@ -6,63 +6,73 @@ import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
  * Submit certification request.
  */
 public class CertificationRequest {
+    public static final long CBOR_TAG = 39030;
+    private static final int VERSION = 1;
 
-  private final StateId stateId;
-  private final CertificationData certificationData;
+    private final StateId stateId;
+    private final CertificationData certificationData;
 
-  /**
-   * Create certification request.
-   *
-   * @param stateId           state id
-   * @param certificationData transaction hash
-   */
-  private CertificationRequest(
-      StateId stateId,
-      CertificationData certificationData
-  ) {
-    this.stateId = stateId;
-    this.certificationData = certificationData;
-  }
+    /**
+     * Create certification request.
+     *
+     * @param stateId           state id
+     * @param certificationData transaction hash
+     */
+    private CertificationRequest(
+            StateId stateId,
+            CertificationData certificationData
+    ) {
+        this.stateId = stateId;
+        this.certificationData = certificationData;
+    }
 
-  /**
-   * Get state id.
-   *
-   * @return state id
-   */
-  public StateId getStateId() {
-    return this.stateId;
-  }
+    public int getVersion() {
+        return CertificationRequest.VERSION;
+    }
 
-  /**
-   * Get certification data.
-   *
-   * @return certification data
-   */
-  public CertificationData getCertificationData() {
-    return this.certificationData;
-  }
+    /**
+     * Get state id.
+     *
+     * @return state id
+     */
+    public StateId getStateId() {
+        return this.stateId;
+    }
 
-  /**
-   * Create certification request.
-   *
-   * @param certificationData certification data
-   * @return certification request
-   */
-  public static CertificationRequest create(CertificationData certificationData) {
-    return new CertificationRequest(StateId.fromCertificationData(certificationData),
-        certificationData);
-  }
+    /**
+     * Get certification data.
+     *
+     * @return certification data
+     */
+    public CertificationData getCertificationData() {
+        return this.certificationData;
+    }
 
-  /**
-   * Convert the request to a CBOR bytes.
-   *
-   * @return CBOR bytes
-   */
-  public byte[] toCBOR() {
-    return CborSerializer.encodeArray(
-        this.stateId.toCbor(),
-        this.certificationData.toCbor(),
-        CborSerializer.encodeUnsignedInteger(0)
-    );
-  }
+    /**
+     * Create certification request.
+     *
+     * @param certificationData certification data
+     * @return certification request
+     */
+    public static CertificationRequest create(CertificationData certificationData) {
+        return new CertificationRequest(StateId.fromCertificationData(certificationData),
+                certificationData);
+    }
+
+    /**
+     * Convert the request to a CBOR bytes.
+     *
+     * @return CBOR bytes
+     */
+    public byte[] toCBOR() {
+        return CborSerializer.encodeTag(
+                CertificationRequest.CBOR_TAG,
+                CborSerializer.encodeArray(
+                        CborSerializer.encodeUnsignedInteger(CertificationRequest.VERSION),
+                        this.stateId.toCbor(),
+                        this.certificationData.toCbor(),
+                        CborSerializer.encodeUnsignedInteger(0)
+                )
+        );
+    }
 }

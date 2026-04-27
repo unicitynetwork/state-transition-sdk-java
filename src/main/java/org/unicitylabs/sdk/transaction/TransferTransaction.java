@@ -1,7 +1,5 @@
 package org.unicitylabs.sdk.transaction;
 
-import java.util.Arrays;
-import java.util.List;
 import org.unicitylabs.sdk.api.InclusionProof;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
@@ -11,10 +9,16 @@ import org.unicitylabs.sdk.predicate.EncodedPredicate;
 import org.unicitylabs.sdk.predicate.Predicate;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
+import org.unicitylabs.sdk.serializer.cbor.CborSerializationException;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.util.HexConverter;
 
+import java.util.Arrays;
+import java.util.List;
+
 public class TransferTransaction implements Transaction {
+  public static final long CBOR_TAG = 39045;
+  private static final int VERSION = 1;
 
   private final DataHash sourceStateHash;
   private final Predicate lockScript;
@@ -30,6 +34,10 @@ public class TransferTransaction implements Transaction {
     this.recipient = recipient;
     this.x = x;
     this.data = data;
+  }
+
+  public int getVersion() {
+    return TransferTransaction.VERSION;
   }
 
 
@@ -75,14 +83,23 @@ public class TransferTransaction implements Transaction {
   }
 
   public static TransferTransaction fromCbor(byte[] bytes) {
-    List<byte[]> data = CborDeserializer.decodeArray(bytes);
+    CborDeserializer.CborTag tag = CborDeserializer.decodeTag(bytes);
+    if (tag.getTag() != TransferTransaction.CBOR_TAG) {
+      throw new CborSerializationException(String.format("Invalid CBOR tag: %s", tag.getTag()));
+    }
+    List<byte[]> data = CborDeserializer.decodeArray(tag.getData());
+
+    int version = CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt();
+    if (version != TransferTransaction.VERSION) {
+      throw new CborSerializationException(String.format("Unsupported version: %s", version));
+    }
 
     return new TransferTransaction(
-        new DataHash(HashAlgorithm.SHA256, CborDeserializer.decodeByteString(data.get(0))),
-        EncodedPredicate.fromCbor(data.get(1)),
-        Address.fromCbor(data.get(2)),
-        CborDeserializer.decodeByteString(data.get(3)),
-        CborDeserializer.decodeByteString(data.get(4))
+        new DataHash(HashAlgorithm.SHA256, CborDeserializer.decodeByteString(data.get(1))),
+        EncodedPredicate.fromCbor(data.get(2)),
+        Address.fromCbor(data.get(3)),
+        CborDeserializer.decodeByteString(data.get(4)),
+        CborDeserializer.decodeByteString(data.get(5))
     );
   }
 
@@ -113,12 +130,16 @@ public class TransferTransaction implements Transaction {
 
   @Override
   public byte[] toCbor() {
-    return CborSerializer.encodeArray(
-        CborSerializer.encodeByteString(this.sourceStateHash.getData()),
-        EncodedPredicate.fromPredicate(this.lockScript).toCbor(),
-        this.recipient.toCbor(),
-        CborSerializer.encodeByteString(this.x),
-        CborSerializer.encodeByteString(this.data)
+    return CborSerializer.encodeTag(
+            TransferTransaction.CBOR_TAG,
+            CborSerializer.encodeArray(
+                    CborSerializer.encodeUnsignedInteger(TransferTransaction.VERSION),
+                    CborSerializer.encodeByteString(this.sourceStateHash.getData()),
+                    EncodedPredicate.fromPredicate(this.lockScript).toCbor(),
+                    this.recipient.toCbor(),
+                    CborSerializer.encodeByteString(this.x),
+                    CborSerializer.encodeByteString(this.data)
+            )
     );
   }
 
