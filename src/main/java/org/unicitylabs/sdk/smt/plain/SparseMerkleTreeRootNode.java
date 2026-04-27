@@ -21,12 +21,12 @@ public class SparseMerkleTreeRootNode {
   }
 
   static SparseMerkleTreeRootNode create(
-      FinalizedBranch left,
-      FinalizedBranch right,
-      HashAlgorithm hashAlgorithm
+          FinalizedBranch left,
+          FinalizedBranch right,
+          HashAlgorithm hashAlgorithm
   ) {
     return new SparseMerkleTreeRootNode(
-        FinalizedNodeBranch.create(BigInteger.ONE, left, right, hashAlgorithm)
+            FinalizedNodeBranch.create(BigInteger.ONE, left, right, hashAlgorithm)
     );
   }
 
@@ -47,8 +47,8 @@ public class SparseMerkleTreeRootNode {
    */
   public SparseMerkleTreePath getPath(BigInteger path) {
     return new SparseMerkleTreePath(
-        this.root.getHash(),
-        SparseMerkleTreeRootNode.generatePath(path, this.root)
+            this.root.getHash(),
+            SparseMerkleTreeRootNode.generatePath(path, this.root)
     );
   }
 
@@ -67,8 +67,8 @@ public class SparseMerkleTreeRootNode {
   }
 
   private static List<SparseMerkleTreePathStep> generatePath(
-      BigInteger remainingPath,
-      FinalizedBranch parent
+          BigInteger remainingPath,
+          FinalizedBranch parent
   ) {
     if (parent instanceof LeafBranch) {
       LeafBranch leaf = (LeafBranch) parent;
@@ -80,20 +80,20 @@ public class SparseMerkleTreeRootNode {
     remainingPath = remainingPath.shiftRight(commonPath.getLength());
 
     if (commonPath.getPath().compareTo(parent.getPath()) != 0
-        || remainingPath.compareTo(BigInteger.ONE) == 0) {
+            || remainingPath.compareTo(BigInteger.ONE) == 0) {
       return List.of(
-          new SparseMerkleTreePathStep(
-              BigInteger.ZERO,
-              node.getLeft() == null
-                  ? null
-                  : node.getLeft().getHash().getData()
-          ),
-          new SparseMerkleTreePathStep(
-              node.getPath(),
-              node.getRight() == null
-                  ? null
-                  : node.getRight().getHash().getData()
-          )
+              new SparseMerkleTreePathStep(
+                      BigInteger.ZERO,
+                      node.getLeft() == null
+                              ? null
+                              : node.getLeft().getHash().getData()
+              ),
+              new SparseMerkleTreePathStep(
+                      node.getPath(),
+                      node.getRight() == null
+                              ? null
+                              : node.getRight().getHash().getData()
+              )
       );
     }
 
@@ -102,22 +102,22 @@ public class SparseMerkleTreeRootNode {
     FinalizedBranch siblingBranch = isRight ? node.getLeft() : node.getRight();
 
     SparseMerkleTreePathStep step = new SparseMerkleTreePathStep(
-        node.getPath(),
-        siblingBranch == null ? null : siblingBranch.getHash().getData()
+            node.getPath(),
+            siblingBranch == null ? null : siblingBranch.getHash().getData()
     );
 
     if (branch == null) {
       return List.of(
-          new SparseMerkleTreePathStep(
-              isRight ? BigInteger.ONE : BigInteger.ZERO,
-              null
-          ),
-          step
+              new SparseMerkleTreePathStep(
+                      isRight ? BigInteger.ONE : BigInteger.ZERO,
+                      null
+              ),
+              step
       );
     }
 
     List<SparseMerkleTreePathStep> list = new ArrayList<>(
-        SparseMerkleTreeRootNode.generatePath(remainingPath, branch)
+            SparseMerkleTreeRootNode.generatePath(remainingPath, branch)
     );
 
     list.add(step);

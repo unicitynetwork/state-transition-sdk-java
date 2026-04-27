@@ -37,7 +37,7 @@ public class SparseMerkleTree {
    * @throws IllegalArgumentException if path is less than 1
    */
   public synchronized void addLeaf(byte[] key, byte[] data)
-      throws BranchExistsException, LeafOutOfBoundsException {
+          throws BranchExistsException, LeafOutOfBoundsException {
     BigInteger path = BitString.fromBytesReversedLSB(key).toBigInteger();
 
     if (path.compareTo(BigInteger.ONE) <= 0) {
@@ -47,8 +47,8 @@ public class SparseMerkleTree {
     boolean isRight = path.testBit(0);
     Branch branch = isRight ? this.right : this.left;
     Branch result = branch != null
-        ? SparseMerkleTree.buildTree(branch, path, 0, key, data)
-        : new PendingLeafBranch(path, key, data);
+            ? SparseMerkleTree.buildTree(branch, path, 0, key, data)
+            : new PendingLeafBranch(path, key, data);
 
     if (isRight) {
       this.right = result;
@@ -72,7 +72,7 @@ public class SparseMerkleTree {
   }
 
   private static Branch buildTree(Branch branch, BigInteger remainingPath, int depth, byte[] key,
-      byte[] value) throws BranchExistsException, LeafOutOfBoundsException {
+                                  byte[] value) throws BranchExistsException, LeafOutOfBoundsException {
     CommonPath commonPath = CommonPath.create(remainingPath, branch.getPath());
     int commonPathLength = commonPath.getLength();
     boolean isRight = remainingPath.shiftRight(commonPathLength).testBit(0);
@@ -89,12 +89,12 @@ public class SparseMerkleTree {
       LeafBranch leafBranch = (LeafBranch) branch;
 
       LeafBranch oldBranch = new PendingLeafBranch(
-          branch.getPath().shiftRight(commonPathLength), leafBranch.getKey(),
-          leafBranch.getValue());
+              branch.getPath().shiftRight(commonPathLength), leafBranch.getKey(),
+              leafBranch.getValue());
       LeafBranch newBranch = new PendingLeafBranch(
-          remainingPath.shiftRight(commonPathLength), key, value);
+              remainingPath.shiftRight(commonPathLength), key, value);
       return new PendingNodeBranch(commonPath.getPath(), depth + commonPathLength,
-          isRight ? oldBranch : newBranch, isRight ? newBranch : oldBranch);
+              isRight ? oldBranch : newBranch, isRight ? newBranch : oldBranch);
     }
 
     NodeBranch nodeBranch = (NodeBranch) branch;
@@ -102,25 +102,25 @@ public class SparseMerkleTree {
     // if node branch is split in the middle
     if (commonPath.getPath().compareTo(branch.getPath()) < 0) {
       LeafBranch newBranch = new PendingLeafBranch(
-          remainingPath.shiftRight(commonPathLength), key, value);
+              remainingPath.shiftRight(commonPathLength), key, value);
       NodeBranch oldBranch = new PendingNodeBranch(
-          branch.getPath().shiftRight(commonPathLength), nodeBranch.getDepth(),
-          nodeBranch.getLeft(), nodeBranch.getRight());
+              branch.getPath().shiftRight(commonPathLength), nodeBranch.getDepth(),
+              nodeBranch.getLeft(), nodeBranch.getRight());
       return new PendingNodeBranch(commonPath.getPath(), depth + commonPathLength,
-          isRight ? oldBranch : newBranch, isRight ? newBranch : oldBranch);
+              isRight ? oldBranch : newBranch, isRight ? newBranch : oldBranch);
     }
 
     if (isRight) {
       return new PendingNodeBranch(nodeBranch.getPath(), nodeBranch.getDepth(),
-          nodeBranch.getLeft(),
-          SparseMerkleTree.buildTree(nodeBranch.getRight(),
-              remainingPath.shiftRight(commonPathLength), depth + commonPathLength, key, value));
+              nodeBranch.getLeft(),
+              SparseMerkleTree.buildTree(nodeBranch.getRight(),
+                      remainingPath.shiftRight(commonPathLength), depth + commonPathLength, key, value));
     }
 
     return new PendingNodeBranch(nodeBranch.getPath(), nodeBranch.getDepth(),
-        SparseMerkleTree.buildTree(nodeBranch.getLeft(),
-            remainingPath.shiftRight(commonPathLength), depth + commonPathLength, key, value),
-        nodeBranch.getRight());
+            SparseMerkleTree.buildTree(nodeBranch.getLeft(),
+                    remainingPath.shiftRight(commonPathLength), depth + commonPathLength, key, value),
+            nodeBranch.getRight());
   }
 }
 

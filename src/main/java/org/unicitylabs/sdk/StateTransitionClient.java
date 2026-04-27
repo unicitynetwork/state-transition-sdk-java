@@ -1,12 +1,9 @@
 
 package org.unicitylabs.sdk;
 
+import org.unicitylabs.sdk.api.*;
+
 import java.util.concurrent.CompletableFuture;
-import org.unicitylabs.sdk.api.AggregatorClient;
-import org.unicitylabs.sdk.api.CertificationData;
-import org.unicitylabs.sdk.api.CertificationResponse;
-import org.unicitylabs.sdk.api.InclusionProofResponse;
-import org.unicitylabs.sdk.api.StateId;
 
 /**
  * Client for handling state transitions of tokens, including submitting commitments and finalizing transactions.
@@ -37,6 +34,12 @@ public class StateTransitionClient {
     return this.client.getInclusionProof(stateId);
   }
 
+  /**
+   * Submits a certification request to the aggregator.
+   *
+   * @param certificationData The certification data to submit.
+   * @return certification response from the aggregator.
+   */
   public CompletableFuture<CertificationResponse> submitCertificationRequest(CertificationData certificationData) {
     return this.client.submitCertificationRequest(certificationData);
   }

@@ -1,19 +1,13 @@
 
 package org.unicitylabs.sdk.api.jsonrpc;
 
+import okhttp3.*;
+import org.unicitylabs.sdk.serializer.UnicityObjectMapper;
+
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import okhttp3.Call;
-import okhttp3.Callback;
-import okhttp3.MediaType;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.RequestBody;
-import okhttp3.Response;
-import okhttp3.ResponseBody;
-import org.unicitylabs.sdk.serializer.UnicityObjectMapper;
 
 /**
  * JSON-RPC HTTP service.
@@ -59,27 +53,27 @@ public class JsonRpcHttpTransport {
    * @return future with result
    */
   public <T> CompletableFuture<T> request(
-      String method,
-      Object params,
-      Class<T> resultType,
-      Map<String, List<String>> headers
+          String method,
+          Object params,
+          Class<T> resultType,
+          Map<String, List<String>> headers
   ) {
     CompletableFuture<T> future = new CompletableFuture<>();
 
     try {
       Request.Builder requestBuilder = new Request.Builder()
-          .url(this.url)
-          .post(
-              RequestBody.create(
-                  UnicityObjectMapper.JSON.writeValueAsString(
-                      new JsonRpcRequest(method, params)
-                  ),
-                  JsonRpcHttpTransport.MEDIA_TYPE_JSON)
-          );
+              .url(this.url)
+              .post(
+                      RequestBody.create(
+                              UnicityObjectMapper.JSON.writeValueAsString(
+                                      new JsonRpcRequest(method, params)
+                              ),
+                              JsonRpcHttpTransport.MEDIA_TYPE_JSON)
+              );
 
       headers.forEach((header, values) ->
-          values.forEach(value ->
-              requestBuilder.addHeader(header, value)));
+              values.forEach(value ->
+                      requestBuilder.addHeader(header, value)));
 
       Request request = requestBuilder.build();
 
@@ -99,17 +93,17 @@ public class JsonRpcHttpTransport {
             }
 
             JsonRpcResponse<T> data = UnicityObjectMapper.JSON.readValue(
-                body != null ? body.string() : "",
-                UnicityObjectMapper.JSON.getTypeFactory()
-                    .constructParametricType(JsonRpcResponse.class, resultType)
+                    body != null ? body.string() : "",
+                    UnicityObjectMapper.JSON.getTypeFactory()
+                            .constructParametricType(JsonRpcResponse.class, resultType)
             );
 
             if (data.getError() != null) {
               future.completeExceptionally(
-                  new JsonRpcNetworkException(
-                      data.getError().getCode(),
-                      data.getError().getMessage()
-                  )
+                      new JsonRpcNetworkException(
+                              data.getError().getCode(),
+                              data.getError().getMessage()
+                      )
               );
               return;
             }
@@ -117,7 +111,7 @@ public class JsonRpcHttpTransport {
             future.complete(data.getResult());
           } catch (Exception e) {
             future.completeExceptionally(
-                new RuntimeException("Failed to parse JSON-RPC response", e));
+                    new RuntimeException("Failed to parse JSON-RPC response", e));
           }
         }
       });

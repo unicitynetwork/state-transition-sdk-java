@@ -1,10 +1,11 @@
 package org.unicitylabs.sdk.crypto.secp256k1;
 
-import java.util.Arrays;
-import java.util.Objects;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.util.HexConverter;
+
+import java.util.Arrays;
+import java.util.Objects;
 
 /**
  * Signature implementation for signing service, this contains public key recovery byte as well.
@@ -75,7 +76,7 @@ public class Signature {
   }
 
   /**
-   * Create Signature from CBOR bytes.
+   * Deserialize Signature from CBOR bytes.
    *
    * @param bytes CBOR bytes
    * @return signature
@@ -101,6 +102,6 @@ public class Signature {
   @Override
   public String toString() {
     return String.format("Signature{bytes=%s, recovery=%s}", HexConverter.encode(this.bytes),
-        this.recovery);
+            this.recovery);
   }
 }

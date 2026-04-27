@@ -12,7 +12,16 @@ import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.util.verification.VerificationResult;
 import org.unicitylabs.sdk.util.verification.VerificationStatus;
 
+/**
+ * Verifies {@link PayToPublicKeyPredicate} unlock scripts using secp256k1 signatures.
+ */
 public class PayToPublicKeyPredicateVerifier implements BuiltInPredicateVerifier {
+
+  /**
+   * Creates a verifier instance for pay-to-public-key predicates.
+   */
+  public PayToPublicKeyPredicateVerifier() {
+  }
 
   @Override
   public BuiltInPredicateType getType() {
@@ -22,26 +31,26 @@ public class PayToPublicKeyPredicateVerifier implements BuiltInPredicateVerifier
 
   @Override
   public VerificationResult<VerificationStatus> verify(Predicate encodedPredicate,
-      DataHash sourceStateHash,
-      DataHash transactionHash, byte[] unlockScript) {
+                                                       DataHash sourceStateHash,
+                                                       DataHash transactionHash, byte[] unlockScript) {
     PayToPublicKeyPredicate predicate = PayToPublicKeyPredicate.fromPredicate(encodedPredicate);
 
     boolean result = SigningService.verifyWithPublicKey(
-        new DataHasher(HashAlgorithm.SHA256)
-            .update(
-                CborSerializer.encodeArray(
-                    CborSerializer.encodeByteString(sourceStateHash.getData()),
-                    CborSerializer.encodeByteString(transactionHash.getData())
-                )
-            )
-            .digest(),
-        Signature.decode(unlockScript).getBytes(),
-        predicate.getPublicKey()
+            new DataHasher(HashAlgorithm.SHA256)
+                    .update(
+                            CborSerializer.encodeArray(
+                                    CborSerializer.encodeByteString(sourceStateHash.getData()),
+                                    CborSerializer.encodeByteString(transactionHash.getData())
+                            )
+                    )
+                    .digest(),
+            Signature.decode(unlockScript).getBytes(),
+            predicate.getPublicKey()
     );
 
     if (!result) {
       return new VerificationResult<>("PayToPublicKeyPredicateVerifier", VerificationStatus.FAIL,
-          "Signature verification failed.");
+              "Signature verification failed.");
     }
 
     return new VerificationResult<>("PayToPublicKeyPredicateVerifier", VerificationStatus.OK);

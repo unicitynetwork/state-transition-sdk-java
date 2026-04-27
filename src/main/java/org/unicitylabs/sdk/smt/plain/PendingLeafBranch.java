@@ -1,9 +1,10 @@
 package org.unicitylabs.sdk.smt.plain;
 
+import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
+
 import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.Objects;
-import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 
 /**
  * Pending leaf branch in a sparse merkle tree.

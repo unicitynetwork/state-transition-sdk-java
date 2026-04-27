@@ -3,11 +3,7 @@ package org.unicitylabs.sdk.serializer.cbor;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.function.Function;
 
 /**
@@ -48,7 +44,7 @@ public class CborSerializer {
     byte[] result = new byte[1 + bytes.length];
     System.arraycopy(bytes, 0, result, 1, bytes.length);
     result[0] = (byte) (CborMajorType.UNSIGNED_INTEGER.getType()
-        | CborSerializer.getAdditionalInformationBits(bytes.length));
+            | CborSerializer.getAdditionalInformationBits(bytes.length));
 
     return result;
   }
@@ -155,7 +151,7 @@ public class CborSerializer {
     byte[] bytes = CborSerializer.getUnsignedLongAsPaddedBytes(tag);
     byte[] result = new byte[1 + bytes.length + input.length];
     result[0] = (byte) (CborMajorType.TAG.getType()
-        | CborSerializer.getAdditionalInformationBits(bytes.length));
+            | CborSerializer.getAdditionalInformationBits(bytes.length));
     System.arraycopy(bytes, 0, result, 1, bytes.length);
     System.arraycopy(input, 0, result, 1 + bytes.length, input.length);
 
@@ -193,7 +189,7 @@ public class CborSerializer {
     byte[] lengthBytes = CborSerializer.getUnsignedLongAsPaddedBytes(length);
     byte[] result = new byte[1 + lengthBytes.length + input.length];
     result[0] = (byte) (type.getType()
-        | CborSerializer.getAdditionalInformationBits(lengthBytes.length));
+            | CborSerializer.getAdditionalInformationBits(lengthBytes.length));
     System.arraycopy(lengthBytes, 0, result, 1, lengthBytes.length);
     System.arraycopy(input, 0, result, 1 + lengthBytes.length, input.length);
 
@@ -211,8 +207,8 @@ public class CborSerializer {
     }
 
     ByteBuffer buffer = ByteBuffer
-        .allocate((int) Math.pow(2, (int) Math.ceil(Math.log(length) / Math.log(2))))
-        .order(ByteOrder.BIG_ENDIAN);
+            .allocate((int) Math.pow(2, (int) Math.ceil(Math.log(length) / Math.log(2))))
+            .order(ByteOrder.BIG_ENDIAN);
     if (length <= 1) {
       buffer.put((byte) input);
     } else if (length <= 2) {

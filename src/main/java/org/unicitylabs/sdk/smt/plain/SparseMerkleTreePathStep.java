@@ -1,14 +1,15 @@
 package org.unicitylabs.sdk.smt.plain;
 
+import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
+import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
+import org.unicitylabs.sdk.util.BigIntegerConverter;
+import org.unicitylabs.sdk.util.HexConverter;
+
 import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
-import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
-import org.unicitylabs.sdk.util.BigIntegerConverter;
-import org.unicitylabs.sdk.util.HexConverter;
 
 /**
  * Sparse Merkle tree path step.
@@ -25,8 +26,8 @@ public class SparseMerkleTreePathStep {
    * @param data step data
    */
   public SparseMerkleTreePathStep(
-      BigInteger path,
-      byte[] data
+          BigInteger path,
+          byte[] data
   ) {
     Objects.requireNonNull(path, "path cannot be null");
     if (path.compareTo(BigInteger.ZERO) < 0) {
@@ -56,7 +57,7 @@ public class SparseMerkleTreePathStep {
   }
 
   /**
-   * Create sparse Merkle tree path step from CBOR bytes.
+   * Deserialize sparse Merkle tree path step from CBOR bytes.
    *
    * @param bytes CBOR bytes
    * @return sparse Merkle tree path step
@@ -65,20 +66,20 @@ public class SparseMerkleTreePathStep {
     List<byte[]> data = CborDeserializer.decodeArray(bytes);
 
     return new SparseMerkleTreePathStep(
-        BigIntegerConverter.decode(CborDeserializer.decodeByteString(data.get(0))),
-        CborDeserializer.decodeNullable(data.get(1), CborDeserializer::decodeByteString)
+            BigIntegerConverter.decode(CborDeserializer.decodeByteString(data.get(0))),
+            CborDeserializer.decodeNullable(data.get(1), CborDeserializer::decodeByteString)
     );
   }
 
   /**
-   * Convert sparse Merkle tree path step to CBOR bytes.
+   * Serialize sparse Merkle tree path step to CBOR bytes.
    *
    * @return CBOR bytes
    */
   public byte[] toCbor() {
     return CborSerializer.encodeArray(
-        CborSerializer.encodeByteString(BigIntegerConverter.encode(this.path)),
-        CborSerializer.encodeOptional(this.data, CborSerializer::encodeByteString)
+            CborSerializer.encodeByteString(BigIntegerConverter.encode(this.path)),
+            CborSerializer.encodeOptional(this.data, CborSerializer::encodeByteString)
     );
   }
 
@@ -99,9 +100,9 @@ public class SparseMerkleTreePathStep {
   @Override
   public String toString() {
     return String.format(
-        "MerkleTreePathStep{path=%s, data=%s}",
-        this.path.toString(2),
-        this.data == null ? "null" : HexConverter.encode(this.data)
+            "MerkleTreePathStep{path=%s, data=%s}",
+            this.path.toString(2),
+            this.data == null ? "null" : HexConverter.encode(this.data)
     );
   }
 }

@@ -61,7 +61,7 @@ public class CommonPath {
     int length = 0;
 
     while (Objects.equals(path1.and(mask), path2.and(mask)) && path.compareTo(path1) < 0
-        && path.compareTo(path2) < 0) {
+            && path.compareTo(path2) < 0) {
       mask = mask.shiftLeft(1);
       length += 1;
       path = mask.or(mask.subtract(BigInteger.ONE).and(path1));

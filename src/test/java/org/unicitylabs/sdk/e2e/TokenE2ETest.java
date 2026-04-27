@@ -1,17 +1,17 @@
 package org.unicitylabs.sdk.e2e;
 
-import java.io.IOException;
-import java.io.InputStream;
-
-import org.unicitylabs.sdk.StateTransitionClient;
-import org.unicitylabs.sdk.api.JsonRpcAggregatorClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.unicitylabs.sdk.StateTransitionClient;
+import org.unicitylabs.sdk.api.JsonRpcAggregatorClient;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.common.CommonTestFlow;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
+
+import java.io.IOException;
+import java.io.InputStream;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;

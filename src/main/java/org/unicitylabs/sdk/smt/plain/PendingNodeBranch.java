@@ -1,8 +1,9 @@
 package org.unicitylabs.sdk.smt.plain;
 
+import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
+
 import java.math.BigInteger;
 import java.util.Objects;
-import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 
 /**
  * Pending node branch in a sparse merkle tree.
@@ -44,10 +45,10 @@ class PendingNodeBranch implements NodeBranch {
   @Override
   public FinalizedNodeBranch finalize(HashAlgorithm hashAlgorithm) {
     return FinalizedNodeBranch.create(
-        this.path,
-        this.left.finalize(hashAlgorithm),
-        this.right.finalize(hashAlgorithm),
-        hashAlgorithm
+            this.path,
+            this.left.finalize(hashAlgorithm),
+            this.right.finalize(hashAlgorithm),
+            hashAlgorithm
     );
   }
 
@@ -58,7 +59,7 @@ class PendingNodeBranch implements NodeBranch {
     }
     PendingNodeBranch that = (PendingNodeBranch) o;
     return Objects.equals(this.path, that.path) && Objects.equals(this.left, that.left)
-        && Objects.equals(this.right, that.right);
+            && Objects.equals(this.right, that.right);
   }
 
   @Override

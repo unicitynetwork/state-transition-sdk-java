@@ -6,7 +6,7 @@ import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.Objects;
 
-public class PendingLeafBranch  implements LeafBranch {
+public class PendingLeafBranch implements LeafBranch {
   private final BigInteger path;
   private final byte[] key;
   private final byte[] value;

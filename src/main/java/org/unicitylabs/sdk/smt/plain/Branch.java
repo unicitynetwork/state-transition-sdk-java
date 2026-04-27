@@ -1,7 +1,8 @@
 package org.unicitylabs.sdk.smt.plain;
 
-import java.math.BigInteger;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
+
+import java.math.BigInteger;
 
 /**
  * Sparse merkle tree branch structure.

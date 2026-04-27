@@ -21,8 +21,8 @@ public class UnicityTreeCertificate {
   private final List<HashStep> steps;
 
   UnicityTreeCertificate(
-      int partitionIdentifier,
-      List<HashStep> steps
+          int partitionIdentifier,
+          List<HashStep> steps
   ) {
     Objects.requireNonNull(steps, "Steps cannot be null");
 
@@ -58,7 +58,7 @@ public class UnicityTreeCertificate {
   }
 
   /**
-   * Create certificate from CBOR bytes.
+   * Deserialize certificate from CBOR bytes.
    *
    * @param bytes CBOR bytes
    * @return certificate
@@ -76,28 +76,28 @@ public class UnicityTreeCertificate {
     }
 
     return new UnicityTreeCertificate(
-        CborDeserializer.decodeUnsignedInteger(data.get(1)).asInt(),
-        CborDeserializer.decodeArray(data.get(2)).stream()
-            .map(HashStep::fromCbor)
-            .collect(Collectors.toList())
+            CborDeserializer.decodeUnsignedInteger(data.get(1)).asInt(),
+            CborDeserializer.decodeArray(data.get(2)).stream()
+                    .map(HashStep::fromCbor)
+                    .collect(Collectors.toList())
     );
   }
 
   /**
-   * Convert certificate to CBOR bytes.
+   * Serialize certificate to CBOR bytes.
    *
    * @return CBOR bytes
    */
   public byte[] toCbor() {
     return CborSerializer.encodeTag(
-        UnicityTreeCertificate.CBOR_TAG,
-        CborSerializer.encodeArray(
-            CborSerializer.encodeUnsignedInteger(UnicityTreeCertificate.VERSION),
-            CborSerializer.encodeUnsignedInteger(this.partitionIdentifier),
-            CborSerializer.encodeArray(this.steps.stream()
-                .map(HashStep::toCbor)
-                .toArray(byte[][]::new))
-        ));
+            UnicityTreeCertificate.CBOR_TAG,
+            CborSerializer.encodeArray(
+                    CborSerializer.encodeUnsignedInteger(UnicityTreeCertificate.VERSION),
+                    CborSerializer.encodeUnsignedInteger(this.partitionIdentifier),
+                    CborSerializer.encodeArray(this.steps.stream()
+                            .map(HashStep::toCbor)
+                            .toArray(byte[][]::new))
+            ));
   }
 
   @Override
@@ -107,8 +107,8 @@ public class UnicityTreeCertificate {
     }
     UnicityTreeCertificate that = (UnicityTreeCertificate) o;
     return Objects.equals(
-        this.partitionIdentifier, that.partitionIdentifier) && Objects.equals(this.steps,
-        that.steps);
+            this.partitionIdentifier, that.partitionIdentifier) && Objects.equals(this.steps,
+            that.steps);
   }
 
   @Override
@@ -155,7 +155,7 @@ public class UnicityTreeCertificate {
     }
 
     /**
-     * Create hash step from CBOR bytes.
+     * Deserialize hash step from CBOR bytes.
      *
      * @param bytes CBOR bytes
      * @return hash step
@@ -164,20 +164,20 @@ public class UnicityTreeCertificate {
       List<byte[]> data = CborDeserializer.decodeArray(bytes);
 
       return new HashStep(
-          CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt(),
-          CborDeserializer.decodeByteString(data.get(1))
+              CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt(),
+              CborDeserializer.decodeByteString(data.get(1))
       );
     }
 
     /**
-     * Convert hash step to CBOR bytes.
+     * Serialize hash step to CBOR bytes.
      *
      * @return CBOR bytes
      */
     public byte[] toCbor() {
       return CborSerializer.encodeArray(
-          CborSerializer.encodeUnsignedInteger(this.key),
-          CborSerializer.encodeByteString(this.hash)
+              CborSerializer.encodeUnsignedInteger(this.key),
+              CborSerializer.encodeByteString(this.hash)
       );
     }
 
@@ -188,7 +188,7 @@ public class UnicityTreeCertificate {
       }
       HashStep hashStep = (HashStep) o;
       return Objects.equals(this.key, hashStep.key) && Objects.deepEquals(this.hash,
-          hashStep.hash);
+              hashStep.hash);
     }
 
     @Override
@@ -199,7 +199,7 @@ public class UnicityTreeCertificate {
     @Override
     public String toString() {
       return String.format("UnicityTreeCertificate.HashStep{key=%s, hash=%s",
-          this.key, HexConverter.encode(this.hash));
+              this.key, HexConverter.encode(this.hash));
     }
   }
 }

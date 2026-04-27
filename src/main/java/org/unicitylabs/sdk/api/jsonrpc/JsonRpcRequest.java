@@ -3,6 +3,7 @@ package org.unicitylabs.sdk.api.jsonrpc;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.util.UUID;
 
 /**
@@ -33,9 +34,9 @@ public class JsonRpcRequest {
    */
   @JsonCreator
   public JsonRpcRequest(
-      @JsonProperty("id") UUID id,
-      @JsonProperty("method") String method,
-      @JsonProperty("params") Object params
+          @JsonProperty("id") UUID id,
+          @JsonProperty("method") String method,
+          @JsonProperty("params") Object params
   ) {
     this.id = id;
     this.method = method;

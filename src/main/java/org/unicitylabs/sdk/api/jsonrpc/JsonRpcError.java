@@ -13,8 +13,8 @@ public class JsonRpcError {
 
   @JsonCreator
   JsonRpcError(
-      @JsonProperty("code") int code,
-      @JsonProperty("message") String message
+          @JsonProperty("code") int code,
+          @JsonProperty("message") String message
   ) {
     this.code = code;
     this.message = message;

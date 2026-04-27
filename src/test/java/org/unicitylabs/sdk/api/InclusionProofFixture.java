@@ -5,14 +5,14 @@ import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
 
 public class InclusionProofFixture {
-    public static InclusionProofResponse createResponse(CertificationData certificationData, InclusionCertificate inclusionCertificate, DataHash root, SigningService signingService) {
-        return new InclusionProofResponse(
-                1L,
-                new InclusionProof(
-                        certificationData,
-                        inclusionCertificate,
-                        UnicityCertificateUtils.generateCertificate(signingService, root)
-                )
-        );
-    }
+  public static InclusionProofResponse createResponse(CertificationData certificationData, InclusionCertificate inclusionCertificate, DataHash root, SigningService signingService) {
+    return new InclusionProofResponse(
+            1L,
+            new InclusionProof(
+                    certificationData,
+                    inclusionCertificate,
+                    UnicityCertificateUtils.generateCertificate(signingService, root)
+            )
+    );
+  }
 }

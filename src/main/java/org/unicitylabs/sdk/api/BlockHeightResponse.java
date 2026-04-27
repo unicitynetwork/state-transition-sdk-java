@@ -4,10 +4,11 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
-import java.util.Objects;
 import org.unicitylabs.sdk.serializer.UnicityObjectMapper;
 import org.unicitylabs.sdk.serializer.json.JsonSerializationException;
 import org.unicitylabs.sdk.serializer.json.LongAsStringSerializer;
+
+import java.util.Objects;
 
 /**
  * Block height response.
@@ -18,7 +19,7 @@ public class BlockHeightResponse {
 
   @JsonCreator
   private BlockHeightResponse(
-      @JsonProperty("blockNumber") long blockNumber
+          @JsonProperty("blockNumber") long blockNumber
   ) {
     this.blockNumber = blockNumber;
   }

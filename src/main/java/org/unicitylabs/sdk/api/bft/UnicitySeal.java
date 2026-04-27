@@ -26,13 +26,13 @@ public class UnicitySeal {
   private final LinkedHashMap<String, byte[]> signatures;
 
   UnicitySeal(
-      short networkId,
-      long rootChainRoundNumber,
-      long epoch,
-      long timestamp,
-      byte[] previousHash,
-      byte[] hash,
-      Map<String, byte[]> signatures
+          short networkId,
+          long rootChainRoundNumber,
+          long epoch,
+          long timestamp,
+          byte[] previousHash,
+          byte[] hash,
+          Map<String, byte[]> signatures
   ) {
     Objects.requireNonNull(hash, "Hash cannot be null");
 
@@ -43,21 +43,21 @@ public class UnicitySeal {
     this.previousHash = previousHash;
     this.hash = hash;
     this.signatures = signatures == null
-        ? null
-        : signatures.entrySet().stream()
-            .map(entry -> Map.entry(
-                    entry.getKey(),
-                    Arrays.copyOf(entry.getValue(), entry.getValue().length)
-                )
-            )
-            .collect(
-                Collectors.toMap(
-                    Map.Entry::getKey,
-                    Map.Entry::getValue,
-                    (e1, e2) -> e1,
-                    LinkedHashMap::new
-                )
-            );
+            ? null
+            : signatures.entrySet().stream()
+              .map(entry -> Map.entry(
+                              entry.getKey(),
+                              Arrays.copyOf(entry.getValue(), entry.getValue().length)
+                      )
+              )
+              .collect(
+                      Collectors.toMap(
+                              Map.Entry::getKey,
+                              Map.Entry::getValue,
+                              (e1, e2) -> e1,
+                              LinkedHashMap::new
+                      )
+              );
   }
 
   /**
@@ -68,13 +68,13 @@ public class UnicitySeal {
    */
   public UnicitySeal withSignatures(Map<String, byte[]> signatures) {
     return new UnicitySeal(
-        this.networkId,
-        this.rootChainRoundNumber,
-        this.epoch,
-        this.timestamp,
-        this.previousHash,
-        this.hash,
-        signatures
+            this.networkId,
+            this.rootChainRoundNumber,
+            this.epoch,
+            this.timestamp,
+            this.previousHash,
+            this.hash,
+            signatures
     );
   }
 
@@ -125,7 +125,7 @@ public class UnicitySeal {
    */
   public byte[] getPreviousHash() {
     return this.previousHash != null ? Arrays.copyOf(this.previousHash, this.previousHash.length)
-        : null;
+            : null;
   }
 
   /**
@@ -144,25 +144,25 @@ public class UnicitySeal {
    */
   public Map<String, byte[]> getSignatures() {
     return this.signatures == null
-        ? null
-        : this.signatures.entrySet().stream()
-            .map(entry -> Map.entry(
-                    entry.getKey(),
-                    Arrays.copyOf(entry.getValue(), entry.getValue().length)
-                )
-            )
-            .collect(
-                Collectors.toMap(
-                    Map.Entry::getKey,
-                    Map.Entry::getValue,
-                    (e1, e2) -> e1,
-                    LinkedHashMap::new
-                )
-            );
+            ? null
+            : this.signatures.entrySet().stream()
+              .map(entry -> Map.entry(
+                              entry.getKey(),
+                              Arrays.copyOf(entry.getValue(), entry.getValue().length)
+                      )
+              )
+              .collect(
+                      Collectors.toMap(
+                              Map.Entry::getKey,
+                              Map.Entry::getValue,
+                              (e1, e2) -> e1,
+                              LinkedHashMap::new
+                      )
+              );
   }
 
   /**
-   * Create unicity seal from CBOR bytes.
+   * Deserialize unicity seal from CBOR bytes.
    *
    * @param bytes CBOR bytes
    * @return unicity seal
@@ -180,54 +180,54 @@ public class UnicitySeal {
     }
 
     return new UnicitySeal(
-        CborDeserializer.decodeUnsignedInteger(data.get(1)).asShort(),
-        CborDeserializer.decodeUnsignedInteger(data.get(2)).asLong(),
-        CborDeserializer.decodeUnsignedInteger(data.get(3)).asLong(),
-        CborDeserializer.decodeUnsignedInteger(data.get(4)).asLong(),
-        CborDeserializer.decodeNullable(data.get(5), CborDeserializer::decodeByteString),
-        CborDeserializer.decodeByteString(data.get(6)),
-        CborDeserializer.decodeMap(data.get(7)).stream()
-            .collect(
-                Collectors.toMap(
-                    entry -> CborDeserializer.decodeTextString(entry.getKey()),
-                    entry -> CborDeserializer.decodeByteString(entry.getValue()
+            CborDeserializer.decodeUnsignedInteger(data.get(1)).asShort(),
+            CborDeserializer.decodeUnsignedInteger(data.get(2)).asLong(),
+            CborDeserializer.decodeUnsignedInteger(data.get(3)).asLong(),
+            CborDeserializer.decodeUnsignedInteger(data.get(4)).asLong(),
+            CborDeserializer.decodeNullable(data.get(5), CborDeserializer::decodeByteString),
+            CborDeserializer.decodeByteString(data.get(6)),
+            CborDeserializer.decodeMap(data.get(7)).stream()
+                    .collect(
+                            Collectors.toMap(
+                                    entry -> CborDeserializer.decodeTextString(entry.getKey()),
+                                    entry -> CborDeserializer.decodeByteString(entry.getValue()
+                                    )
+                            )
                     )
-                )
-            )
     );
   }
 
   /**
-   * Convert unicity seal to CBOR bytes.
+   * Serialize unicity seal to CBOR bytes.
    *
    * @return CBOR bytes
    */
   public byte[] toCbor() {
     return CborSerializer.encodeTag(
-        UnicitySeal.CBOR_TAG,
-        CborSerializer.encodeArray(
-            CborSerializer.encodeUnsignedInteger(UnicitySeal.VERSION),
-            CborSerializer.encodeUnsignedInteger(this.networkId),
-            CborSerializer.encodeUnsignedInteger(this.rootChainRoundNumber),
-            CborSerializer.encodeUnsignedInteger(this.epoch),
-            CborSerializer.encodeUnsignedInteger(this.timestamp),
-            CborSerializer.encodeOptional(this.previousHash, CborSerializer::encodeByteString),
-            CborSerializer.encodeByteString(this.hash),
-            CborSerializer.encodeOptional(
-                this.signatures,
-                (signatures) -> CborSerializer.encodeMap(
-                    new CborMap(
-                        signatures.entrySet().stream()
-                            .map(entry -> new CborMap.Entry(
-                                    CborSerializer.encodeTextString(entry.getKey()),
-                                    CborSerializer.encodeByteString(entry.getValue())
-                                )
+            UnicitySeal.CBOR_TAG,
+            CborSerializer.encodeArray(
+                    CborSerializer.encodeUnsignedInteger(UnicitySeal.VERSION),
+                    CborSerializer.encodeUnsignedInteger(this.networkId),
+                    CborSerializer.encodeUnsignedInteger(this.rootChainRoundNumber),
+                    CborSerializer.encodeUnsignedInteger(this.epoch),
+                    CborSerializer.encodeUnsignedInteger(this.timestamp),
+                    CborSerializer.encodeOptional(this.previousHash, CborSerializer::encodeByteString),
+                    CborSerializer.encodeByteString(this.hash),
+                    CborSerializer.encodeOptional(
+                            this.signatures,
+                            (signatures) -> CborSerializer.encodeMap(
+                                    new CborMap(
+                                            signatures.entrySet().stream()
+                                                    .map(entry -> new CborMap.Entry(
+                                                                    CborSerializer.encodeTextString(entry.getKey()),
+                                                                    CborSerializer.encodeByteString(entry.getValue())
+                                                            )
+                                                    )
+                                                    .collect(Collectors.toSet())
+                                    )
                             )
-                            .collect(Collectors.toSet())
                     )
-                )
             )
-        )
     );
   }
 
@@ -238,13 +238,13 @@ public class UnicitySeal {
    */
   public byte[] toCborWithoutSignatures() {
     return new UnicitySeal(
-        this.networkId,
-        this.rootChainRoundNumber,
-        this.epoch,
-        this.timestamp,
-        this.previousHash,
-        this.hash,
-        null
+            this.networkId,
+            this.rootChainRoundNumber,
+            this.epoch,
+            this.timestamp,
+            this.previousHash,
+            this.hash,
+            null
     ).toCbor();
   }
 
@@ -255,36 +255,36 @@ public class UnicitySeal {
     }
     UnicitySeal that = (UnicitySeal) o;
     return Objects.equals(this.networkId,
-        that.networkId) && Objects.equals(this.rootChainRoundNumber, that.rootChainRoundNumber)
-        && Objects.equals(this.epoch, that.epoch) && Objects.equals(this.timestamp,
-        that.timestamp) && Objects.deepEquals(this.previousHash, that.previousHash)
-        && Objects.deepEquals(this.hash, that.hash) && Objects.equals(this.signatures,
-        that.signatures);
+            that.networkId) && Objects.equals(this.rootChainRoundNumber, that.rootChainRoundNumber)
+            && Objects.equals(this.epoch, that.epoch) && Objects.equals(this.timestamp,
+            that.timestamp) && Objects.deepEquals(this.previousHash, that.previousHash)
+            && Objects.deepEquals(this.hash, that.hash) && Objects.equals(this.signatures,
+            that.signatures);
   }
 
   @Override
   public int hashCode() {
     return Objects.hash(UnicitySeal.VERSION, this.networkId, this.rootChainRoundNumber, this.epoch,
-        this.timestamp,
-        Arrays.hashCode(this.previousHash), Arrays.hashCode(this.hash), this.signatures);
+            this.timestamp,
+            Arrays.hashCode(this.previousHash), Arrays.hashCode(this.hash), this.signatures);
   }
 
   @Override
   public String toString() {
     return String.format(
-        "UnicitySeal{networkId=%s, rootChainRoundNumber=%s, epoch=%s, timestamp=%s, "
-            + "previousHash=%s, hash=%s, signatures=%s",
-        this.networkId,
-        this.rootChainRoundNumber,
-        this.epoch,
-        this.timestamp,
-        this.previousHash != null ? HexConverter.encode(this.previousHash) : null,
-        HexConverter.encode(this.hash),
-        this.signatures.entrySet()
-            .stream()
-            .map(entry -> String.format("%s: %s", entry.getKey(),
-                HexConverter.encode(entry.getValue())))
-            .collect(Collectors.toList())
+            "UnicitySeal{networkId=%s, rootChainRoundNumber=%s, epoch=%s, timestamp=%s, "
+                    + "previousHash=%s, hash=%s, signatures=%s",
+            this.networkId,
+            this.rootChainRoundNumber,
+            this.epoch,
+            this.timestamp,
+            this.previousHash != null ? HexConverter.encode(this.previousHash) : null,
+            HexConverter.encode(this.hash),
+            this.signatures.entrySet()
+                    .stream()
+                    .map(entry -> String.format("%s: %s", entry.getKey(),
+                            HexConverter.encode(entry.getValue())))
+                    .collect(Collectors.toList())
     );
   }
 }

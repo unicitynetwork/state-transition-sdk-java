@@ -1,13 +1,14 @@
 package org.unicitylabs.sdk.api;
 
-import static com.google.common.net.HttpHeaders.AUTHORIZATION;
+import org.unicitylabs.sdk.api.jsonrpc.JsonRpcHttpTransport;
+import org.unicitylabs.sdk.util.HexConverter;
 
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import org.unicitylabs.sdk.api.jsonrpc.JsonRpcHttpTransport;
-import org.unicitylabs.sdk.util.HexConverter;
+
+import static com.google.common.net.HttpHeaders.AUTHORIZATION;
 
 /**
  * Default aggregator client.
@@ -35,28 +36,33 @@ public class JsonRpcAggregatorClient implements AggregatorClient {
    *
    */
   public JsonRpcAggregatorClient(String url, String apiKey) {
-    Objects.requireNonNull(url, "url cannot be null");
-
-    this.transport = new JsonRpcHttpTransport(url);
+    this.transport = new JsonRpcHttpTransport(Objects.requireNonNull(url, "url cannot be null"));
     this.apiKey = apiKey;
   }
 
+  /**
+   * Submit a certification request for a transaction state transition.
+   *
+   * @param certificationData certification payload
+   *
+   * @return asynchronous certification response
+   */
+  @Override
   public CompletableFuture<CertificationResponse> submitCertificationRequest(
-      CertificationData certificationData
+          CertificationData certificationData
   ) {
-    Objects.requireNonNull(certificationData, "certificationData cannot be null");
-
-    CertificationRequest request = CertificationRequest.create(certificationData);
+    CertificationRequest request = CertificationRequest.create(
+            Objects.requireNonNull(certificationData, "certificationData cannot be null"));
 
     Map<String, List<String>> headers = this.apiKey == null
-        ? Map.of()
-        : Map.of(AUTHORIZATION, List.of(String.format("Bearer %s", this.apiKey)));
+            ? Map.of()
+            : Map.of(AUTHORIZATION, List.of(String.format("Bearer %s", this.apiKey)));
 
     return this.transport.request(
-        "certification_request",
-        HexConverter.encode(request.toCBOR()),
-        CertificationResponse.class,
-        headers
+            "certification_request",
+            HexConverter.encode(request.toCbor()),
+            CertificationResponse.class,
+            headers
     );
   }
 
@@ -66,14 +72,14 @@ public class JsonRpcAggregatorClient implements AggregatorClient {
    * @param stateId state id
    * @return inclusion / non inclusion proof
    */
+  @Override
   public CompletableFuture<InclusionProofResponse> getInclusionProof(StateId stateId) {
-    Objects.requireNonNull(stateId, "stateId cannot be null");
-
-    InclusionProofRequest request = new InclusionProofRequest(stateId);
+    InclusionProofRequest request = new InclusionProofRequest(
+            Objects.requireNonNull(stateId, "stateId cannot be null"));
 
     return this.transport
-        .request("get_inclusion_proof.v2", request, String.class)
-        .thenApply(response -> InclusionProofResponse.fromCbor(HexConverter.decode(response)));
+            .request("get_inclusion_proof.v2", request, String.class)
+            .thenApply(response -> InclusionProofResponse.fromCbor(HexConverter.decode(response)));
   }
 
   /**
@@ -81,8 +87,9 @@ public class JsonRpcAggregatorClient implements AggregatorClient {
    *
    * @return block height
    */
+  @Override
   public CompletableFuture<Long> getBlockHeight() {
     return this.transport.request("get_block_height", Map.of(), BlockHeightResponse.class)
-        .thenApply(BlockHeightResponse::getBlockNumber);
+            .thenApply(BlockHeightResponse::getBlockNumber);
   }
 }

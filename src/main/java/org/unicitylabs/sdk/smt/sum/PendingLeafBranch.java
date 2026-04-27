@@ -1,9 +1,10 @@
 package org.unicitylabs.sdk.smt.sum;
 
-import java.math.BigInteger;
-import java.util.Objects;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.unicitylabs.sdk.smt.sum.SparseMerkleSumTree.LeafValue;
+
+import java.math.BigInteger;
+import java.util.Objects;
 
 /**
  * Pending leaf branch in a sparse merkle sum tree.

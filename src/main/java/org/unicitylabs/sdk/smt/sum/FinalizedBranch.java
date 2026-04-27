@@ -1,7 +1,8 @@
 package org.unicitylabs.sdk.smt.sum;
 
-import java.math.BigInteger;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
+
+import java.math.BigInteger;
 
 /**
  * Finalized branch in sparse merkle sum tree.

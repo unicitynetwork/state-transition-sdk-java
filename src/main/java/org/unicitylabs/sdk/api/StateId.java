@@ -12,6 +12,9 @@ import org.unicitylabs.sdk.util.HexConverter;
 
 import java.util.Objects;
 
+/**
+ * Represents a state identifier for requests.
+ */
 public class StateId {
 
   private final DataHash hash;
@@ -20,22 +23,47 @@ public class StateId {
     this.hash = hash;
   }
 
+  /**
+   * Returns the raw hash bytes of this state id.
+   *
+   * @return state id hash bytes
+   */
   public byte[] getData() {
     return this.hash.getData();
   }
 
+  /**
+   * Deserializes a state id from CBOR.
+   *
+   * @param bytes CBOR byte string containing SHA-256 hash bytes
+   * @return decoded state id
+   */
   public static StateId fromCbor(byte[] bytes) {
     return new StateId(
-        new DataHash(HashAlgorithm.SHA256, CborDeserializer.decodeByteString(bytes)));
+            new DataHash(HashAlgorithm.SHA256, CborDeserializer.decodeByteString(bytes)));
   }
 
+  /**
+   * Creates a state id from certification data.
+   *
+   * @param certificationData certification data carrying lock script and source state hash
+   * @return created state id
+   * @throws NullPointerException if {@code certificationData} is {@code null}
+   */
   public static StateId fromCertificationData(CertificationData certificationData) {
     Objects.requireNonNull(certificationData, "Certification data cannot be null");
 
     return StateId.create(certificationData.getLockScript(),
-        certificationData.getSourceStateHash());
+            certificationData.getSourceStateHash());
   }
 
+  /**
+   * Creates a state id from transaction data.
+   *
+   * @param transaction transaction carrying lock script and source state hash
+   * @return created state id
+   * @throws NullPointerException if {@code transaction} is {@code null}
+   */
   public static StateId fromTransaction(Transaction transaction) {
     Objects.requireNonNull(transaction, "Transaction cannot be null");
 
@@ -44,17 +72,22 @@ public class StateId {
 
   private static StateId create(Predicate predicate, DataHash stateHash) {
     DataHash hash = new DataHasher(HashAlgorithm.SHA256)
-        .update(
-            CborSerializer.encodeArray(
-                EncodedPredicate.fromPredicate(predicate).toCbor(),
-                CborSerializer.encodeByteString(stateHash.getData())
+            .update(
+                    CborSerializer.encodeArray(
+                            EncodedPredicate.fromPredicate(predicate).toCbor(),
+                            CborSerializer.encodeByteString(stateHash.getData())
+                    )
             )
-        )
-        .digest();
+            .digest();
 
     return new StateId(hash);
   }
 
+  /**
+   * Serializes this state id as a CBOR bytes.
+   *
+   * @return CBOR-encoded state id
+   */
   public byte[] toCbor() {
     return CborSerializer.encodeByteString(this.getData());
   }
@@ -73,11 +106,6 @@ public class StateId {
     return Objects.hashCode(this.hash);
   }
 
-  /**
-   * Returns a string representation of the StateId.
-   *
-   * @return The string representation.
-   */
   @Override
   public String toString() {
     return String.format("StateId[%s]", HexConverter.encode(this.getData()));

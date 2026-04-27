@@ -15,6 +15,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * Immutable token aggregate containing the certified genesis mint transaction and transfer history.
+ */
 public class Token {
   public static final long CBOR_TAG = 39040;
   private static final int VERSION = 1;
@@ -35,14 +38,38 @@ public class Token {
     return Token.VERSION;
   }
 
+  /**
+   * Returns the token identifier.
+   *
+   * @return token id
+   */
   public TokenId getId() {
     return this.genesis.getTokenId();
   }
 
+  /**
+   * Returns the token type.
+   *
+   * @return token type
+   */
   public TokenType getType() {
     return this.genesis.getTokenType();
   }
 
+  /**
+   * Returns the certified genesis mint transaction.
+   *
+   * @return genesis transaction
+   */
+  public CertifiedMintTransaction getGenesis() {
+    return this.genesis;
+  }
+
+  /**
+   * Returns the most recent transaction in the token history.
+   *
+   * @return latest transfer transaction, or genesis transaction when no transfers exist
+   */
   public Transaction getLatestTransaction() {
     if (this.transactions.isEmpty()) {
       return this.genesis;
@@ -51,10 +78,21 @@ public class Token {
     return this.transactions.get(this.transactions.size() - 1);
   }
 
+  /**
+   * Returns the certified transfer transactions.
+   *
+   * @return immutable list of transfer transactions
+   */
   public List<CertifiedTransferTransaction> getTransactions() {
     return this.transactions;
   }
 
+  /**
+   * Deserializes a token from CBOR.
+   *
+   * @param bytes CBOR-encoded token bytes
+   * @return decoded token
+   */
   public static Token fromCbor(byte[] bytes) {
     CborDeserializer.CborTag tag = CborDeserializer.decodeTag(bytes);
     if (tag.getTag() != Token.CBOR_TAG) {
@@ -69,14 +107,23 @@ public class Token {
     List<byte[]> transactions = CborDeserializer.decodeArray(data.get(2));
 
     return new Token(
-        CertifiedMintTransaction.fromCbor(data.get(1)),
-        transactions.stream().map(CertifiedTransferTransaction::fromCbor)
-            .collect(Collectors.toList())
+            CertifiedMintTransaction.fromCbor(data.get(1)),
+            transactions.stream().map(CertifiedTransferTransaction::fromCbor)
+                    .collect(Collectors.toList())
     );
   }
 
+  /**
+   * Creates a token from a certified genesis transaction and verifies it.
+   *
+   * @param trustBase trust base used for certification checks
+   * @param predicateVerifier predicate verifier service
+   * @param genesis certified mint transaction
+   * @return verified token instance
+   * @throws VerificationException if genesis verification fails
+   */
   public static Token mint(RootTrustBase trustBase, PredicateVerifierService predicateVerifier,
-      CertifiedMintTransaction genesis) {
+                           CertifiedMintTransaction genesis) {
     Token token = new Token(genesis);
     VerificationResult<VerificationStatus> result = token.verify(trustBase, predicateVerifier);
     if (result.getStatus() != VerificationStatus.OK) {
@@ -86,13 +133,22 @@ public class Token {
     return token;
   }
 
+  /**
+   * Returns a new token instance with an additional verified transfer transaction.
+   *
+   * @param trustBase trust base used for certification checks
+   * @param predicateVerifier predicate verifier service
+   * @param transaction certified transfer transaction to append
+   * @return new token instance with appended transfer
+   * @throws VerificationException if transfer verification fails
+   */
   public Token transfer(RootTrustBase trustBase, PredicateVerifierService predicateVerifier,
-      CertifiedTransferTransaction transaction) {
+                        CertifiedTransferTransaction transaction) {
     VerificationResult<VerificationStatus> result = CertifiedTransferTransactionVerificationRule.verify(
-        trustBase,
-        predicateVerifier,
-        this.getLatestTransaction(),
-        transaction
+            trustBase,
+            predicateVerifier,
+            this.getLatestTransaction(),
+            transaction
     );
     if (result.getStatus() != VerificationStatus.OK) {
       throw new VerificationException("Invalid token transfer transaction", result);
@@ -103,39 +159,51 @@ public class Token {
     return new Token(this.genesis, transactions);
   }
 
+  /**
+   * Verifies genesis and transfer transaction chain integrity.
+   *
+   * @param trustBase trust base used for certification checks
+   * @param predicateVerifier predicate verifier service
+   * @return verification result with nested per-step verification details
+   */
   public VerificationResult<VerificationStatus> verify(RootTrustBase trustBase,
-      PredicateVerifierService predicateVerifier) {
+                                                       PredicateVerifierService predicateVerifier) {
     List<VerificationResult<?>> results = new ArrayList<>();
     VerificationResult<?> result = CertifiedMintTransactionVerificationRule.verify(trustBase,
-        predicateVerifier, this.genesis);
+            predicateVerifier, this.genesis);
     results.add(result);
     if (result.getStatus() != VerificationStatus.OK) {
       return new VerificationResult<>("TokenVerification", VerificationStatus.FAIL,
-          "Genesis verification failed", results);
+              "Genesis verification failed", results);
     }
 
     List<VerificationResult<?>> transferResults = new ArrayList<>();
     for (int i = 0; i < this.transactions.size(); i++) {
       CertifiedTransferTransaction transaction = this.transactions.get(i);
       result = CertifiedTransferTransactionVerificationRule.verify(trustBase, predicateVerifier,
-          i == 0 ? this.genesis : this.transactions.get(i - 1), transaction);
+              i == 0 ? this.genesis : this.transactions.get(i - 1), transaction);
       transferResults.add(result);
       if (result.getStatus() != VerificationStatus.OK) {
         results.add(
-            new VerificationResult<>("TokenTransferVerification", VerificationStatus.FAIL, "",
-                transferResults)
+                new VerificationResult<>("TokenTransferVerification", VerificationStatus.FAIL, "",
+                        transferResults)
         );
 
         return new VerificationResult<>("TokenVerification", VerificationStatus.FAIL,
-            String.format("Transaction[%s] verification failed", i), results);
+                String.format("Transaction[%s] verification failed", i), results);
       }
     }
     results.add(new VerificationResult<>("TokenTransferVerification", VerificationStatus.OK, "",
-        transferResults));
+            transferResults));
 
     return new VerificationResult<>("TokenVerification", VerificationStatus.OK, "", results);
   }
 
+  /**
+   * Serializes this token to CBOR bytes.
+   *
+   * @return CBOR-encoded token bytes
+   */
   public byte[] toCbor() {
     return CborSerializer.encodeTag(
             Token.CBOR_TAG,
@@ -144,10 +212,11 @@ public class Token {
                     this.genesis.toCbor(),
                     CborSerializer.encodeArray(
                             this.transactions.stream().map(Transaction::toCbor).toArray(byte[][]::new))
-      )
+            )
     );
   }
 
+  @Override
   public String toString() {
     return String.format("Token{genesis=%s, transactions=%s}", this.genesis, this.transactions);
   }

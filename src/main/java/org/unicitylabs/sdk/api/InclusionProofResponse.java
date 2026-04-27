@@ -1,8 +1,9 @@
 package org.unicitylabs.sdk.api;
 
-import java.util.List;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
+
+import java.util.List;
 
 /**
  * Inclusion proof response.
@@ -18,8 +19,8 @@ public class InclusionProofResponse {
    * @param inclusionProof inclusion proof
    */
   InclusionProofResponse(
-      long blockNumber,
-      InclusionProof inclusionProof
+          long blockNumber,
+          InclusionProof inclusionProof
   ) {
     this.blockNumber = blockNumber;
     this.inclusionProof = inclusionProof;
@@ -35,7 +36,7 @@ public class InclusionProofResponse {
   }
 
   /**
-   * Create response from CBOR bytes.
+   * Deserialize response from CBOR bytes.
    *
    * @param bytes CBOR bytes
    * @return inclusion proof response
@@ -43,15 +44,20 @@ public class InclusionProofResponse {
   public static InclusionProofResponse fromCbor(byte[] bytes) {
     List<byte[]> data = CborDeserializer.decodeArray(bytes);
     return new InclusionProofResponse(
-        CborDeserializer.decodeUnsignedInteger(data.get(0)).asLong(),
-        InclusionProof.fromCbor(data.get(1))
+            CborDeserializer.decodeUnsignedInteger(data.get(0)).asLong(),
+            InclusionProof.fromCbor(data.get(1))
     );
   }
 
+  /**
+   * Serialize inclusion proof response to CBOR bytes.
+   *
+   * @return CBOR bytes
+   */
   public byte[] toCbor() {
     return CborSerializer.encodeArray(
-        CborSerializer.encodeUnsignedInteger(this.blockNumber),
-        this.inclusionProof.toCbor()
+            CborSerializer.encodeUnsignedInteger(this.blockNumber),
+            this.inclusionProof.toCbor()
     );
   }
 

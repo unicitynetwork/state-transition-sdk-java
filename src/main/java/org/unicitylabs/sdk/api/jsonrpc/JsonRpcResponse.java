@@ -2,6 +2,7 @@ package org.unicitylabs.sdk.api.jsonrpc;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.util.Objects;
 import java.util.UUID;
 
@@ -19,10 +20,10 @@ public class JsonRpcResponse<T> {
 
   @JsonCreator
   JsonRpcResponse(
-      @JsonProperty("jsonrpc") String version,
-      @JsonProperty("result") T result,
-      @JsonProperty("error") JsonRpcError error,
-      @JsonProperty("id") UUID id
+          @JsonProperty("jsonrpc") String version,
+          @JsonProperty("result") T result,
+          @JsonProperty("error") JsonRpcError error,
+          @JsonProperty("id") UUID id
   ) {
     if (!"2.0".equals(version)) {
       throw new IllegalArgumentException("Invalid JSON-RPC version: " + version);
@@ -77,8 +78,8 @@ public class JsonRpcResponse<T> {
     }
     JsonRpcResponse<?> that = (JsonRpcResponse<?>) o;
     return Objects.equals(this.version, that.version) && Objects.equals(this.result,
-        that.result) && Objects.equals(this.error, that.error) && Objects.equals(this.id,
-        that.id);
+            that.result) && Objects.equals(this.error, that.error) && Objects.equals(this.id,
+            that.id);
   }
 
   @Override

@@ -1,9 +1,5 @@
 package org.unicitylabs.sdk.transaction;
 
-import java.util.Arrays;
-import java.util.List;
-import java.util.Objects;
-
 import org.unicitylabs.sdk.api.InclusionProof;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.crypto.MintSigningService;
@@ -19,155 +15,233 @@ import org.unicitylabs.sdk.serializer.cbor.CborSerializationException;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.util.HexConverter;
 
+import java.util.Arrays;
+import java.util.List;
+import java.util.Objects;
+
+
+/**
+ * Represents a Mint Transaction.
+ *
+ * <p>This transaction is responsible for minting new tokens with specific attributes and assigns
+ * it to an initial owner.
+ */
 public class MintTransaction implements Transaction {
-    public static final long CBOR_TAG = 39041;
-    private static final int VERSION = 1;
+  public static final long CBOR_TAG = 39041;
+  private static final int VERSION = 1;
 
-    private final MintTransactionState sourceStateHash;
-    private final Predicate lockScript;
-    private final Address recipient;
-    private final TokenId tokenId;
-    private final TokenType tokenType;
-    private final byte[] data;
+  private final MintTransactionState sourceStateHash;
+  private final Predicate lockScript;
+  private final Address recipient;
+  private final TokenId tokenId;
+  private final TokenType tokenType;
+  private final byte[] data;
 
-    private MintTransaction(
-            MintTransactionState sourceStateHash,
-            Predicate lockScript,
-            Address recipient,
-            TokenId tokenId,
-            TokenType tokenType,
-            byte[] data
-    ) {
-        this.sourceStateHash = sourceStateHash;
-        this.lockScript = lockScript;
-        this.recipient = recipient;
-        this.tokenId = tokenId;
-        this.tokenType = tokenType;
-        this.data = data;
+  private MintTransaction(
+          MintTransactionState sourceStateHash,
+          Predicate lockScript,
+          Address recipient,
+          TokenId tokenId,
+          TokenType tokenType,
+          byte[] data
+  ) {
+    this.sourceStateHash = sourceStateHash;
+    this.lockScript = lockScript;
+    this.recipient = recipient;
+    this.tokenId = tokenId;
+    this.tokenType = tokenType;
+    this.data = data;
+  }
+
+  public int getVersion() {
+    return MintTransaction.VERSION;
+  }
+
+
+  /**
+   * Retrieves the state hash of the source state.
+   *
+   * @return the source state hash represented as a {@code MintTransactionState}.
+   */
+  public MintTransactionState getSourceStateHash() {
+    return this.sourceStateHash;
+  }
+
+  /**
+   * Retrieves the lock script.
+   *
+   * @return a {@code Predicate} representing the lock script.
+   */
+  public Predicate getLockScript() {
+    return this.lockScript;
+  }
+
+  /**
+   * Retrieves the initial owner address.
+   *
+   * @return the recipient address as an {@code Address}.
+   */
+  public Address getRecipient() {
+    return this.recipient;
+  }
+
+  /**
+   * Retrieves the unique token identifier.
+   *
+   * @return the token identifier as a {@code TokenId}.
+   */
+  public TokenId getTokenId() {
+    return this.tokenId;
+  }
+
+  /**
+   * Retrieves the type identifier of the token.
+   *
+   * @return the token type as a {@code TokenType}.
+   */
+  public TokenType getTokenType() {
+    return this.tokenType;
+  }
+
+  @Override
+  public byte[] getData() {
+    return this.data;
+  }
+
+  @Override
+  public byte[] getNonce() {
+    return this.tokenId.getBytes();
+  }
+
+  /**
+   * Create a mint transaction.
+   *
+   * @param recipient recipient address
+   * @param tokenId token identifier
+   * @param tokenType token type identifier
+   * @param data payload bytes
+   *
+   * @return mint transaction
+   */
+  public static MintTransaction create(
+          Address recipient,
+          TokenId tokenId,
+          TokenType tokenType,
+          byte[] data
+  ) {
+    Objects.requireNonNull(recipient, "Recipient cannot be null");
+    Objects.requireNonNull(tokenId, "Token ID cannot be null");
+    Objects.requireNonNull(tokenType, "Token type cannot be null");
+    Objects.requireNonNull(data, "Data cannot be null");
+
+    SigningService signingService = MintSigningService.create(tokenId);
+    return new MintTransaction(
+            MintTransactionState.create(tokenId),
+            PayToPublicKeyPredicate.fromSigningService(signingService),
+            recipient,
+            tokenId,
+            tokenType,
+            Arrays.copyOf(data, data.length)
+    );
+  }
+
+  /**
+   * Deserialize mint transaction from CBOR bytes.
+   *
+   * @param bytes CBOR bytes
+   *
+   * @return mint transaction
+   */
+  public static MintTransaction fromCbor(byte[] bytes) {
+    CborDeserializer.CborTag tag = CborDeserializer.decodeTag(bytes);
+    if (tag.getTag() != MintTransaction.CBOR_TAG) {
+      throw new CborSerializationException(String.format("Invalid CBOR tag: %s", tag.getTag()));
     }
+    List<byte[]> data = CborDeserializer.decodeArray(tag.getData());
 
-    public int getVersion() {
-        return MintTransaction.VERSION;
+    int version = CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt();
+    if (version != MintTransaction.VERSION) {
+      throw new CborSerializationException(String.format("Unsupported version: %s", version));
     }
+    List<byte[]> aux = CborDeserializer.decodeArray(data.get(3));
 
-    public MintTransactionState getSourceStateHash() {
-        return this.sourceStateHash;
-    }
+    return MintTransaction.create(
+            Address.fromCbor(data.get(1)),
+            TokenId.fromCbor(data.get(2)),
+            TokenType.fromCbor(aux.get(0)),
+            CborDeserializer.decodeByteString(aux.get(1))
+    );
+  }
 
-    public Predicate getLockScript() {
-        return this.lockScript;
-    }
+  /**
+   * Calculate mint transaction state hash.
+   *
+   * @return state hash
+   */
+  @Override
+  public DataHash calculateStateHash() {
+    return new DataHasher(HashAlgorithm.SHA256)
+            .update(
+                    CborSerializer.encodeArray(
+                            CborSerializer.encodeByteString(this.sourceStateHash.getImprint()),
+                            CborSerializer.encodeByteString(this.getNonce())
+                    )
+            )
+            .digest();
+  }
 
-    public Address getRecipient() {
-        return this.recipient;
-    }
+  /**
+   * Calculate hash of serialized mint transaction.
+   *
+   * @return transaction hash
+   */
+  @Override
+  public DataHash calculateTransactionHash() {
+    return new DataHasher(HashAlgorithm.SHA256).update(this.toCbor()).digest();
+  }
 
-    public TokenId getTokenId() {
-        return this.tokenId;
-    }
+  /**
+   * Serialize mint transaction to CBOR bytes.
+   *
+   * @return CBOR bytes
+   */
+  @Override
+  public byte[] toCbor() {
+    return CborSerializer.encodeTag(
+            MintTransaction.CBOR_TAG,
+            CborSerializer.encodeArray(
+                    CborSerializer.encodeUnsignedInteger(MintTransaction.VERSION),
+                    this.recipient.toCbor(),
+                    this.tokenId.toCbor(),
+                    CborSerializer.encodeArray(this.tokenType.toCbor(),
+                            CborSerializer.encodeByteString(this.data))
+            )
+    );
+  }
 
-    public TokenType getTokenType() {
-        return this.tokenType;
-    }
+  /**
+   * Build certified mint transaction by attaching and verifying inclusion proof.
+   *
+   * @param trustBase root trust base
+   * @param predicateVerifier predicate verifier
+   * @param inclusionProof inclusion proof
+   *
+   * @return certified mint transaction
+   */
+  public CertifiedMintTransaction toCertifiedTransaction(
+          RootTrustBase trustBase,
+          PredicateVerifierService predicateVerifier,
+          InclusionProof inclusionProof
+  ) {
+    return CertifiedMintTransaction.fromTransaction(trustBase, predicateVerifier, this,
+            inclusionProof);
+  }
 
-    @Override
-    public byte[] getData() {
-        return this.data;
-    }
-
-    @Override
-    public byte[] getX() {
-        return this.tokenId.getBytes();
-    }
-
-    public static MintTransaction create(
-            Address recipient,
-            TokenId tokenId,
-            TokenType tokenType,
-            byte[] data
-    ) {
-        Objects.requireNonNull(recipient, "Recipient cannot be null");
-        Objects.requireNonNull(tokenId, "Token ID cannot be null");
-        Objects.requireNonNull(tokenType, "Token type cannot be null");
-        Objects.requireNonNull(data, "Data cannot be null");
-
-        SigningService signingService = MintSigningService.create(tokenId);
-        return new MintTransaction(
-                MintTransactionState.create(tokenId),
-                PayToPublicKeyPredicate.fromSigningService(signingService),
-                recipient,
-                tokenId,
-                tokenType,
-                Arrays.copyOf(data, data.length)
-        );
-    }
-
-    public static MintTransaction fromCbor(byte[] bytes) {
-        CborDeserializer.CborTag tag = CborDeserializer.decodeTag(bytes);
-        if (tag.getTag() != MintTransaction.CBOR_TAG) {
-            throw new CborSerializationException(String.format("Invalid CBOR tag: %s", tag.getTag()));
-        }
-        List<byte[]> data = CborDeserializer.decodeArray(tag.getData());
-
-        int version = CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt();
-        if (version != MintTransaction.VERSION) {
-            throw new CborSerializationException(String.format("Unsupported version: %s", version));
-        }
-        List<byte[]> aux = CborDeserializer.decodeArray(data.get(3));
-
-        return MintTransaction.create(
-                Address.fromCbor(data.get(1)),
-                TokenId.fromCbor(data.get(2)),
-                TokenType.fromCbor(aux.get(0)),
-                CborDeserializer.decodeByteString(aux.get(1))
-        );
-    }
-
-    @Override
-    public DataHash calculateStateHash() {
-        return new DataHasher(HashAlgorithm.SHA256)
-                .update(
-                        CborSerializer.encodeArray(
-                                CborSerializer.encodeByteString(this.sourceStateHash.getImprint()),
-                                CborSerializer.encodeByteString(this.getX())
-                        )
-                )
-                .digest();
-    }
-
-    @Override
-    public DataHash calculateTransactionHash() {
-        return new DataHasher(HashAlgorithm.SHA256).update(this.toCbor()).digest();
-    }
-
-    @Override
-    public byte[] toCbor() {
-        return CborSerializer.encodeTag(
-                MintTransaction.CBOR_TAG,
-                CborSerializer.encodeArray(
-                        CborSerializer.encodeUnsignedInteger(MintTransaction.VERSION),
-                        this.recipient.toCbor(),
-                        this.tokenId.toCbor(),
-                        CborSerializer.encodeArray(this.tokenType.toCbor(),
-                                CborSerializer.encodeByteString(this.data))
-                )
-        );
-    }
-
-    public CertifiedMintTransaction toCertifiedTransaction(
-            RootTrustBase trustBase,
-            PredicateVerifierService predicateVerifier,
-            InclusionProof inclusionProof
-    ) {
-        return CertifiedMintTransaction.fromTransaction(trustBase, predicateVerifier, this,
-                inclusionProof);
-    }
-
-    @Override
-    public String toString() {
-        return String.format(
-                "MintTransaction{sourceStateHash=%s, lockScript=%s, recipient=%s, tokenId=%s, tokenType=%s, data=%s}",
-                this.sourceStateHash, this.lockScript, this.recipient, this.tokenId, this.tokenType,
-                HexConverter.encode(this.data));
-    }
+  @Override
+  public String toString() {
+    return String.format(
+            "MintTransaction{sourceStateHash=%s, lockScript=%s, recipient=%s, tokenId=%s, tokenType=%s, data=%s}",
+            this.sourceStateHash, this.lockScript, this.recipient, this.tokenId, this.tokenType,
+            HexConverter.encode(this.data));
+  }
 }

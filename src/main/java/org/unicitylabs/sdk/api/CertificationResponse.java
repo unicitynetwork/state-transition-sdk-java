@@ -3,7 +3,6 @@ package org.unicitylabs.sdk.api;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import java.util.Objects;
 import org.unicitylabs.sdk.serializer.UnicityObjectMapper;
 import org.unicitylabs.sdk.serializer.json.JsonSerializationException;
 
@@ -21,7 +20,7 @@ public class CertificationResponse {
    */
   @JsonCreator
   CertificationResponse(
-      @JsonProperty("status") CertificationStatus status
+          @JsonProperty("status") CertificationStatus status
   ) {
     this.status = status;
   }

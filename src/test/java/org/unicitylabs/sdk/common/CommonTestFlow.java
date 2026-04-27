@@ -31,31 +31,31 @@ public abstract class CommonTestFlow {
   @Test
   public void testTransferFlow() throws Exception {
     Token aliceToken = TokenUtils.mintToken(
-        this.client,
-        this.trustBase,
-        this.predicateVerifier,
-        Address.fromPredicate(PayToPublicKeyPredicate.create(ALICE_SIGNING_SERVICE.getPublicKey()))
+            this.client,
+            this.trustBase,
+            this.predicateVerifier,
+            Address.fromPredicate(PayToPublicKeyPredicate.create(ALICE_SIGNING_SERVICE.getPublicKey()))
     );
 
     Token bobToken = TokenUtils.transferToken(
-        this.client,
-        this.trustBase,
-        this.predicateVerifier,
-        aliceToken.toCbor(),
-        Address.fromPredicate(PayToPublicKeyPredicate.create(BOB_SIGNING_SERVICE.getPublicKey())),
-        ALICE_SIGNING_SERVICE
+            this.client,
+            this.trustBase,
+            this.predicateVerifier,
+            aliceToken.toCbor(),
+            Address.fromPredicate(PayToPublicKeyPredicate.create(BOB_SIGNING_SERVICE.getPublicKey())),
+            ALICE_SIGNING_SERVICE
     );
 
     Token carolToken = TokenUtils.transferToken(
-        this.client,
-        this.trustBase,
-        this.predicateVerifier,
-        bobToken.toCbor(),
-        Address.fromPredicate(PayToPublicKeyPredicate.create(CAROL_SIGNING_SERVICE.getPublicKey())),
-        BOB_SIGNING_SERVICE
+            this.client,
+            this.trustBase,
+            this.predicateVerifier,
+            bobToken.toCbor(),
+            Address.fromPredicate(PayToPublicKeyPredicate.create(CAROL_SIGNING_SERVICE.getPublicKey())),
+            BOB_SIGNING_SERVICE
     );
 
     Assertions.assertEquals(VerificationStatus.OK,
-        carolToken.verify(this.trustBase, this.predicateVerifier).getStatus());
+            carolToken.verify(this.trustBase, this.predicateVerifier).getStatus());
   }
 }

@@ -1,8 +1,5 @@
 package org.unicitylabs.sdk.predicate.builtin;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.predicate.Predicate;
@@ -15,13 +12,26 @@ import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.util.verification.VerificationResult;
 import org.unicitylabs.sdk.util.verification.VerificationStatus;
 
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Default {@link PredicateVerifier} implementation for built-in predicates.
+ */
 public class DefaultBuiltInPredicateVerifier implements PredicateVerifier {
 
   private final Map<BuiltInPredicateType, BuiltInPredicateVerifier> verifiers;
 
 
+  /**
+   * Creates a verifier registry from built-in predicate verifiers.
+   *
+   * @param verifiers verifiers to register, one per predicate type
+   * @throws IllegalArgumentException if multiple verifiers are provided for the same type
+   */
   public DefaultBuiltInPredicateVerifier(
-      List<BuiltInPredicateVerifier> verifiers) {
+          List<BuiltInPredicateVerifier> verifiers) {
     Map<BuiltInPredicateType, BuiltInPredicateVerifier> result = new HashMap<>();
     for (BuiltInPredicateVerifier verifier : verifiers) {
       if (result.containsKey(verifier.getType())) {
@@ -39,20 +49,27 @@ public class DefaultBuiltInPredicateVerifier implements PredicateVerifier {
     return PredicateEngine.BUILT_IN;
   }
 
+  /**
+   * Creates the default built-in predicate verifier set.
+   *
+   * @param service predicate verifier service
+   * @param trustBase root trust base
+   * @return default built-in predicate verifier
+   */
   public static DefaultBuiltInPredicateVerifier create(PredicateVerifierService service, RootTrustBase trustBase) {
     return new DefaultBuiltInPredicateVerifier(
-        List.of(
-            new PayToPublicKeyPredicateVerifier()
-        )
+            List.of(
+                    new PayToPublicKeyPredicateVerifier()
+            )
     );
   }
 
   @Override
   public VerificationResult<VerificationStatus> verify(Predicate predicate,
-      DataHash sourceStateHash,
-      DataHash transactionHash, byte[] unlockScript) {
+                                                       DataHash sourceStateHash,
+                                                       DataHash transactionHash, byte[] unlockScript) {
     BuiltInPredicateType type = BuiltInPredicateType.fromId(
-        CborDeserializer.decodeUnsignedInteger(predicate.encodeCode()).asInt());
+            CborDeserializer.decodeUnsignedInteger(predicate.encodeCode()).asInt());
 
     BuiltInPredicateVerifier verifier = this.verifiers.get(type);
     if (verifier == null) {

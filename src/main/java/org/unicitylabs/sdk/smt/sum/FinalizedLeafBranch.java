@@ -1,13 +1,14 @@
 package org.unicitylabs.sdk.smt.sum;
 
-import java.math.BigInteger;
-import java.util.Objects;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.crypto.hash.DataHasher;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
-import org.unicitylabs.sdk.smt.sum.SparseMerkleSumTree.LeafValue;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
+import org.unicitylabs.sdk.smt.sum.SparseMerkleSumTree.LeafValue;
 import org.unicitylabs.sdk.util.BigIntegerConverter;
+
+import java.math.BigInteger;
+import java.util.Objects;
 
 /**
  * Finalized leaf branch in a sparse merkle sum tree.
@@ -33,19 +34,19 @@ class FinalizedLeafBranch implements LeafBranch, FinalizedBranch {
    * @return finalized leaf branch
    */
   public static FinalizedLeafBranch create(
-      BigInteger path,
-      LeafValue value,
-      HashAlgorithm hashAlgorithm
+          BigInteger path,
+          LeafValue value,
+          HashAlgorithm hashAlgorithm
   ) {
     DataHash hash = new DataHasher(hashAlgorithm)
-        .update(
-            CborSerializer.encodeArray(
-                CborSerializer.encodeByteString(BigIntegerConverter.encode(path)),
-                CborSerializer.encodeByteString(value.getValue()),
-                CborSerializer.encodeByteString(BigIntegerConverter.encode(value.getCounter()))
+            .update(
+                    CborSerializer.encodeArray(
+                            CborSerializer.encodeByteString(BigIntegerConverter.encode(path)),
+                            CborSerializer.encodeByteString(value.getValue()),
+                            CborSerializer.encodeByteString(BigIntegerConverter.encode(value.getCounter()))
+                    )
             )
-        )
-        .digest();
+            .digest();
     return new FinalizedLeafBranch(path, value, hash);
   }
 

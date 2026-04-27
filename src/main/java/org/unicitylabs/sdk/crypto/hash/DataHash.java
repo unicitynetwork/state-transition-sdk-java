@@ -1,11 +1,12 @@
 
 package org.unicitylabs.sdk.crypto.hash;
 
-import java.util.Arrays;
-import java.util.Objects;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.util.HexConverter;
+
+import java.util.Arrays;
+import java.util.Objects;
 
 /**
  * DataHash represents a hash of data using a specific hash algorithm.
@@ -91,7 +92,7 @@ public class DataHash {
   }
 
   /**
-   * Create data hash from CBOR bytes.
+   * Deserialize data hash from CBOR bytes.
    *
    * @param bytes CBOR bytes
    * @return data hash
@@ -101,7 +102,7 @@ public class DataHash {
   }
 
   /**
-   * Convert data hash to CBOR bytes.
+   * Serialize data hash to CBOR bytes.
    *
    * @return CBOR bytes
    */

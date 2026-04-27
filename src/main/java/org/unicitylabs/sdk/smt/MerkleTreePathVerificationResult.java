@@ -51,7 +51,7 @@ public class MerkleTreePathVerificationResult {
   @Override
   public String toString() {
     return String.format("MerkleTreePathVerificationResult{pathValid=%b, pathIncluded=%b}",
-        pathValid, pathIncluded);
+            pathValid, pathIncluded);
   }
 
   @Override

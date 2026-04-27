@@ -1,14 +1,10 @@
 package org.unicitylabs.sdk.serializer.cbor;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
-import java.util.function.Function;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer.CborMap;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer.CborMap.Entry;
+
+import java.util.*;
+import java.util.function.Function;
 
 /**
  * CBOR deserialization utilities.
@@ -68,7 +64,7 @@ public class CborDeserializer {
   public static String decodeTextString(byte[] data) {
     CborReader reader = new CborReader(data);
     return new String(
-        reader.read((int) reader.readLength(CborMajorType.TEXT_STRING)));
+            reader.read((int) reader.readLength(CborMajorType.TEXT_STRING)));
   }
 
   /**
@@ -177,7 +173,7 @@ public class CborDeserializer {
       }
 
       byte additionalInformation = (byte) (initialByte
-          & CborDeserializer.ADDITIONAL_INFORMATION_MASK);
+              & CborDeserializer.ADDITIONAL_INFORMATION_MASK);
       if (Byte.compareUnsigned(additionalInformation, (byte) 24) < 0) {
         return additionalInformation;
       }
@@ -212,7 +208,7 @@ public class CborDeserializer {
       }
 
       CborMajorType majorType = CborMajorType.fromType(
-          this.data[this.position] & CborDeserializer.MAJOR_TYPE_MASK);
+              this.data[this.position] & CborDeserializer.MAJOR_TYPE_MASK);
       int position = this.position;
       int length = (int) this.readLength(majorType);
       switch (majorType) {

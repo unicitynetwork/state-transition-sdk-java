@@ -1,12 +1,13 @@
 package org.unicitylabs.sdk.smt.sum;
 
-import java.math.BigInteger;
-import java.util.Arrays;
-import java.util.Objects;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.unicitylabs.sdk.smt.BranchExistsException;
 import org.unicitylabs.sdk.smt.CommonPath;
 import org.unicitylabs.sdk.smt.LeafOutOfBoundsException;
+
+import java.math.BigInteger;
+import java.util.Arrays;
+import java.util.Objects;
 
 /**
  * Sparse Merkle Sum Tree implementation.
@@ -38,7 +39,7 @@ public class SparseMerkleSumTree {
    * @throws NullPointerException     if the path or value is null
    */
   public synchronized void addLeaf(BigInteger path, LeafValue value)
-      throws BranchExistsException, LeafOutOfBoundsException {
+          throws BranchExistsException, LeafOutOfBoundsException {
     Objects.requireNonNull(path, "Path cannot be null");
     Objects.requireNonNull(value, "Value cannot be null");
 
@@ -53,8 +54,8 @@ public class SparseMerkleSumTree {
     boolean isRight = path.testBit(0);
     Branch branch = isRight ? this.right : this.left;
     Branch result = branch != null
-        ? SparseMerkleSumTree.buildTree(branch, path, value)
-        : new PendingLeafBranch(path, value);
+            ? SparseMerkleSumTree.buildTree(branch, path, value)
+            : new PendingLeafBranch(path, value);
 
     if (isRight) {
       this.right = result;
@@ -78,7 +79,7 @@ public class SparseMerkleSumTree {
   }
 
   private static Branch buildTree(Branch branch, BigInteger remainingPath, LeafValue value)
-      throws BranchExistsException, LeafOutOfBoundsException {
+          throws BranchExistsException, LeafOutOfBoundsException {
     CommonPath commonPath = CommonPath.create(remainingPath, branch.getPath());
     boolean isRight = remainingPath.shiftRight(commonPath.getLength()).testBit(0);
 
@@ -94,11 +95,11 @@ public class SparseMerkleSumTree {
       LeafBranch leafBranch = (LeafBranch) branch;
 
       LeafBranch oldBranch = new PendingLeafBranch(
-          branch.getPath().shiftRight(commonPath.getLength()), leafBranch.getValue());
+              branch.getPath().shiftRight(commonPath.getLength()), leafBranch.getValue());
       LeafBranch newBranch = new PendingLeafBranch(remainingPath.shiftRight(commonPath.getLength()),
-          value);
+              value);
       return new PendingNodeBranch(commonPath.getPath(), isRight ? oldBranch : newBranch,
-          isRight ? newBranch : oldBranch);
+              isRight ? newBranch : oldBranch);
     }
 
     NodeBranch nodeBranch = (NodeBranch) branch;
@@ -106,23 +107,23 @@ public class SparseMerkleSumTree {
     // if node branch is split in the middle
     if (commonPath.getPath().compareTo(branch.getPath()) < 0) {
       LeafBranch newBranch = new PendingLeafBranch(remainingPath.shiftRight(commonPath.getLength()),
-          value);
+              value);
       NodeBranch oldBranch = new PendingNodeBranch(
-          branch.getPath().shiftRight(commonPath.getLength()), nodeBranch.getLeft(),
-          nodeBranch.getRight());
+              branch.getPath().shiftRight(commonPath.getLength()), nodeBranch.getLeft(),
+              nodeBranch.getRight());
       return new PendingNodeBranch(commonPath.getPath(), isRight ? oldBranch : newBranch,
-          isRight ? newBranch : oldBranch);
+              isRight ? newBranch : oldBranch);
     }
 
     if (isRight) {
       return new PendingNodeBranch(nodeBranch.getPath(), nodeBranch.getLeft(),
-          SparseMerkleSumTree.buildTree(nodeBranch.getRight(),
-              remainingPath.shiftRight(commonPath.getLength()), value));
+              SparseMerkleSumTree.buildTree(nodeBranch.getRight(),
+                      remainingPath.shiftRight(commonPath.getLength()), value));
     }
 
     return new PendingNodeBranch(nodeBranch.getPath(),
-        SparseMerkleSumTree.buildTree(nodeBranch.getLeft(),
-            remainingPath.shiftRight(commonPath.getLength()), value), nodeBranch.getRight());
+            SparseMerkleSumTree.buildTree(nodeBranch.getLeft(),
+                    remainingPath.shiftRight(commonPath.getLength()), value), nodeBranch.getRight());
   }
 
   /**

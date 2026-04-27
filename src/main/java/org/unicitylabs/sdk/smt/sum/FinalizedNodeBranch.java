@@ -1,12 +1,13 @@
 package org.unicitylabs.sdk.smt.sum;
 
-import java.math.BigInteger;
-import java.util.Objects;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.crypto.hash.DataHasher;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.util.BigIntegerConverter;
+
+import java.math.BigInteger;
+import java.util.Objects;
 
 /**
  * Finalized node branch in a sparse merkle sum tree.
@@ -20,11 +21,11 @@ class FinalizedNodeBranch implements NodeBranch, FinalizedBranch {
   private final DataHash hash;
 
   private FinalizedNodeBranch(
-      BigInteger path,
-      FinalizedBranch left,
-      FinalizedBranch right,
-      BigInteger counter,
-      DataHash hash
+          BigInteger path,
+          FinalizedBranch left,
+          FinalizedBranch right,
+          BigInteger counter,
+          DataHash hash
   ) {
     this.path = path;
     this.left = left;
@@ -43,10 +44,10 @@ class FinalizedNodeBranch implements NodeBranch, FinalizedBranch {
    * @return finalized node branch
    */
   public static FinalizedNodeBranch create(
-      BigInteger path,
-      FinalizedBranch left,
-      FinalizedBranch right,
-      HashAlgorithm hashAlgorithm
+          BigInteger path,
+          FinalizedBranch left,
+          FinalizedBranch right,
+          HashAlgorithm hashAlgorithm
   ) {
     byte[] leftHash = left == null ? null : left.getHash().getData();
     byte[] rightHash = right == null ? null : right.getHash().getData();
@@ -54,16 +55,16 @@ class FinalizedNodeBranch implements NodeBranch, FinalizedBranch {
     BigInteger rightCounter = right == null ? BigInteger.ZERO : right.getCounter();
 
     DataHash hash = new DataHasher(hashAlgorithm)
-        .update(
-            CborSerializer.encodeArray(
-                CborSerializer.encodeByteString(BigIntegerConverter.encode(path)),
-                CborSerializer.encodeOptional(leftHash, CborSerializer::encodeByteString),
-                CborSerializer.encodeByteString(BigIntegerConverter.encode(leftCounter)),
-                CborSerializer.encodeOptional(rightHash, CborSerializer::encodeByteString),
-                CborSerializer.encodeByteString(BigIntegerConverter.encode(rightCounter))
+            .update(
+                    CborSerializer.encodeArray(
+                            CborSerializer.encodeByteString(BigIntegerConverter.encode(path)),
+                            CborSerializer.encodeOptional(leftHash, CborSerializer::encodeByteString),
+                            CborSerializer.encodeByteString(BigIntegerConverter.encode(leftCounter)),
+                            CborSerializer.encodeOptional(rightHash, CborSerializer::encodeByteString),
+                            CborSerializer.encodeByteString(BigIntegerConverter.encode(rightCounter))
+                    )
             )
-        )
-        .digest();
+            .digest();
 
     BigInteger counter = leftCounter.add(rightCounter);
 
@@ -107,7 +108,7 @@ class FinalizedNodeBranch implements NodeBranch, FinalizedBranch {
     }
     FinalizedNodeBranch that = (FinalizedNodeBranch) o;
     return Objects.equals(this.path, that.path) && Objects.equals(this.left, that.left)
-        && Objects.equals(this.right, that.right);
+            && Objects.equals(this.right, that.right);
   }
 
   @Override

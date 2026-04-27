@@ -1,12 +1,13 @@
 package org.unicitylabs.sdk.smt.sum;
 
+import org.unicitylabs.sdk.crypto.hash.DataHash;
+import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
+import org.unicitylabs.sdk.smt.CommonPath;
+
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import org.unicitylabs.sdk.crypto.hash.DataHash;
-import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
-import org.unicitylabs.sdk.smt.CommonPath;
 
 /**
  * Sparse Merkle Sum Tree root node.
@@ -20,12 +21,12 @@ public class SparseMerkleSumTreeRootNode {
   }
 
   static SparseMerkleSumTreeRootNode create(
-      FinalizedBranch left,
-      FinalizedBranch right,
-      HashAlgorithm hashAlgorithm
+          FinalizedBranch left,
+          FinalizedBranch right,
+          HashAlgorithm hashAlgorithm
   ) {
     return new SparseMerkleSumTreeRootNode(
-        FinalizedNodeBranch.create(BigInteger.ONE, left, right, hashAlgorithm)
+            FinalizedNodeBranch.create(BigInteger.ONE, left, right, hashAlgorithm)
     );
   }
 
@@ -55,8 +56,8 @@ public class SparseMerkleSumTreeRootNode {
    */
   public SparseMerkleSumTreePath getPath(BigInteger path) {
     return new SparseMerkleSumTreePath(
-        this.root.getHash(),
-        SparseMerkleSumTreeRootNode.generatePath(path, this.root)
+            this.root.getHash(),
+            SparseMerkleSumTreeRootNode.generatePath(path, this.root)
     );
   }
 
@@ -75,15 +76,15 @@ public class SparseMerkleSumTreeRootNode {
   }
 
   private static List<SparseMerkleSumTreePathStep> generatePath(
-      BigInteger remainingPath,
-      FinalizedBranch parent
+          BigInteger remainingPath,
+          FinalizedBranch parent
   ) {
     if (parent instanceof LeafBranch) {
       LeafBranch leaf = (LeafBranch) parent;
       return List.of(new SparseMerkleSumTreePathStep(
-          leaf.getPath(),
-          leaf.getValue().getValue(),
-          leaf.getValue().getCounter()
+              leaf.getPath(),
+              leaf.getValue().getValue(),
+              leaf.getValue().getCounter()
       ));
     }
 
@@ -92,26 +93,26 @@ public class SparseMerkleSumTreeRootNode {
     remainingPath = remainingPath.shiftRight(commonPath.getLength());
 
     if (commonPath.getPath().compareTo(parent.getPath()) != 0
-        || remainingPath.compareTo(BigInteger.ONE) == 0) {
+            || remainingPath.compareTo(BigInteger.ONE) == 0) {
       return List.of(
-          new SparseMerkleSumTreePathStep(
-              BigInteger.ZERO,
-              node.getLeft() == null
-                  ? null
-                  : node.getLeft().getHash().getData(),
-              node.getLeft() == null
-                  ? BigInteger.ZERO
-                  : node.getLeft().getCounter()
-          ),
-          new SparseMerkleSumTreePathStep(
-              node.getPath(),
-              node.getRight() == null
-                  ? null
-                  : node.getRight().getHash().getData(),
-              node.getRight() == null
-                  ? BigInteger.ZERO
-                  : node.getRight().getCounter()
-          )
+              new SparseMerkleSumTreePathStep(
+                      BigInteger.ZERO,
+                      node.getLeft() == null
+                              ? null
+                              : node.getLeft().getHash().getData(),
+                      node.getLeft() == null
+                              ? BigInteger.ZERO
+                              : node.getLeft().getCounter()
+              ),
+              new SparseMerkleSumTreePathStep(
+                      node.getPath(),
+                      node.getRight() == null
+                              ? null
+                              : node.getRight().getHash().getData(),
+                      node.getRight() == null
+                              ? BigInteger.ZERO
+                              : node.getRight().getCounter()
+              )
       );
     }
 
@@ -120,24 +121,24 @@ public class SparseMerkleSumTreeRootNode {
     FinalizedBranch siblingBranch = isRight ? node.getLeft() : node.getRight();
 
     SparseMerkleSumTreePathStep step = new SparseMerkleSumTreePathStep(
-        node.getPath(),
-        siblingBranch == null ? null : siblingBranch.getHash().getData(),
-        siblingBranch == null ? BigInteger.ZERO : siblingBranch.getCounter()
+            node.getPath(),
+            siblingBranch == null ? null : siblingBranch.getHash().getData(),
+            siblingBranch == null ? BigInteger.ZERO : siblingBranch.getCounter()
     );
 
     if (branch == null) {
       return List.of(
-          new SparseMerkleSumTreePathStep(
-              isRight ? BigInteger.ONE : BigInteger.ZERO,
-              null,
-              BigInteger.ZERO
-          ),
-          step
+              new SparseMerkleSumTreePathStep(
+                      isRight ? BigInteger.ONE : BigInteger.ZERO,
+                      null,
+                      BigInteger.ZERO
+              ),
+              step
       );
     }
 
     List<SparseMerkleSumTreePathStep> list = new ArrayList<>(
-        SparseMerkleSumTreeRootNode.generatePath(remainingPath, branch)
+            SparseMerkleSumTreeRootNode.generatePath(remainingPath, branch)
     );
 
     list.add(step);

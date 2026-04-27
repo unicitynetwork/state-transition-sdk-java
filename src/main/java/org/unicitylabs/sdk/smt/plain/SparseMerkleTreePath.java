@@ -1,15 +1,16 @@
 package org.unicitylabs.sdk.smt.plain;
 
+import org.unicitylabs.sdk.crypto.hash.DataHash;
+import org.unicitylabs.sdk.crypto.hash.DataHasher;
+import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
+import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
+import org.unicitylabs.sdk.smt.MerkleTreePathVerificationResult;
+import org.unicitylabs.sdk.util.BigIntegerConverter;
+
 import java.math.BigInteger;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
-import org.unicitylabs.sdk.crypto.hash.DataHash;
-import org.unicitylabs.sdk.crypto.hash.DataHasher;
-import org.unicitylabs.sdk.smt.MerkleTreePathVerificationResult;
-import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
-import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
-import org.unicitylabs.sdk.util.BigIntegerConverter;
 
 /**
  * Sparse merkle tree path for selected path.
@@ -61,16 +62,16 @@ public class SparseMerkleTreePath {
     BigInteger currentPath = step.getPath();
     if (step.getPath().compareTo(BigInteger.ONE) > 0) {
       DataHash hash = new DataHasher(this.rootHash.getAlgorithm())
-          .update(
-              CborSerializer.encodeArray(
-                  CborSerializer.encodeByteString(BigIntegerConverter.encode(step.getPath())),
-                  CborSerializer.encodeOptional(
-                      step.getData().orElse(null),
-                      CborSerializer::encodeByteString
-                  )
+              .update(
+                      CborSerializer.encodeArray(
+                              CborSerializer.encodeByteString(BigIntegerConverter.encode(step.getPath())),
+                              CborSerializer.encodeOptional(
+                                      step.getData().orElse(null),
+                                      CborSerializer::encodeByteString
+                              )
+                      )
               )
-          )
-          .digest();
+              .digest();
 
       currentData = hash.getData();
     } else {
@@ -87,14 +88,14 @@ public class SparseMerkleTreePath {
       byte[] right = isRight ? currentData : step.getData().orElse(null);
 
       DataHash hash = new DataHasher(this.rootHash.getAlgorithm())
-          .update(
-              CborSerializer.encodeArray(
-                  CborSerializer.encodeByteString(BigIntegerConverter.encode(step.getPath())),
-                  CborSerializer.encodeOptional(left, CborSerializer::encodeByteString),
-                  CborSerializer.encodeOptional(right, CborSerializer::encodeByteString)
+              .update(
+                      CborSerializer.encodeArray(
+                              CborSerializer.encodeByteString(BigIntegerConverter.encode(step.getPath())),
+                              CborSerializer.encodeOptional(left, CborSerializer::encodeByteString),
+                              CborSerializer.encodeOptional(right, CborSerializer::encodeByteString)
+                      )
               )
-          )
-          .digest();
+              .digest();
 
       currentData = hash.getData();
 
@@ -103,19 +104,19 @@ public class SparseMerkleTreePath {
         return new MerkleTreePathVerificationResult(false, false);
       }
       currentPath = currentPath.shiftLeft(length)
-          .or(step.getPath().and(BigInteger.ONE.shiftLeft(length).subtract(BigInteger.ONE)));
+              .or(step.getPath().and(BigInteger.ONE.shiftLeft(length).subtract(BigInteger.ONE)));
       previousStep = step;
     }
 
     boolean pathValid = currentData != null
-        && this.rootHash.equals(new DataHash(this.rootHash.getAlgorithm(), currentData));
+            && this.rootHash.equals(new DataHash(this.rootHash.getAlgorithm(), currentData));
     boolean pathIncluded = currentPath.compareTo(stateId) == 0;
 
     return new MerkleTreePathVerificationResult(pathValid, pathIncluded);
   }
 
   /**
-   * Create sparse merkle tree path from CBOR bytes.
+   * Deserialize sparse merkle tree path from CBOR bytes.
    *
    * @param bytes CBOR bytes
    * @return path
@@ -124,26 +125,26 @@ public class SparseMerkleTreePath {
     List<byte[]> data = CborDeserializer.decodeArray(bytes);
 
     return new SparseMerkleTreePath(
-        DataHash.fromCbor(data.get(0)),
-        CborDeserializer.decodeArray(data.get(1)).stream()
-            .map(SparseMerkleTreePathStep::fromCbor)
-            .collect(Collectors.toList())
+            DataHash.fromCbor(data.get(0)),
+            CborDeserializer.decodeArray(data.get(1)).stream()
+                    .map(SparseMerkleTreePathStep::fromCbor)
+                    .collect(Collectors.toList())
     );
   }
 
   /**
-   * Convert sparse merkle tree path to CBOR bytes.
+   * Serialize sparse merkle tree path to CBOR bytes.
    *
    * @return CBOR bytes
    */
   public byte[] toCbor() {
     return CborSerializer.encodeArray(
-        this.rootHash.toCbor(),
-        CborSerializer.encodeArray(
-            this.steps.stream()
-                .map(SparseMerkleTreePathStep::toCbor)
-                .toArray(byte[][]::new)
-        )
+            this.rootHash.toCbor(),
+            CborSerializer.encodeArray(
+                    this.steps.stream()
+                            .map(SparseMerkleTreePathStep::toCbor)
+                            .toArray(byte[][]::new)
+            )
     );
   }
 

@@ -27,163 +27,163 @@ import org.unicitylabs.sdk.util.HexConverter;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class InclusionProofTest {
 
-    MintTransaction transaction;
-    PredicateVerifierService predicateVerifier;
-    StateId stateId;
-    InclusionCertificate inclusionCertificate;
-    CertificationData certificationData;
-    RootTrustBase trustBase;
-    UnicityCertificate unicityCertificate;
+  MintTransaction transaction;
+  PredicateVerifierService predicateVerifier;
+  StateId stateId;
+  InclusionCertificate inclusionCertificate;
+  CertificationData certificationData;
+  RootTrustBase trustBase;
+  UnicityCertificate unicityCertificate;
 
-    @BeforeAll
-    public void createMerkleTreePath() throws Exception {
-        SigningService signingService = new SigningService(
-                HexConverter.decode("0000000000000000000000000000000000000000000000000000000000000001"));
+  @BeforeAll
+  public void createMerkleTreePath() throws Exception {
+    SigningService signingService = new SigningService(
+            HexConverter.decode("0000000000000000000000000000000000000000000000000000000000000001"));
 
 
-        transaction = MintTransaction.create(
-                Address.fromPredicate(PayToPublicKeyPredicate.fromSigningService(signingService)),
-                TokenId.generate(),
-                TokenType.generate(),
-                new byte[32]
-        );
+    transaction = MintTransaction.create(
+            Address.fromPredicate(PayToPublicKeyPredicate.fromSigningService(signingService)),
+            TokenId.generate(),
+            TokenType.generate(),
+            new byte[32]
+    );
 
-        certificationData = CertificationData.fromMintTransaction(transaction);
-        stateId = StateId.fromCertificationData(certificationData);
+    certificationData = CertificationData.fromMintTransaction(transaction);
+    stateId = StateId.fromCertificationData(certificationData);
 
-        SparseMerkleTree smt = new SparseMerkleTree(HashAlgorithm.SHA256);
-        smt.addLeaf(stateId.getData(), certificationData.getTransactionHash().getData());
+    SparseMerkleTree smt = new SparseMerkleTree(HashAlgorithm.SHA256);
+    smt.addLeaf(stateId.getData(), certificationData.getTransactionHash().getData());
 
-        FinalizedNodeBranch root = smt.calculateRoot();
-        inclusionCertificate = InclusionCertificate.create(root, stateId.getData());
-        SigningService ucSigningService = new SigningService(SigningService.generatePrivateKey());
-        trustBase = RootTrustBaseUtils.generateRootTrustBase(ucSigningService.getPublicKey());
-        unicityCertificate = UnicityCertificateUtils.generateCertificate(ucSigningService, root.getHash());
-        predicateVerifier = PredicateVerifierService.create(trustBase);
-    }
+    FinalizedNodeBranch root = smt.calculateRoot();
+    inclusionCertificate = InclusionCertificate.create(root, stateId.getData());
+    SigningService ucSigningService = new SigningService(SigningService.generatePrivateKey());
+    trustBase = RootTrustBaseUtils.generateRootTrustBase(ucSigningService.getPublicKey());
+    unicityCertificate = UnicityCertificateUtils.generateCertificate(ucSigningService, root.getHash());
+    predicateVerifier = PredicateVerifierService.create(trustBase);
+  }
 
-    @Test
-    public void testCborSerialization() {
-        InclusionProof inclusionProof = new InclusionProof(
-                certificationData,
-                inclusionCertificate,
-                unicityCertificate
-        );
+  @Test
+  public void testCborSerialization() {
+    InclusionProof inclusionProof = new InclusionProof(
+            certificationData,
+            inclusionCertificate,
+            unicityCertificate
+    );
 
-        Assertions.assertEquals(inclusionProof, InclusionProof.fromCbor(inclusionProof.toCbor()));
-    }
+    Assertions.assertEquals(inclusionProof, InclusionProof.fromCbor(inclusionProof.toCbor()));
+  }
 
-    @Test
-    public void testStructure() {
-        Assertions.assertThrows(NullPointerException.class,
-                () -> new InclusionProof(
-                        this.certificationData,
-                        this.inclusionCertificate,
-                        null
-                )
-        );
-        Assertions.assertInstanceOf(InclusionProof.class,
-                new InclusionProof(
-                        this.certificationData,
-                        this.inclusionCertificate,
-                        this.unicityCertificate
-                )
-        );
-        Assertions.assertInstanceOf(InclusionProof.class,
-                new InclusionProof(
-                        null,
-                        this.inclusionCertificate,
-                        this.unicityCertificate
-                )
-        );
-    }
+  @Test
+  public void testStructure() {
+    Assertions.assertThrows(NullPointerException.class,
+            () -> new InclusionProof(
+                    this.certificationData,
+                    this.inclusionCertificate,
+                    null
+            )
+    );
+    Assertions.assertInstanceOf(InclusionProof.class,
+            new InclusionProof(
+                    this.certificationData,
+                    this.inclusionCertificate,
+                    this.unicityCertificate
+            )
+    );
+    Assertions.assertInstanceOf(InclusionProof.class,
+            new InclusionProof(
+                    null,
+                    this.inclusionCertificate,
+                    this.unicityCertificate
+            )
+    );
+  }
 
-    @Test
-    public void testItVerifies() {
-        InclusionProof inclusionProof = new InclusionProof(
-                this.certificationData,
-                this.inclusionCertificate,
-                this.unicityCertificate
-        );
-        Assertions.assertEquals(
-                InclusionProofVerificationStatus.OK,
-                InclusionProofVerificationRule.verify(
-                        this.trustBase,
-                        this.predicateVerifier,
-                        inclusionProof,
-                        this.transaction
-                ).getStatus()
-        );
+  @Test
+  public void testItVerifies() {
+    InclusionProof inclusionProof = new InclusionProof(
+            this.certificationData,
+            this.inclusionCertificate,
+            this.unicityCertificate
+    );
+    Assertions.assertEquals(
+            InclusionProofVerificationStatus.OK,
+            InclusionProofVerificationRule.verify(
+                    this.trustBase,
+                    this.predicateVerifier,
+                    inclusionProof,
+                    this.transaction
+            ).getStatus()
+    );
 
-        InclusionProof invalidTransactionHashInclusionProof = new InclusionProof(
-                new CertificationData(
-                        this.certificationData.getLockScript(),
-                        this.certificationData.getSourceStateHash(),
-                        DataHash.fromImprint(
-                                HexConverter.decode("00000000000000000000000000000000000000000000000000000000000000000001")
-                        ),
-                        this.certificationData.getUnlockScript()
-                ),
-                this.inclusionCertificate,
-                this.unicityCertificate
-        );
+    InclusionProof invalidTransactionHashInclusionProof = new InclusionProof(
+            new CertificationData(
+                    this.certificationData.getLockScript(),
+                    this.certificationData.getSourceStateHash(),
+                    DataHash.fromImprint(
+                            HexConverter.decode("00000000000000000000000000000000000000000000000000000000000000000001")
+                    ),
+                    this.certificationData.getUnlockScript()
+            ),
+            this.inclusionCertificate,
+            this.unicityCertificate
+    );
 
-        Assertions.assertEquals(
-                InclusionProofVerificationStatus.TRANSACTION_HASH_MISMATCH,
-                InclusionProofVerificationRule.verify(
-                        this.trustBase,
-                        this.predicateVerifier,
-                        invalidTransactionHashInclusionProof,
-                        this.transaction
-                ).getStatus()
-        );
-    }
+    Assertions.assertEquals(
+            InclusionProofVerificationStatus.TRANSACTION_HASH_MISMATCH,
+            InclusionProofVerificationRule.verify(
+                    this.trustBase,
+                    this.predicateVerifier,
+                    invalidTransactionHashInclusionProof,
+                    this.transaction
+            ).getStatus()
+    );
+  }
 
-    @Test
-    public void testItNotAuthenticated() {
-        InclusionProof invalidInclusionProof = new InclusionProof(
-                new CertificationData(
-                        this.certificationData.getLockScript(),
-                        this.certificationData.getSourceStateHash(),
-                        this.certificationData.getTransactionHash(),
-                        PayToPublicKeyPredicateUnlockScript.create(
-                                this.transaction,
-                                new SigningService(SigningService.generatePrivateKey())
-                        ).encode()
-                ),
-                this.inclusionCertificate,
-                this.unicityCertificate
-        );
+  @Test
+  public void testItNotAuthenticated() {
+    InclusionProof invalidInclusionProof = new InclusionProof(
+            new CertificationData(
+                    this.certificationData.getLockScript(),
+                    this.certificationData.getSourceStateHash(),
+                    this.certificationData.getTransactionHash(),
+                    PayToPublicKeyPredicateUnlockScript.create(
+                            this.transaction,
+                            new SigningService(SigningService.generatePrivateKey())
+                    ).encode()
+            ),
+            this.inclusionCertificate,
+            this.unicityCertificate
+    );
 
-        Assertions.assertEquals(
-                InclusionProofVerificationStatus.NOT_AUTHENTICATED,
-                InclusionProofVerificationRule.verify(
-                        this.trustBase,
-                        this.predicateVerifier,
-                        invalidInclusionProof,
-                        this.transaction
-                ).getStatus()
-        );
-    }
+    Assertions.assertEquals(
+            InclusionProofVerificationStatus.NOT_AUTHENTICATED,
+            InclusionProofVerificationRule.verify(
+                    this.trustBase,
+                    this.predicateVerifier,
+                    invalidInclusionProof,
+                    this.transaction
+            ).getStatus()
+    );
+  }
 
-    @Test
-    public void testVerificationFailsWithInvalidTrustbase() {
-        InclusionProof inclusionProof = new InclusionProof(
-                this.certificationData,
-                this.inclusionCertificate,
-                this.unicityCertificate
-        );
+  @Test
+  public void testVerificationFailsWithInvalidTrustbase() {
+    InclusionProof inclusionProof = new InclusionProof(
+            this.certificationData,
+            this.inclusionCertificate,
+            this.unicityCertificate
+    );
 
-        Assertions.assertEquals(
-                InclusionProofVerificationStatus.INVALID_TRUSTBASE,
-                InclusionProofVerificationRule.verify(
-                        RootTrustBaseUtils.generateRootTrustBase(
-                                HexConverter.decode("020000000000000000000000000000000000000000000000000000000000000001")
-                        ),
-                        this.predicateVerifier,
-                        inclusionProof,
-                        this.transaction
-                ).getStatus()
-        );
-    }
+    Assertions.assertEquals(
+            InclusionProofVerificationStatus.INVALID_TRUSTBASE,
+            InclusionProofVerificationRule.verify(
+                    RootTrustBaseUtils.generateRootTrustBase(
+                            HexConverter.decode("020000000000000000000000000000000000000000000000000000000000000001")
+                    ),
+                    this.predicateVerifier,
+                    inclusionProof,
+                    this.transaction
+            ).getStatus()
+    );
+  }
 }
