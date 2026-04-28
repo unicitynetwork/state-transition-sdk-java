@@ -100,8 +100,8 @@ public class InclusionProof {
             InclusionProof.CBOR_TAG,
             CborSerializer.encodeArray(
                     CborSerializer.encodeUnsignedInteger(InclusionProof.VERSION),
-                    CborSerializer.encodeOptional(this.certificationData, CertificationData::toCbor),
-                    CborSerializer.encodeOptional(this.inclusionCertificate, (inclusionCertificate) ->
+                    CborSerializer.encodeNullable(this.certificationData, CertificationData::toCbor),
+                    CborSerializer.encodeNullable(this.inclusionCertificate, (inclusionCertificate) ->
                             CborSerializer.encodeByteString(inclusionCertificate.encode())
                     ),
                     this.unicityCertificate.toCbor()

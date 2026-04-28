@@ -13,6 +13,7 @@ import org.unicitylabs.sdk.util.verification.VerificationException;
 import org.unicitylabs.sdk.util.verification.VerificationResult;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Transfer transaction with a verified inclusion proof.
@@ -30,51 +31,26 @@ public class CertifiedTransferTransaction implements Transaction {
     this.inclusionProof = inclusionProof;
   }
 
-  /**
-   * Get transaction payload data.
-   *
-   * @return payload data bytes
-   */
   @Override
-  public byte[] getData() {
+  public Optional<byte[]> getData() {
     return this.transaction.getData();
   }
 
-  /**
-   * Get predicate locking script for this transaction output.
-   *
-   * @return lock script predicate
-   */
   @Override
   public Predicate getLockScript() {
     return this.transaction.getLockScript();
   }
 
-  /**
-   * Get recipient address of this transaction.
-   *
-   * @return recipient address
-   */
   @Override
-  public Address getRecipient() {
+  public Predicate getRecipient() {
     return this.transaction.getRecipient();
   }
 
-  /**
-   * Get source state hash of this transaction.
-   *
-   * @return source state hash
-   */
   @Override
   public DataHash getSourceStateHash() {
     return this.transaction.getSourceStateHash();
   }
 
-  /**
-   * Get transaction chosen random bytes.
-   *
-   * @return random bytes
-   */
   @Override
   public byte[] getNonce() {
     return this.transaction.getNonce();
@@ -93,14 +69,17 @@ public class CertifiedTransferTransaction implements Transaction {
    * Deserialize a certified transfer transaction from CBOR bytes.
    *
    * @param bytes CBOR encoded certified transfer transaction
+   * @param token token providing the source state for the deserialized transfer
    *
    * @return certified transfer transaction
    */
-  public static CertifiedTransferTransaction fromCbor(byte[] bytes) {
+  public static CertifiedTransferTransaction fromCbor(byte[] bytes, Token token) {
     List<byte[]> data = CborDeserializer.decodeArray(bytes);
 
-    return new CertifiedTransferTransaction(TransferTransaction.fromCbor(data.get(0)),
-            InclusionProof.fromCbor(data.get(1)));
+    return new CertifiedTransferTransaction(
+            TransferTransaction.fromCbor(data.get(0), token),
+            InclusionProof.fromCbor(data.get(1))
+    );
   }
 
   /**

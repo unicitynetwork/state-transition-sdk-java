@@ -16,7 +16,6 @@ import org.unicitylabs.sdk.predicate.builtin.PayToPublicKeyPredicateUnlockScript
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
 import org.unicitylabs.sdk.smt.radix.FinalizedNodeBranch;
 import org.unicitylabs.sdk.smt.radix.SparseMerkleTree;
-import org.unicitylabs.sdk.transaction.Address;
 import org.unicitylabs.sdk.transaction.MintTransaction;
 import org.unicitylabs.sdk.transaction.TokenId;
 import org.unicitylabs.sdk.transaction.TokenType;
@@ -42,10 +41,11 @@ public class InclusionProofTest {
 
 
     transaction = MintTransaction.create(
-            Address.fromPredicate(PayToPublicKeyPredicate.fromSigningService(signingService)),
+            PayToPublicKeyPredicate.fromSigningService(signingService),
             TokenId.generate(),
             TokenType.generate(),
-            new byte[32]
+            null,
+            null
     );
 
     certificationData = CertificationData.fromMintTransaction(transaction);

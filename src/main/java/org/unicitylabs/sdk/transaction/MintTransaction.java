@@ -7,6 +7,7 @@ import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.crypto.hash.DataHasher;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
+import org.unicitylabs.sdk.predicate.EncodedPredicate;
 import org.unicitylabs.sdk.predicate.Predicate;
 import org.unicitylabs.sdk.predicate.builtin.PayToPublicKeyPredicate;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
@@ -18,6 +19,7 @@ import org.unicitylabs.sdk.util.HexConverter;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 
 /**
@@ -32,17 +34,19 @@ public class MintTransaction implements Transaction {
 
   private final MintTransactionState sourceStateHash;
   private final Predicate lockScript;
-  private final Address recipient;
+  private final Predicate recipient;
   private final TokenId tokenId;
   private final TokenType tokenType;
+  private final byte[] justification;
   private final byte[] data;
 
   private MintTransaction(
           MintTransactionState sourceStateHash,
           Predicate lockScript,
-          Address recipient,
+          Predicate recipient,
           TokenId tokenId,
           TokenType tokenType,
+          byte[] justification,
           byte[] data
   ) {
     this.sourceStateHash = sourceStateHash;
@@ -50,6 +54,7 @@ public class MintTransaction implements Transaction {
     this.recipient = recipient;
     this.tokenId = tokenId;
     this.tokenType = tokenType;
+    this.justification = justification;
     this.data = data;
   }
 
@@ -58,30 +63,18 @@ public class MintTransaction implements Transaction {
   }
 
 
-  /**
-   * Retrieves the state hash of the source state.
-   *
-   * @return the source state hash represented as a {@code MintTransactionState}.
-   */
+  @Override
   public MintTransactionState getSourceStateHash() {
     return this.sourceStateHash;
   }
 
-  /**
-   * Retrieves the lock script.
-   *
-   * @return a {@code Predicate} representing the lock script.
-   */
+  @Override
   public Predicate getLockScript() {
     return this.lockScript;
   }
 
-  /**
-   * Retrieves the initial owner address.
-   *
-   * @return the recipient address as an {@code Address}.
-   */
-  public Address getRecipient() {
+  @Override
+  public Predicate getRecipient() {
     return this.recipient;
   }
 
@@ -103,9 +96,18 @@ public class MintTransaction implements Transaction {
     return this.tokenType;
   }
 
+  /**
+   * Retrieves the justification for the mint transaction, if any.
+   *
+   * @return optional justification bytes
+   */
+  public Optional<byte[]> getJustification() {
+    return Optional.ofNullable(this.justification != null ? Arrays.copyOf(this.justification, this.justification.length) : null);
+  }
+
   @Override
-  public byte[] getData() {
-    return this.data;
+  public Optional<byte[]> getData() {
+    return Optional.ofNullable(this.data != null ? Arrays.copyOf(this.data, this.data.length) : null);
   }
 
   @Override
@@ -116,23 +118,24 @@ public class MintTransaction implements Transaction {
   /**
    * Create a mint transaction.
    *
-   * @param recipient recipient address
+   * @param recipient recipient predicate
    * @param tokenId token identifier
    * @param tokenType token type identifier
-   * @param data payload bytes
+   * @param justification mint justification bytes, may be null
+   * @param data payload bytes, may be null
    *
    * @return mint transaction
    */
   public static MintTransaction create(
-          Address recipient,
+          Predicate recipient,
           TokenId tokenId,
           TokenType tokenType,
+          byte[] justification,
           byte[] data
   ) {
     Objects.requireNonNull(recipient, "Recipient cannot be null");
     Objects.requireNonNull(tokenId, "Token ID cannot be null");
     Objects.requireNonNull(tokenType, "Token type cannot be null");
-    Objects.requireNonNull(data, "Data cannot be null");
 
     SigningService signingService = MintSigningService.create(tokenId);
     return new MintTransaction(
@@ -141,7 +144,8 @@ public class MintTransaction implements Transaction {
             recipient,
             tokenId,
             tokenType,
-            Arrays.copyOf(data, data.length)
+            justification != null ? Arrays.copyOf(justification, justification.length) : null,
+            data != null ? Arrays.copyOf(data, data.length) : null
     );
   }
 
@@ -163,13 +167,13 @@ public class MintTransaction implements Transaction {
     if (version != MintTransaction.VERSION) {
       throw new CborSerializationException(String.format("Unsupported version: %s", version));
     }
-    List<byte[]> aux = CborDeserializer.decodeArray(data.get(3));
 
     return MintTransaction.create(
-            Address.fromCbor(data.get(1)),
+            EncodedPredicate.fromCbor(data.get(1)),
             TokenId.fromCbor(data.get(2)),
-            TokenType.fromCbor(aux.get(0)),
-            CborDeserializer.decodeByteString(aux.get(1))
+            TokenType.fromCbor(data.get(3)),
+            CborDeserializer.decodeNullable(data.get(4), CborDeserializer::decodeByteString),
+            CborDeserializer.decodeNullable(data.get(5), CborDeserializer::decodeByteString)
     );
   }
 
@@ -211,10 +215,11 @@ public class MintTransaction implements Transaction {
             MintTransaction.CBOR_TAG,
             CborSerializer.encodeArray(
                     CborSerializer.encodeUnsignedInteger(MintTransaction.VERSION),
-                    this.recipient.toCbor(),
+                    EncodedPredicate.fromPredicate(this.recipient).toCbor(),
                     this.tokenId.toCbor(),
-                    CborSerializer.encodeArray(this.tokenType.toCbor(),
-                            CborSerializer.encodeByteString(this.data))
+                    this.tokenType.toCbor(),
+                    CborSerializer.encodeNullable(this.justification, CborSerializer::encodeByteString),
+                    CborSerializer.encodeNullable(this.data, CborSerializer::encodeByteString)
             )
     );
   }

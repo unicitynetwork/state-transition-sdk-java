@@ -65,7 +65,7 @@ public class SparseMerkleTreePath {
               .update(
                       CborSerializer.encodeArray(
                               CborSerializer.encodeByteString(BigIntegerConverter.encode(step.getPath())),
-                              CborSerializer.encodeOptional(
+                              CborSerializer.encodeNullable(
                                       step.getData().orElse(null),
                                       CborSerializer::encodeByteString
                               )
@@ -91,8 +91,8 @@ public class SparseMerkleTreePath {
               .update(
                       CborSerializer.encodeArray(
                               CborSerializer.encodeByteString(BigIntegerConverter.encode(step.getPath())),
-                              CborSerializer.encodeOptional(left, CborSerializer::encodeByteString),
-                              CborSerializer.encodeOptional(right, CborSerializer::encodeByteString)
+                              CborSerializer.encodeNullable(left, CborSerializer::encodeByteString),
+                              CborSerializer.encodeNullable(right, CborSerializer::encodeByteString)
                       )
               )
               .digest();

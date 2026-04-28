@@ -22,7 +22,7 @@ public class CborSerializer {
    * @param <T>     value type
    * @return bytes
    */
-  public static <T> byte[] encodeOptional(T data, Function<T, byte[]> encoder) {
+  public static <T> byte[] encodeNullable(T data, Function<T, byte[]> encoder) {
     if (data == null) {
       return new byte[]{(byte) 0xf6};
     }

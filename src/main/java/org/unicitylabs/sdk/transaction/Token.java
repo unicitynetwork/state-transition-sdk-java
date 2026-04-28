@@ -7,13 +7,13 @@ import org.unicitylabs.sdk.serializer.cbor.CborSerializationException;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.transaction.verification.CertifiedMintTransactionVerificationRule;
 import org.unicitylabs.sdk.transaction.verification.CertifiedTransferTransactionVerificationRule;
+import org.unicitylabs.sdk.transaction.verification.MintJustificationVerifierService;
 import org.unicitylabs.sdk.util.verification.VerificationException;
 import org.unicitylabs.sdk.util.verification.VerificationResult;
 import org.unicitylabs.sdk.util.verification.VerificationStatus;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * Immutable token aggregate containing the certified genesis mint transaction and transfer history.
@@ -104,13 +104,16 @@ public class Token {
     if (version != Token.VERSION) {
       throw new CborSerializationException(String.format("Unsupported version: %s", version));
     }
-    List<byte[]> transactions = CborDeserializer.decodeArray(data.get(2));
 
-    return new Token(
-            CertifiedMintTransaction.fromCbor(data.get(1)),
-            transactions.stream().map(CertifiedTransferTransaction::fromCbor)
-                    .collect(Collectors.toList())
-    );
+    CertifiedMintTransaction genesis = CertifiedMintTransaction.fromCbor(data.get(1));
+    List<byte[]> transactionsCbor = CborDeserializer.decodeArray(data.get(2));
+
+    List<CertifiedTransferTransaction> transactions = new ArrayList<>();
+    for (byte[] transaction : transactionsCbor) {
+      transactions.add(CertifiedTransferTransaction.fromCbor(transaction, new Token(genesis, transactions)));
+    }
+
+    return new Token(genesis, transactions);
   }
 
   /**
@@ -118,14 +121,19 @@ public class Token {
    *
    * @param trustBase trust base used for certification checks
    * @param predicateVerifier predicate verifier service
+   * @param mintJustificationVerifier mint justification verifier service
    * @param genesis certified mint transaction
    * @return verified token instance
    * @throws VerificationException if genesis verification fails
    */
-  public static Token mint(RootTrustBase trustBase, PredicateVerifierService predicateVerifier,
-                           CertifiedMintTransaction genesis) {
+  public static Token mint(
+          RootTrustBase trustBase,
+          PredicateVerifierService predicateVerifier,
+          MintJustificationVerifierService mintJustificationVerifier,
+          CertifiedMintTransaction genesis
+  ) {
     Token token = new Token(genesis);
-    VerificationResult<VerificationStatus> result = token.verify(trustBase, predicateVerifier);
+    VerificationResult<VerificationStatus> result = token.verify(trustBase, predicateVerifier, mintJustificationVerifier);
     if (result.getStatus() != VerificationStatus.OK) {
       throw new VerificationException("Invalid token genesis", result);
     }
@@ -147,7 +155,6 @@ public class Token {
     VerificationResult<VerificationStatus> result = CertifiedTransferTransactionVerificationRule.verify(
             trustBase,
             predicateVerifier,
-            this.getLatestTransaction(),
             transaction
     );
     if (result.getStatus() != VerificationStatus.OK) {
@@ -164,13 +171,21 @@ public class Token {
    *
    * @param trustBase trust base used for certification checks
    * @param predicateVerifier predicate verifier service
+   * @param mintJustificationVerifier mint justification verifier service
    * @return verification result with nested per-step verification details
    */
-  public VerificationResult<VerificationStatus> verify(RootTrustBase trustBase,
-                                                       PredicateVerifierService predicateVerifier) {
+  public VerificationResult<VerificationStatus> verify(
+          RootTrustBase trustBase,
+          PredicateVerifierService predicateVerifier,
+          MintJustificationVerifierService mintJustificationVerifier
+  ) {
     List<VerificationResult<?>> results = new ArrayList<>();
-    VerificationResult<?> result = CertifiedMintTransactionVerificationRule.verify(trustBase,
-            predicateVerifier, this.genesis);
+    VerificationResult<?> result = CertifiedMintTransactionVerificationRule.verify(
+            trustBase,
+            predicateVerifier,
+            mintJustificationVerifier,
+            this.genesis
+    );
     results.add(result);
     if (result.getStatus() != VerificationStatus.OK) {
       return new VerificationResult<>("TokenVerification", VerificationStatus.FAIL,
@@ -180,8 +195,7 @@ public class Token {
     List<VerificationResult<?>> transferResults = new ArrayList<>();
     for (int i = 0; i < this.transactions.size(); i++) {
       CertifiedTransferTransaction transaction = this.transactions.get(i);
-      result = CertifiedTransferTransactionVerificationRule.verify(trustBase, predicateVerifier,
-              i == 0 ? this.genesis : this.transactions.get(i - 1), transaction);
+      result = CertifiedTransferTransactionVerificationRule.verify(trustBase, predicateVerifier, transaction);
       transferResults.add(result);
       if (result.getStatus() != VerificationStatus.OK) {
         results.add(

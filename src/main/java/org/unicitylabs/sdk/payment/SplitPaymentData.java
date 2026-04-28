@@ -9,5 +9,5 @@ public interface SplitPaymentData extends PaymentData {
    *
    * @return split reason
    */
-  SplitReason getReason();
+  SplitMintJustification getReason();
 }

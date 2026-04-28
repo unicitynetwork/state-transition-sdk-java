@@ -3,6 +3,8 @@ package org.unicitylabs.sdk.transaction;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.predicate.Predicate;
 
+import java.util.Optional;
+
 /**
  * Common interface for token transactions.
  */
@@ -13,7 +15,7 @@ public interface Transaction {
    *
    * @return payload bytes
    */
-  byte[] getData();
+  Optional<byte[]> getData();
 
   /**
    * Gets the predicate that locks this transaction.
@@ -23,11 +25,11 @@ public interface Transaction {
   Predicate getLockScript();
 
   /**
-   * Gets the transaction recipient address.
+   * Gets the transaction recipient.
    *
-   * @return recipient address
+   * @return recipient predicate
    */
-  Address getRecipient();
+  Predicate getRecipient();
 
   /**
    * Gets the source state hash.

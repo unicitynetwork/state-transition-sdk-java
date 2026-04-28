@@ -79,7 +79,7 @@ public class SparseMerkleTreePathStep {
   public byte[] toCbor() {
     return CborSerializer.encodeArray(
             CborSerializer.encodeByteString(BigIntegerConverter.encode(this.path)),
-            CborSerializer.encodeOptional(this.data, CborSerializer::encodeByteString)
+            CborSerializer.encodeNullable(this.data, CborSerializer::encodeByteString)
     );
   }
 

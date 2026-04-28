@@ -182,13 +182,13 @@ public class InputRecord {
                     CborSerializer.encodeUnsignedInteger(InputRecord.VERSION),
                     CborSerializer.encodeUnsignedInteger(this.roundNumber),
                     CborSerializer.encodeUnsignedInteger(this.epoch),
-                    CborSerializer.encodeOptional(this.previousHash, CborSerializer::encodeByteString),
+                    CborSerializer.encodeNullable(this.previousHash, CborSerializer::encodeByteString),
                     CborSerializer.encodeByteString(this.hash),
                     CborSerializer.encodeByteString(this.summaryValue),
                     CborSerializer.encodeUnsignedInteger(this.timestamp),
-                    CborSerializer.encodeOptional(this.blockHash, CborSerializer::encodeByteString),
+                    CborSerializer.encodeNullable(this.blockHash, CborSerializer::encodeByteString),
                     CborSerializer.encodeUnsignedInteger(this.sumOfEarnedFees),
-                    CborSerializer.encodeOptional(this.executedTransactionsHash,
+                    CborSerializer.encodeNullable(this.executedTransactionsHash,
                             CborSerializer::encodeByteString)
             ));
   }

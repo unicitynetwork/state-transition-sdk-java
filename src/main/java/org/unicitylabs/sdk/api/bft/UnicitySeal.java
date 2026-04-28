@@ -211,9 +211,9 @@ public class UnicitySeal {
                     CborSerializer.encodeUnsignedInteger(this.rootChainRoundNumber),
                     CborSerializer.encodeUnsignedInteger(this.epoch),
                     CborSerializer.encodeUnsignedInteger(this.timestamp),
-                    CborSerializer.encodeOptional(this.previousHash, CborSerializer::encodeByteString),
+                    CborSerializer.encodeNullable(this.previousHash, CborSerializer::encodeByteString),
                     CborSerializer.encodeByteString(this.hash),
-                    CborSerializer.encodeOptional(
+                    CborSerializer.encodeNullable(
                             this.signatures,
                             (signatures) -> CborSerializer.encodeMap(
                                     new CborMap(

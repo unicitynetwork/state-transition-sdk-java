@@ -14,9 +14,9 @@ import java.util.stream.Collectors;
 public class SplitResult {
 
   private final TransferTransaction burnTransaction;
-  private final Map<TokenId, List<SplitReasonProof>> proofs;
+  private final Map<TokenId, List<SplitAssetProof>> proofs;
 
-  SplitResult(TransferTransaction burnTransaction, Map<TokenId, List<SplitReasonProof>> proofs) {
+  SplitResult(TransferTransaction burnTransaction, Map<TokenId, List<SplitAssetProof>> proofs) {
     this.burnTransaction = burnTransaction;
     this.proofs = Map.copyOf(
             proofs.entrySet().stream()
@@ -40,7 +40,7 @@ public class SplitResult {
    *
    * @return split proofs map
    */
-  public Map<TokenId, List<SplitReasonProof>> getProofs() {
+  public Map<TokenId, List<SplitAssetProof>> getProofs() {
     return this.proofs;
   }
 }

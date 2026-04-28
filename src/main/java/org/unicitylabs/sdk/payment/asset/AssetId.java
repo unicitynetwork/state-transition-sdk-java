@@ -74,7 +74,7 @@ public class AssetId {
 
   @Override
   public int hashCode() {
-    return Arrays.hashCode(bytes);
+    return Arrays.hashCode(this.bytes);
   }
 
   @Override

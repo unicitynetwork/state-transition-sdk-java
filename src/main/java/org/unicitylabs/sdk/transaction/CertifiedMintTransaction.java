@@ -13,6 +13,7 @@ import org.unicitylabs.sdk.util.verification.VerificationException;
 import org.unicitylabs.sdk.util.verification.VerificationResult;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Mint transaction bundled with an inclusion proof.
@@ -28,7 +29,7 @@ public class CertifiedMintTransaction implements Transaction {
   }
 
   @Override
-  public byte[] getData() {
+  public Optional<byte[]> getData() {
     return this.transaction.getData();
   }
 
@@ -38,7 +39,7 @@ public class CertifiedMintTransaction implements Transaction {
   }
 
   @Override
-  public Address getRecipient() {
+  public Predicate getRecipient() {
     return this.transaction.getRecipient();
   }
 
@@ -63,6 +64,10 @@ public class CertifiedMintTransaction implements Transaction {
    */
   public TokenType getTokenType() {
     return this.transaction.getTokenType();
+  }
+
+  public Optional<byte[]> getJustification() {
+    return this.transaction.getJustification();
   }
 
   @Override

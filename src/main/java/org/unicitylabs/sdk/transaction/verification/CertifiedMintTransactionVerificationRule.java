@@ -12,6 +12,7 @@ import org.unicitylabs.sdk.util.verification.VerificationStatus;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * Verification rule set for certified mint transactions.
@@ -27,15 +28,20 @@ public class CertifiedMintTransactionVerificationRule {
   /**
    * Verify a certified mint transaction.
    *
-   * @param trustBase root trust base used for inclusion proof verification
-   * @param predicateVerifier predicate verifier used by inclusion proof verification
+   * @param trustBase root trust base
+   * @param predicateVerifier predicate verifier
+   * @param mintJustificationVerifier mint justification verifier
    * @param transaction certified mint transaction to verify
    *
    * @return verification result with child results for each validation step
    */
-  public static VerificationResult<VerificationStatus> verify(RootTrustBase trustBase,
-                                                              PredicateVerifierService predicateVerifier, CertifiedMintTransaction transaction) {
-    ArrayList<VerificationResult<?>> results = new ArrayList<VerificationResult<?>>();
+  public static VerificationResult<VerificationStatus> verify(
+          RootTrustBase trustBase,
+          PredicateVerifierService predicateVerifier,
+          MintJustificationVerifierService mintJustificationVerifier,
+          CertifiedMintTransaction transaction
+  ) {
+    List<VerificationResult<?>> results = new ArrayList<>();
 
     SigningService signingService = MintSigningService.create(transaction.getTokenId());
     VerificationResult<?> result = Arrays.equals(
@@ -60,6 +66,17 @@ public class CertifiedMintTransactionVerificationRule {
     if (result.getStatus() != InclusionProofVerificationStatus.OK) {
       return new VerificationResult<>("CertifiedMintTransactionVerificationRule",
               VerificationStatus.FAIL, "Inclusion proof verification failed", results);
+    }
+
+    result = mintJustificationVerifier.verify(transaction);
+    results.add(result);
+    if (result.getStatus() != VerificationStatus.OK) {
+      return new VerificationResult<>(
+              "CertifiedMintTransactionVerificationRule",
+              VerificationStatus.FAIL,
+              "Invalid mint justification",
+              results
+      );
     }
 
     return new VerificationResult<>("CertifiedMintTransactionVerificationRule",

@@ -69,7 +69,7 @@ public class SparseMerkleSumTreePath {
               .update(
                       CborSerializer.encodeArray(
                               CborSerializer.encodeByteString(BigIntegerConverter.encode(step.getPath())),
-                              CborSerializer.encodeOptional(
+                              CborSerializer.encodeNullable(
                                       step.getData().orElse(null),
                                       CborSerializer::encodeByteString
                               ),
@@ -98,9 +98,9 @@ public class SparseMerkleSumTreePath {
               .update(
                       CborSerializer.encodeArray(
                               CborSerializer.encodeByteString(BigIntegerConverter.encode(step.getPath())),
-                              CborSerializer.encodeOptional(leftHash, CborSerializer::encodeByteString),
+                              CborSerializer.encodeNullable(leftHash, CborSerializer::encodeByteString),
                               CborSerializer.encodeByteString(BigIntegerConverter.encode(leftCounter)),
-                              CborSerializer.encodeOptional(rightHash, CborSerializer::encodeByteString),
+                              CborSerializer.encodeNullable(rightHash, CborSerializer::encodeByteString),
                               CborSerializer.encodeByteString(BigIntegerConverter.encode(rightCounter))
                       )
               )

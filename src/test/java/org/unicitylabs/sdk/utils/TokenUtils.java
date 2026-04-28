@@ -7,12 +7,13 @@ import org.unicitylabs.sdk.api.CertificationResponse;
 import org.unicitylabs.sdk.api.CertificationStatus;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
+import org.unicitylabs.sdk.predicate.Predicate;
 import org.unicitylabs.sdk.predicate.UnlockScript;
-import org.unicitylabs.sdk.predicate.builtin.PayToPublicKeyPredicate;
 import org.unicitylabs.sdk.predicate.builtin.PayToPublicKeyPredicateUnlockScript;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.transaction.*;
+import org.unicitylabs.sdk.transaction.verification.MintJustificationVerifierService;
 import org.unicitylabs.sdk.util.InclusionProofUtils;
 import org.unicitylabs.sdk.util.verification.VerificationStatus;
 
@@ -23,124 +24,64 @@ import java.security.SecureRandom;
  */
 public class TokenUtils {
 
-  /**
-   * Mint a token with empty payload.
-   *
-   * @param client state transition client
-   * @param trustBase trust base
-   * @param predicateVerifier predicate verifier
-   * @param recipient recipient address
-   *
-   * @return minted token
-   *
-   * @throws Exception when request or verification fails
-   */
   public static Token mintToken(
           StateTransitionClient client,
           RootTrustBase trustBase,
           PredicateVerifierService predicateVerifier,
-          Address recipient
+          MintJustificationVerifierService mintJustificationVerifier,
+          Predicate recipient
   ) throws Exception {
     return TokenUtils.mintToken(
             client,
             trustBase,
             predicateVerifier,
-            recipient,
-            CborSerializer.encodeArray()
-    );
-  }
-
-  /**
-   * Mint a token with explicit payload.
-   *
-   * @param client state transition client
-   * @param trustBase trust base
-   * @param predicateVerifier predicate verifier
-   * @param recipient recipient address
-   * @param data token payload
-   *
-   * @return minted token
-   *
-   * @throws Exception when request or verification fails
-   */
-  public static Token mintToken(
-          StateTransitionClient client,
-          RootTrustBase trustBase,
-          PredicateVerifierService predicateVerifier,
-          Address recipient,
-          byte[] data
-  ) throws Exception {
-    return TokenUtils.mintToken(
-            client,
-            trustBase,
-            predicateVerifier,
+            mintJustificationVerifier,
             TokenId.generate(),
-            recipient,
-            data
-    );
-  }
-
-  /**
-   * Mint a token with provided token id and generated type.
-   *
-   * @param client state transition client
-   * @param trustBase trust base
-   * @param predicateVerifier predicate verifier
-   * @param tokenId token id
-   * @param recipient recipient address
-   * @param data token payload
-   *
-   * @return minted token
-   *
-   * @throws Exception when request or verification fails
-   */
-  public static Token mintToken(
-          StateTransitionClient client,
-          RootTrustBase trustBase,
-          PredicateVerifierService predicateVerifier,
-          TokenId tokenId,
-          Address recipient,
-          byte[] data
-  ) throws Exception {
-    return TokenUtils.mintToken(
-            client,
-            trustBase,
-            predicateVerifier,
-            tokenId,
             TokenType.generate(),
             recipient,
-            data
+            null,
+            null
     );
   }
 
-  /**
-   * Mint a token with fully specified token id and type.
-   *
-   * @param client state transition client
-   * @param trustBase trust base
-   * @param predicateVerifier predicate verifier
-   * @param tokenId token id
-   * @param tokenType token type
-   * @param recipient recipient address
-   * @param data token payload
-   *
-   * @return minted token
-   *
-   * @throws Exception when request or verification fails
-   */
   public static Token mintToken(
           StateTransitionClient client,
           RootTrustBase trustBase,
           PredicateVerifierService predicateVerifier,
+          MintJustificationVerifierService mintJustificationVerifier,
+          Predicate recipient,
+          byte[] justification,
+          byte[] data
+  ) throws Exception {
+    return TokenUtils.mintToken(
+            client,
+            trustBase,
+            predicateVerifier,
+            mintJustificationVerifier,
+            TokenId.generate(),
+            TokenType.generate(),
+            recipient,
+            justification,
+            data
+    );
+  }
+
+  public static Token mintToken(
+          StateTransitionClient client,
+          RootTrustBase trustBase,
+          PredicateVerifierService predicateVerifier,
+          MintJustificationVerifierService mintJustificationVerifier,
           TokenId tokenId,
           TokenType tokenType,
-          Address recipient,
+          Predicate recipient,
+          byte[] justification,
           byte[] data
   ) throws Exception {
     MintTransaction transaction = MintTransaction.create(
             recipient,
             tokenId,
             tokenType,
+            justification,
             data
     );
 
@@ -155,6 +96,7 @@ public class TokenUtils {
     return Token.mint(
             trustBase,
             predicateVerifier,
+            mintJustificationVerifier,
             transaction.toCertifiedTransaction(
                     trustBase,
                     predicateVerifier,
@@ -182,19 +124,19 @@ public class TokenUtils {
           StateTransitionClient client,
           RootTrustBase trustBase,
           PredicateVerifierService predicateVerifier,
+          MintJustificationVerifierService mintJustificationVerifier,
           byte[] tokenBytes,
-          Address recipient,
+          Predicate recipient,
           SigningService signingService
   ) throws Exception {
     Token token = Token.fromCbor(tokenBytes);
-    Assertions.assertEquals(VerificationStatus.OK, token.verify(trustBase, predicateVerifier).getStatus());
+    Assertions.assertEquals(VerificationStatus.OK, token.verify(trustBase, predicateVerifier, mintJustificationVerifier).getStatus());
 
     byte[] x = new byte[32];
     new SecureRandom().nextBytes(x);
 
     TransferTransaction transaction = TransferTransaction.create(
             token,
-            PayToPublicKeyPredicate.create(signingService.getPublicKey()),
             recipient,
             x,
             CborSerializer.encodeArray()
