@@ -111,7 +111,7 @@ public final class CertifiedUnicityIdMintTransaction implements Transaction {
    * @return decoded certified mint transaction
    */
   public static CertifiedUnicityIdMintTransaction fromCbor(byte[] bytes) {
-    List<byte[]> data = CborDeserializer.decodeArray(bytes);
+    List<byte[]> data = CborDeserializer.decodeArray(bytes, 2);
     return new CertifiedUnicityIdMintTransaction(
             UnicityIdMintTransaction.fromCbor(data.get(0)),
             InclusionProof.fromCbor(data.get(1))

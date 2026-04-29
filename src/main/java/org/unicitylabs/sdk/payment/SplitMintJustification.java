@@ -77,7 +77,7 @@ public final class SplitMintJustification {
     if (tag.getTag() != SplitMintJustification.CBOR_TAG) {
       throw new CborSerializationException(String.format("Invalid CBOR tag: %s", tag.getTag()));
     }
-    List<byte[]> data = CborDeserializer.decodeArray(tag.getData());
+    List<byte[]> data = CborDeserializer.decodeArray(tag.getData(), 2);
     return SplitMintJustification.create(
             Token.fromCbor(data.get(0)),
             CborDeserializer.decodeArray(data.get(1)).stream().map(SplitAssetProof::fromCbor).collect(Collectors.toSet())

@@ -173,7 +173,7 @@ public class UnicityCertificate {
     if (tag.getTag() != UnicityCertificate.CBOR_TAG) {
       throw new CborSerializationException(String.format("Invalid CBOR tag: %s", tag.getTag()));
     }
-    List<byte[]> data = CborDeserializer.decodeArray(tag.getData());
+    List<byte[]> data = CborDeserializer.decodeArray(tag.getData(), 7);
 
     int version = CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt();
     if (version != UnicityCertificate.VERSION) {
@@ -226,7 +226,7 @@ public class UnicityCertificate {
 
   @Override
   public int hashCode() {
-    return Objects.hash(UnicityCertificate.VERSION, this.inputRecord, Arrays.hashCode(this.technicalRecordHash),
+    return Objects.hash(this.inputRecord, Arrays.hashCode(this.technicalRecordHash),
             Arrays.hashCode(this.shardConfigurationHash), this.shardTreeCertificate,
             this.unicityTreeCertificate, this.unicitySeal);
   }

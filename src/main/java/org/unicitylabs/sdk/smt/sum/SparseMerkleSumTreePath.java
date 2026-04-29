@@ -132,7 +132,7 @@ public class SparseMerkleSumTreePath {
    * @return path
    */
   public static SparseMerkleSumTreePath fromCbor(byte[] bytes) {
-    List<byte[]> data = CborDeserializer.decodeArray(bytes);
+    List<byte[]> data = CborDeserializer.decodeArray(bytes, 2);
 
     return new SparseMerkleSumTreePath(
             DataHash.fromCbor(data.get(0)),
@@ -218,7 +218,7 @@ public class SparseMerkleSumTreePath {
      * @return root
      */
     public static Root fromCbor(byte[] bytes) {
-      List<byte[]> data = CborDeserializer.decodeArray(bytes);
+      List<byte[]> data = CborDeserializer.decodeArray(bytes, 2);
 
       return new Root(
               DataHash.fromCbor(data.get(0)),

@@ -86,6 +86,25 @@ public class CborDeserializer {
   }
 
   /**
+   * Read a fixed-size CBOR array from bytes. Throws when the encoded array length does not match
+   * the expected length.
+   *
+   * @param data bytes
+   * @param expectedLength expected number of array elements
+   * @return CBOR element array
+   *
+   * @throws CborSerializationException when the array length differs from {@code expectedLength}
+   */
+  public static List<byte[]> decodeArray(byte[] data, long expectedLength) {
+    List<byte[]> result = decodeArray(data);
+    if (result.size() != expectedLength) {
+      throw new CborSerializationException(
+              String.format("Expected array of %d elements, got %d", expectedLength, result.size()));
+    }
+    return result;
+  }
+
+  /**
    * Read elements as raw CBOR element map from CBOR bytes.
    *
    * @param data bytes

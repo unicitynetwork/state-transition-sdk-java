@@ -91,7 +91,7 @@ public class CertifiedMintTransaction implements Transaction {
    * @return decoded certified mint transaction
    */
   public static CertifiedMintTransaction fromCbor(byte[] bytes) {
-    List<byte[]> data = CborDeserializer.decodeArray(bytes);
+    List<byte[]> data = CborDeserializer.decodeArray(bytes, 2);
     return new CertifiedMintTransaction(MintTransaction.fromCbor(data.get(0)),
             InclusionProof.fromCbor(data.get(1)));
   }

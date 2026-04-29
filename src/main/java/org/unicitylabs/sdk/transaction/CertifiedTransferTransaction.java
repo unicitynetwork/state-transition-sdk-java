@@ -74,7 +74,7 @@ public class CertifiedTransferTransaction implements Transaction {
    * @return certified transfer transaction
    */
   public static CertifiedTransferTransaction fromCbor(byte[] bytes, Token token) {
-    List<byte[]> data = CborDeserializer.decodeArray(bytes);
+    List<byte[]> data = CborDeserializer.decodeArray(bytes, 2);
 
     return new CertifiedTransferTransaction(
             TransferTransaction.fromCbor(data.get(0), token),

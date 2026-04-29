@@ -41,7 +41,7 @@ public class EncodedPredicate implements Predicate {
     if (tag.getTag() != EncodedPredicate.CBOR_TAG) {
       throw new CborSerializationException(String.format("Invalid CBOR tag: %s", tag.getTag()));
     }
-    List<byte[]> data = CborDeserializer.decodeArray(tag.getData());
+    List<byte[]> data = CborDeserializer.decodeArray(tag.getData(), 3);
     PredicateEngine engine = PredicateEngine.fromId(
             CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt());
 

@@ -70,7 +70,7 @@ public final class UnicityIdToken {
    * @return decoded token
    */
   public static UnicityIdToken fromCbor(byte[] bytes) {
-    List<byte[]> data = CborDeserializer.decodeArray(bytes);
+    List<byte[]> data = CborDeserializer.decodeArray(bytes, 1);
     return new UnicityIdToken(CertifiedUnicityIdMintTransaction.fromCbor(data.get(0)));
   }
 

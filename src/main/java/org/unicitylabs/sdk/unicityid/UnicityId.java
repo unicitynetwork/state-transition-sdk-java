@@ -65,7 +65,7 @@ public final class UnicityId {
    * @return unicity id
    */
   public static UnicityId fromCbor(byte[] bytes) {
-    List<byte[]> data = CborDeserializer.decodeArray(bytes);
+    List<byte[]> data = CborDeserializer.decodeArray(bytes, 2);
     return new UnicityId(
             CborDeserializer.decodeTextString(data.get(0)),
             CborDeserializer.decodeNullable(data.get(1), CborDeserializer::decodeTextString)

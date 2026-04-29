@@ -179,36 +179,23 @@ public final class UnicityIdMintTransaction implements Transaction {
     if (tag.getTag() != UnicityIdMintTransaction.CBOR_TAG) {
       throw new CborSerializationException(String.format("Invalid CBOR tag: %s", tag.getTag()));
     }
-    List<byte[]> data = CborDeserializer.decodeArray(tag.getData());
+    List<byte[]> data = CborDeserializer.decodeArray(tag.getData(), 6);
 
     int version = CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt();
     if (version != UnicityIdMintTransaction.VERSION) {
       throw new CborSerializationException(String.format("Unsupported version: %s", version));
     }
 
-    PayToPublicKeyPredicate lockScript = PayToPublicKeyPredicate.fromPredicate(
-            EncodedPredicate.fromCbor(data.get(1))
-    );
-    Predicate recipient = EncodedPredicate.fromCbor(data.get(2));
-    TokenId tokenId = TokenId.fromCbor(data.get(3));
-    TokenType tokenType = TokenType.fromCbor(data.get(4));
-    UnicityId unicityId = UnicityId.fromCbor(data.get(5));
-    PayToPublicKeyPredicate targetPredicate = PayToPublicKeyPredicate.fromPredicate(
-            EncodedPredicate.fromCbor(data.get(6))
-    );
-
-    if (!tokenId.equals(unicityId.toTokenId())) {
-      throw new CborSerializationException("Token id does not match unicity id");
-    }
-
-    return new UnicityIdMintTransaction(
-            MintTransactionState.create(tokenId),
-            lockScript,
-            recipient,
-            tokenId,
-            tokenType,
-            targetPredicate,
-            unicityId
+    return UnicityIdMintTransaction.create(
+            PayToPublicKeyPredicate.fromPredicate(
+                    EncodedPredicate.fromCbor(data.get(1))
+            ),
+            EncodedPredicate.fromCbor(data.get(2)),
+            UnicityId.fromCbor(data.get(3)),
+            TokenType.fromCbor(data.get(4)),
+            PayToPublicKeyPredicate.fromPredicate(
+                    EncodedPredicate.fromCbor(data.get(5))
+            )
     );
   }
 
@@ -237,9 +224,8 @@ public final class UnicityIdMintTransaction implements Transaction {
                     CborSerializer.encodeUnsignedInteger(UnicityIdMintTransaction.VERSION),
                     EncodedPredicate.fromPredicate(this.lockScript).toCbor(),
                     EncodedPredicate.fromPredicate(this.recipient).toCbor(),
-                    this.tokenId.toCbor(),
-                    this.tokenType.toCbor(),
                     this.unicityId.toCbor(),
+                    this.tokenType.toCbor(),
                     EncodedPredicate.fromPredicate(this.targetPredicate).toCbor()
             )
     );

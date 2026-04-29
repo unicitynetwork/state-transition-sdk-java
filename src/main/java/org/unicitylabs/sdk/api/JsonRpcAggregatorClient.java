@@ -3,6 +3,7 @@ package org.unicitylabs.sdk.api;
 import org.unicitylabs.sdk.api.jsonrpc.JsonRpcHttpTransport;
 import org.unicitylabs.sdk.util.HexConverter;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -14,6 +15,7 @@ import static com.google.common.net.HttpHeaders.AUTHORIZATION;
  * Default aggregator client.
  */
 public class JsonRpcAggregatorClient implements AggregatorClient {
+  private static final String STATE_ID_HEADER = "X-State-Id";
 
   private final JsonRpcHttpTransport transport;
   private final String apiKey;
@@ -54,9 +56,11 @@ public class JsonRpcAggregatorClient implements AggregatorClient {
     CertificationRequest request = CertificationRequest.create(
             Objects.requireNonNull(certificationData, "certificationData cannot be null"));
 
-    Map<String, List<String>> headers = this.apiKey == null
-            ? Map.of()
-            : Map.of(AUTHORIZATION, List.of(String.format("Bearer %s", this.apiKey)));
+    Map<String, List<String>> headers = new HashMap<>();
+    headers.put(STATE_ID_HEADER, List.of(request.getStateId().toString()));
+    if (this.apiKey != null) {
+      headers.put(AUTHORIZATION, List.of(String.format("Bearer %s", this.apiKey)));
+    }
 
     return this.transport.request(
             "certification_request",

@@ -94,7 +94,7 @@ public class CertificationData {
     if (tag.getTag() != CertificationData.CBOR_TAG) {
       throw new CborSerializationException(String.format("Invalid CBOR tag: %s", tag.getTag()));
     }
-    List<byte[]> data = CborDeserializer.decodeArray(tag.getData());
+    List<byte[]> data = CborDeserializer.decodeArray(tag.getData(), 5);
 
     int version = CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt();
     if (version != CertificationData.VERSION) {
@@ -117,6 +117,8 @@ public class CertificationData {
    * @return certification data
    */
   public static CertificationData fromMintTransaction(MintTransaction transaction) {
+    Objects.requireNonNull(transaction, "transaction cannot be null");
+
     SigningService signingService = MintSigningService.create(transaction.getTokenId());
 
     return CertificationData.fromTransaction(
