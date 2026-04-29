@@ -117,8 +117,6 @@ public class CertificationData {
    * @return certification data
    */
   public static CertificationData fromMintTransaction(MintTransaction transaction) {
-    Objects.requireNonNull(transaction, "transaction cannot be null");
-
     SigningService signingService = MintSigningService.create(transaction.getTokenId());
 
     return CertificationData.fromTransaction(
@@ -137,7 +135,6 @@ public class CertificationData {
    * @return certification data
    */
   public static CertificationData fromTransaction(Transaction transaction, UnlockScript unlockScript) {
-    Objects.requireNonNull(transaction, "transaction cannot be null");
     Objects.requireNonNull(unlockScript, "unlockScript cannot be null");
 
     return CertificationData.fromTransaction(transaction, unlockScript.encode());
