@@ -12,7 +12,7 @@ import java.util.Objects;
 /**
  * Proof material for one split reason entry.
  */
-public class SplitAssetProof {
+public final class SplitAssetProof {
   private final AssetId assetId;
   private final SparseMerkleTreePath aggregationPath;
   private final SparseMerkleSumTreePath assetTreePath;

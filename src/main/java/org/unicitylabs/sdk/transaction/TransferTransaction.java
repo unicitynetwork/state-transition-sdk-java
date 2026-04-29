@@ -27,20 +27,20 @@ public class TransferTransaction implements Transaction {
   private final DataHash sourceStateHash;
   private final Predicate lockScript;
   private final Predicate recipient;
-  private final byte[] nonce;
+  private final byte[] stateMask;
   private final byte[] data;
 
   private TransferTransaction(
           DataHash sourceStateHash,
           Predicate lockScript,
           Predicate recipient,
-          byte[] nonce,
+          byte[] stateMask,
           byte[] data
   ) {
     this.sourceStateHash = sourceStateHash;
     this.lockScript = lockScript;
     this.recipient = recipient;
-    this.nonce = nonce;
+    this.stateMask = stateMask;
     this.data = data;
   }
 
@@ -70,8 +70,8 @@ public class TransferTransaction implements Transaction {
   }
 
   @Override
-  public byte[] getNonce() {
-    return Arrays.copyOf(this.nonce, this.nonce.length);
+  public byte[] getStateMask() {
+    return Arrays.copyOf(this.stateMask, this.stateMask.length);
   }
 
   /**
@@ -79,19 +79,19 @@ public class TransferTransaction implements Transaction {
    *
    * @param token token whose latest transaction is used as the source
    * @param recipient recipient predicate
-   * @param nonce transaction randomness component
+   * @param stateMask transaction randomness component
    * @param data transfer payload
    * @return created transfer transaction
    */
   public static TransferTransaction create(Token token, Predicate recipient,
-                                           byte[] nonce, byte[] data) {
+                                           byte[] stateMask, byte[] data) {
     Transaction transaction = token.getLatestTransaction();
 
     return new TransferTransaction(
             transaction.calculateStateHash(),
             transaction.getRecipient(),
             recipient,
-            nonce,
+            stateMask,
             data
     );
   }
@@ -129,7 +129,7 @@ public class TransferTransaction implements Transaction {
             .update(
                     CborSerializer.encodeArray(
                             CborSerializer.encodeByteString(this.sourceStateHash.getImprint()),
-                            CborSerializer.encodeByteString(this.nonce)
+                            CborSerializer.encodeByteString(this.stateMask)
                     )
             )
             .digest();
@@ -149,7 +149,7 @@ public class TransferTransaction implements Transaction {
             CborSerializer.encodeArray(
                     CborSerializer.encodeUnsignedInteger(TransferTransaction.VERSION),
                     EncodedPredicate.fromPredicate(this.recipient).toCbor(),
-                    CborSerializer.encodeByteString(this.nonce),
+                    CborSerializer.encodeByteString(this.stateMask),
                     CborSerializer.encodeNullable(this.data, CborSerializer::encodeByteString)
             )
     );
@@ -179,8 +179,8 @@ public class TransferTransaction implements Transaction {
   @Override
   public String toString() {
     return String.format(
-            "TransferTransaction{sourceStateHash=%s, lockScript=%s, recipient=%s, nonce=%s, data=%s}",
-            this.sourceStateHash, this.lockScript, this.recipient, HexConverter.encode(this.nonce),
+            "TransferTransaction{sourceStateHash=%s, lockScript=%s, recipient=%s, stateMask=%s, data=%s}",
+            this.sourceStateHash, this.lockScript, this.recipient, HexConverter.encode(this.stateMask),
             HexConverter.encode(this.data));
   }
 }

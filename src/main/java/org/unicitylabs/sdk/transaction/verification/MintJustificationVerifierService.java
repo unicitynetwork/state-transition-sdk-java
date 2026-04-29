@@ -45,13 +45,13 @@ public class MintJustificationVerifierService {
    *     of the verifier registered for the justification's CBOR tag
    */
   public VerificationResult<VerificationStatus> verify(CertifiedMintTransaction transaction) {
-    var bytes = transaction.getJustification().orElse(null);
+    byte[] bytes = transaction.getJustification().orElse(null);
     if (bytes == null) {
       return new VerificationResult<>("MintJustificationVerification", VerificationStatus.OK);
     }
 
-    var tag = CborDeserializer.decodeTag(bytes);
-    var verifier = this.verifiers.get(tag.getTag());
+    CborDeserializer.CborTag tag = CborDeserializer.decodeTag(bytes);
+    MintJustificationVerifier verifier = this.verifiers.get(tag.getTag());
     if (verifier == null) {
       return new VerificationResult<>(
               "MintJustificationVerification",
@@ -60,7 +60,7 @@ public class MintJustificationVerifierService {
       );
     }
 
-    var result = verifier.verify(transaction, this);
+    VerificationResult<VerificationStatus> result = verifier.verify(transaction, this);
     if (result.getStatus() != VerificationStatus.OK) {
       return new VerificationResult<>("MintJustificationVerification", VerificationStatus.FAIL, String.format("Verification failed for tag %s", tag.getTag()), result);
     }

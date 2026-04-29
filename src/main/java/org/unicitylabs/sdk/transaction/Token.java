@@ -18,7 +18,7 @@ import java.util.List;
 /**
  * Immutable token aggregate containing the certified genesis mint transaction and transfer history.
  */
-public class Token {
+public final class Token {
   public static final long CBOR_TAG = 39040;
   private static final int VERSION = 1;
 

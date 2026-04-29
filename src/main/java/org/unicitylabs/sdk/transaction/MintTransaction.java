@@ -111,7 +111,7 @@ public class MintTransaction implements Transaction {
   }
 
   @Override
-  public byte[] getNonce() {
+  public byte[] getStateMask() {
     return this.tokenId.getBytes();
   }
 
@@ -188,7 +188,7 @@ public class MintTransaction implements Transaction {
             .update(
                     CborSerializer.encodeArray(
                             CborSerializer.encodeByteString(this.sourceStateHash.getImprint()),
-                            CborSerializer.encodeByteString(this.getNonce())
+                            CborSerializer.encodeByteString(this.getStateMask())
                     )
             )
             .digest();

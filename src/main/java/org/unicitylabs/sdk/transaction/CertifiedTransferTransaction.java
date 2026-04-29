@@ -52,8 +52,8 @@ public class CertifiedTransferTransaction implements Transaction {
   }
 
   @Override
-  public byte[] getNonce() {
-    return this.transaction.getNonce();
+  public byte[] getStateMask() {
+    return this.transaction.getStateMask();
   }
 
   /**

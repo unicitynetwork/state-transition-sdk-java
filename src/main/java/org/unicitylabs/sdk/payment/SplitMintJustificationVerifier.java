@@ -16,7 +16,12 @@ import org.unicitylabs.sdk.util.verification.VerificationResult;
 import org.unicitylabs.sdk.util.verification.VerificationStatus;
 
 import java.math.BigInteger;
-import java.util.*;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 
 public class SplitMintJustificationVerifier implements MintJustificationVerifier {
   private final RootTrustBase trustBase;
@@ -43,7 +48,7 @@ public class SplitMintJustificationVerifier implements MintJustificationVerifier
     Objects.requireNonNull(transaction, "transaction cannot be null");
     Objects.requireNonNull(mintJustificationVerifier, "mintJustificationVerifierService cannot be null");
 
-    var justificationBytes = transaction.getJustification().orElse(null);
+    byte[] justificationBytes = transaction.getJustification().orElse(null);
     if (justificationBytes == null) {
       return new VerificationResult<>(
               "SplitMintJustificationVerificationRule",
@@ -52,9 +57,9 @@ public class SplitMintJustificationVerifier implements MintJustificationVerifier
       );
     }
 
-    var justification = SplitMintJustification.fromCbor(justificationBytes);
-    var paymentDataBytes = transaction.getData().orElse(null);
-    var paymentData = paymentDataBytes != null ? this.decodePaymentData.decode(paymentDataBytes) : null;
+    SplitMintJustification justification = SplitMintJustification.fromCbor(justificationBytes);
+    byte[] paymentDataBytes = transaction.getData().orElse(null);
+    PaymentData paymentData = paymentDataBytes != null ? this.decodePaymentData.decode(paymentDataBytes) : null;
 
     if (paymentData == null || paymentData.getAssets() == null) {
       return new VerificationResult<>(
@@ -72,14 +77,6 @@ public class SplitMintJustificationVerifier implements MintJustificationVerifier
               VerificationStatus.FAIL,
               "Burn token verification failed.",
               verificationResult
-      );
-    }
-
-    if (paymentData.getAssets().size() != justification.getProofs().size()) {
-      return new VerificationResult<>(
-              "SplitMintJustificationVerificationRule",
-              VerificationStatus.FAIL,
-              "Total amount of assets differ in token and proofs."
       );
     }
 
@@ -103,7 +100,15 @@ public class SplitMintJustificationVerifier implements MintJustificationVerifier
       }
     }
 
-    var validatedAssets = new HashSet<AssetId>();
+    if (assets.size() != justification.getProofs().size()) {
+      return new VerificationResult<>(
+              "SplitMintJustificationVerificationRule",
+              VerificationStatus.FAIL,
+              "Total amount of assets differ in token and proofs."
+      );
+    }
+
+    Set<AssetId> validatedAssets = new HashSet<>();
     Transaction burnTokenLastTransaction = justification.getToken().getLatestTransaction();
     DataHash root = justification.getProofs().get(0).getAggregationPath().getRootHash();
     for (SplitAssetProof proof : justification.getProofs()) {
@@ -166,10 +171,8 @@ public class SplitMintJustificationVerifier implements MintJustificationVerifier
         );
       }
 
-      var recipient = burnTokenLastTransaction != null
-              ? EncodedPredicate.fromPredicate(burnTokenLastTransaction.getRecipient())
-              : null;
-      var expectedRecipient = EncodedPredicate.fromPredicate(
+      EncodedPredicate recipient = EncodedPredicate.fromPredicate(burnTokenLastTransaction.getRecipient());
+      EncodedPredicate expectedRecipient = EncodedPredicate.fromPredicate(
               BurnPredicate.create(proof.getAggregationPath().getRootHash().getImprint())
       );
 
@@ -184,7 +187,7 @@ public class SplitMintJustificationVerifier implements MintJustificationVerifier
       validatedAssets.add(proof.getAssetId());
     }
 
-    if (validatedAssets.size() != paymentData.getAssets().size()) {
+    if (validatedAssets.size() != assets.size()) {
       return new VerificationResult<>(
               "SplitMintJustificationVerificationRule",
               VerificationStatus.FAIL,

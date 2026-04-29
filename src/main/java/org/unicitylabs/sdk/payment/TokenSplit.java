@@ -113,13 +113,13 @@ public class TokenSplit {
 
     SparseMerkleTreeRootNode aggregationRoot = aggregationTree.calculateRoot();
     BurnPredicate burnPredicate = BurnPredicate.create(aggregationRoot.getRootHash().getImprint());
-    byte[] nonce = new byte[32];
-    RANDOM.nextBytes(nonce);
+    byte[] stateMask = new byte[32];
+    RANDOM.nextBytes(stateMask);
 
     TransferTransaction burnTransaction = TransferTransaction.create(
             token,
             burnPredicate,
-            nonce,
+            stateMask,
             CborSerializer.encodeNull()
     );
 

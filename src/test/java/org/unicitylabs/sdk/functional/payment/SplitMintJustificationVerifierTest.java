@@ -414,9 +414,9 @@ public class SplitMintJustificationVerifierTest {
     CborDeserializer.CborTag transferTag = CborDeserializer.decodeTag(certifiedTransfer.get(0));
     List<byte[]> transfer = CborDeserializer.decodeArray(transferTag.getData());
 
-    byte[] differentNonce = new byte[32];
-    differentNonce[0] = 1;
-    transfer.set(2, CborSerializer.encodeByteString(differentNonce));
+    byte[] differentStateMask = new byte[32];
+    differentStateMask[0] = 1;
+    transfer.set(2, CborSerializer.encodeByteString(differentStateMask));
 
     certifiedTransfer.set(0, CborSerializer.encodeTag(transferTag.getTag(), encodeArray(transfer)));
     transactions.set(0, encodeArray(certifiedTransfer));
