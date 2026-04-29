@@ -17,6 +17,15 @@ public class UnicityCertificateUtils {
           SigningService signingService,
           DataHash rootHash
   ) {
+    return generateCertificate(signingService, rootHash,
+            ShardId.decode(new byte[]{(byte) 0b10000000}));
+  }
+
+  public static UnicityCertificate generateCertificate(
+          SigningService signingService,
+          DataHash rootHash,
+          ShardId shardId
+  ) {
     InputRecord inputRecord = new InputRecord(
             0,
             0,
@@ -31,9 +40,7 @@ public class UnicityCertificateUtils {
     UnicityTreeCertificate unicityTreeCertificate = new UnicityTreeCertificate(0, List.of());
     byte[] technicalRecordHash = new byte[32];
     byte[] shardConfigurationHash = new byte[32];
-    ShardTreeCertificate shardTreeCertificate = new ShardTreeCertificate(
-            ShardId.decode(new byte[]{(byte) 0b10000000}), List.of()
-    );
+    ShardTreeCertificate shardTreeCertificate = new ShardTreeCertificate(shardId, List.of());
 
     DataHash shardTreeCertificateRootHash = UnicityCertificate.calculateShardTreeCertificateRootHash(
             inputRecord,

@@ -28,6 +28,14 @@ public class ShardIdMatchesStateIdRule {
           StateId stateId,
           ShardTreeCertificate shardTreeCertificate
   ) {
+    if (stateId == null) {
+      return new VerificationResult<>("ShardIdMatchesStateIdRule", VerificationStatus.FAIL, "State ID is missing.");
+    }
+
+    if (shardTreeCertificate == null) {
+      return new VerificationResult<>("ShardIdMatchesStateIdRule", VerificationStatus.FAIL, "Shard tree certificate is missing.");
+    }
+
     ShardId shardId = shardTreeCertificate.getShard();
     if (shardId.getLength() == 0) {
       return new VerificationResult<>("ShardIdMatchesStateIdRule", VerificationStatus.OK);
