@@ -9,7 +9,7 @@ import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
 
 public class UnicityCertificateUtils {
 
@@ -82,11 +82,13 @@ public class UnicityCertificateUtils {
             shardTreeCertificate,
             new UnicityTreeCertificate(0, List.of()),
             seal.withSignatures(
-                    Map.of(
-                            "NODE",
-                            signingService.sign(
-                                    new DataHasher(HashAlgorithm.SHA256).update(seal.toCbor()).digest()
-                            ).encode()
+                    Set.of(
+                            new UnicitySeal.SignatureEntry(
+                                    "NODE",
+                                    signingService.sign(
+                                            new DataHasher(HashAlgorithm.SHA256).update(seal.toCbor()).digest()
+                                    ).encode()
+                            )
                     )
             )
     );

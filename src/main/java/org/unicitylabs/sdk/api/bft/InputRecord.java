@@ -199,14 +199,15 @@ public class InputRecord {
       return false;
     }
     InputRecord that = (InputRecord) o;
-    return Objects.equals(this.roundNumber,
-            that.roundNumber) && Objects.equals(this.epoch, that.epoch)
+    return Objects.equals(this.roundNumber, that.roundNumber)
+            && Objects.equals(this.epoch, that.epoch)
             && Objects.deepEquals(this.previousHash, that.previousHash)
-            && Objects.deepEquals(this.hash, that.hash) && Objects.deepEquals(this.summaryValue,
-            that.summaryValue) && Objects.equals(this.timestamp, that.timestamp)
-            && Objects.deepEquals(this.blockHash, that.blockHash) && Objects.equals(
-            this.sumOfEarnedFees, that.sumOfEarnedFees) && Objects.deepEquals(
-            this.executedTransactionsHash, that.executedTransactionsHash);
+            && Objects.deepEquals(this.hash, that.hash)
+            && Objects.deepEquals(this.summaryValue, that.summaryValue)
+            && Objects.equals(this.timestamp, that.timestamp)
+            && Objects.deepEquals(this.blockHash, that.blockHash)
+            && Objects.equals(this.sumOfEarnedFees, that.sumOfEarnedFees)
+            && Objects.deepEquals(this.executedTransactionsHash, that.executedTransactionsHash);
   }
 
   @Override

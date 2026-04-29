@@ -4,6 +4,7 @@ import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
 import org.unicitylabs.sdk.predicate.Predicate;
 import org.unicitylabs.sdk.predicate.PredicateEngine;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
+import org.unicitylabs.sdk.util.HexConverter;
 
 import java.util.Arrays;
 import java.util.Objects;
@@ -90,6 +91,11 @@ public class PayToPublicKeyPredicate implements BuiltInPredicate {
   @Override
   public byte[] encodeParameters() {
     return this.getPublicKey();
+  }
+
+  @Override
+  public String toString() {
+    return String.format("PayToPublicKeyPredicate{publicKey=%s}", HexConverter.encode(this.publicKey));
   }
 
 }

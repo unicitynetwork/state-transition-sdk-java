@@ -115,14 +115,12 @@ public class InclusionProof {
       return false;
     }
     InclusionProof that = (InclusionProof) o;
-    return Objects.equals(this.inclusionCertificate, that.inclusionCertificate) && Objects.equals(
-            this.certificationData,
-            that.certificationData);
+    return Objects.equals(this.inclusionCertificate, that.inclusionCertificate) && Objects.equals(this.certificationData, that.certificationData) && Objects.equals(this.unicityCertificate, that.unicityCertificate);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(InclusionProof.VERSION, this.inclusionCertificate, this.certificationData);
+    return Objects.hash(InclusionProof.VERSION, this.inclusionCertificate, this.certificationData, this.unicityCertificate);
   }
 
   @Override
@@ -130,6 +128,8 @@ public class InclusionProof {
     return String.format(
             "InclusionProof{certificationData=%s, inclusionCertificate=%s, unicityCertificate=%s}",
             this.inclusionCertificate,
-            this.certificationData, this.unicityCertificate);
+            this.certificationData,
+            this.unicityCertificate
+    );
   }
 }

@@ -72,7 +72,7 @@ public class InclusionCertificate {
 
     int siblingsCount = 0;
     for (int i = 0; i < InclusionCertificate.BITMAP_SIZE; i++) {
-      int x = bytes[i];
+      int x = bytes[i] & 0xff;
       x = x - ((x >>> 1) & 0x55);
       x = (x & 0x33) + ((x >>> 2) & 0x33);
       x = (x + (x >>> 4)) & 0x0f;

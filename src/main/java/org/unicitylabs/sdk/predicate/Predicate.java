@@ -1,6 +1,7 @@
 package org.unicitylabs.sdk.predicate;
 
 import java.util.Arrays;
+import java.util.Objects;
 
 /**
  * Base contract for all predicate implementations.
@@ -29,18 +30,13 @@ public interface Predicate {
   byte[] encodeParameters();
 
   /**
-   * Compares this predicate with another predicate using encoded representation.
-   *
-   * @param other the predicate to compare against
-   * @return {@code true} when engine, code, and parameters are equal; otherwise {@code false}
+   * Checks if two predicates are equal.
+   * @param a first predicate
+   * @param b second predicate
+   * @return {@code true} if predicates are equal, {@code false} otherwise
    */
-  default boolean isEqualTo(Predicate other) {
-    if (other == null) {
-      return false;
-    }
-
-    return this.getEngine() == other.getEngine()
-            && Arrays.equals(this.encodeCode(), other.encodeCode())
-            && Arrays.equals(this.encodeParameters(), other.encodeParameters());
+  static boolean areEqual(Predicate a, Predicate b) {
+    return a.getEngine() == b.getEngine() && Arrays.equals(a.encodeCode(), b.encodeCode()) && Arrays.equals(
+            a.encodeParameters(), b.encodeParameters());
   }
 }

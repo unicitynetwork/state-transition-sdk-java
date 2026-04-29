@@ -106,9 +106,8 @@ public class UnicityTreeCertificate {
       return false;
     }
     UnicityTreeCertificate that = (UnicityTreeCertificate) o;
-    return Objects.equals(
-            this.partitionIdentifier, that.partitionIdentifier) && Objects.equals(this.steps,
-            that.steps);
+    return Objects.equals(this.partitionIdentifier, that.partitionIdentifier)
+            && Objects.equals(this.steps, that.steps);
   }
 
   @Override
@@ -187,8 +186,8 @@ public class UnicityTreeCertificate {
         return false;
       }
       HashStep hashStep = (HashStep) o;
-      return Objects.equals(this.key, hashStep.key) && Objects.deepEquals(this.hash,
-              hashStep.hash);
+      return Objects.equals(this.key, hashStep.key)
+              && Objects.deepEquals(this.hash, hashStep.hash);
     }
 
     @Override

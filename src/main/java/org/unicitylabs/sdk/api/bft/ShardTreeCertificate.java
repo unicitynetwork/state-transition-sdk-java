@@ -105,8 +105,8 @@ public class ShardTreeCertificate {
       return false;
     }
     ShardTreeCertificate that = (ShardTreeCertificate) o;
-    return Objects.deepEquals(this.shard, that.shard) && Objects.equals(
-            this.siblingHashList, that.siblingHashList);
+    return Objects.deepEquals(this.shard, that.shard)
+            && Objects.equals(this.siblingHashList, that.siblingHashList);
   }
 
   @Override

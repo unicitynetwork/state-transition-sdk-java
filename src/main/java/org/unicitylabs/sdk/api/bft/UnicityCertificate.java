@@ -216,12 +216,12 @@ public class UnicityCertificate {
       return false;
     }
     UnicityCertificate that = (UnicityCertificate) o;
-    return Objects.equals(this.inputRecord,
-            that.inputRecord) && Objects.deepEquals(this.technicalRecordHash,
-            that.technicalRecordHash) && Objects.deepEquals(this.shardConfigurationHash,
-            that.shardConfigurationHash) && Objects.equals(this.shardTreeCertificate,
-            that.shardTreeCertificate) && Objects.equals(this.unicityTreeCertificate,
-            that.unicityTreeCertificate) && Objects.equals(this.unicitySeal, that.unicitySeal);
+    return Objects.equals(this.inputRecord, that.inputRecord)
+            && Objects.deepEquals(this.technicalRecordHash, that.technicalRecordHash)
+            && Objects.deepEquals(this.shardConfigurationHash, that.shardConfigurationHash)
+            && Objects.equals(this.shardTreeCertificate, that.shardTreeCertificate)
+            && Objects.equals(this.unicityTreeCertificate, that.unicityTreeCertificate)
+            && Objects.equals(this.unicitySeal, that.unicitySeal);
   }
 
   @Override
