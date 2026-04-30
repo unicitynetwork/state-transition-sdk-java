@@ -15,7 +15,7 @@ import static com.google.common.net.HttpHeaders.AUTHORIZATION;
  * Default aggregator client.
  */
 public class JsonRpcAggregatorClient implements AggregatorClient {
-  private static final String STATE_ID_HEADER = "X-State-Id";
+  private static final String STATE_ID_HEADER = "X-State-ID";
 
   private final JsonRpcHttpTransport transport;
   private final String apiKey;
