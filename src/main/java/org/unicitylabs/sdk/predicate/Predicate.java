@@ -1,7 +1,6 @@
 package org.unicitylabs.sdk.predicate;
 
 import java.util.Arrays;
-import java.util.Objects;
 
 /**
  * Base contract for all predicate implementations.

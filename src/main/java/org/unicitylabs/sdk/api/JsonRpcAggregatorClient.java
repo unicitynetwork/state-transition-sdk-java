@@ -57,7 +57,7 @@ public class JsonRpcAggregatorClient implements AggregatorClient {
             Objects.requireNonNull(certificationData, "certificationData cannot be null"));
 
     Map<String, List<String>> headers = new HashMap<>();
-    headers.put(STATE_ID_HEADER, List.of(request.getStateId().toString()));
+    headers.put(STATE_ID_HEADER, List.of(HexConverter.encode(request.getStateId().getData())));
     if (this.apiKey != null) {
       headers.put(AUTHORIZATION, List.of(String.format("Bearer %s", this.apiKey)));
     }
