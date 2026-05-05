@@ -7,7 +7,7 @@ import org.unicitylabs.sdk.crypto.hash.DataHasher;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.unicitylabs.sdk.predicate.EncodedPredicate;
 import org.unicitylabs.sdk.predicate.Predicate;
-import org.unicitylabs.sdk.predicate.builtin.PayToPublicKeyPredicate;
+import org.unicitylabs.sdk.predicate.builtin.SignaturePredicate;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializationException;
@@ -30,20 +30,20 @@ public final class UnicityIdMintTransaction implements Transaction {
   private static final int VERSION = 1;
 
   private final MintTransactionState sourceStateHash;
-  private final PayToPublicKeyPredicate lockScript;
-  private final Predicate recipient;
+  private final EncodedPredicate lockScript;
+  private final EncodedPredicate recipient;
   private final TokenId tokenId;
   private final TokenType tokenType;
-  private final PayToPublicKeyPredicate targetPredicate;
+  private final SignaturePredicate targetPredicate;
   private final UnicityId unicityId;
 
   private UnicityIdMintTransaction(
           MintTransactionState sourceStateHash,
-          PayToPublicKeyPredicate lockScript,
-          Predicate recipient,
+          EncodedPredicate lockScript,
+          EncodedPredicate recipient,
           TokenId tokenId,
           TokenType tokenType,
-          PayToPublicKeyPredicate targetPredicate,
+          SignaturePredicate targetPredicate,
           UnicityId unicityId
   ) {
     this.sourceStateHash = sourceStateHash;
@@ -70,12 +70,12 @@ public final class UnicityIdMintTransaction implements Transaction {
   }
 
   @Override
-  public PayToPublicKeyPredicate getLockScript() {
+  public EncodedPredicate getLockScript() {
     return this.lockScript;
   }
 
   @Override
-  public Predicate getRecipient() {
+  public EncodedPredicate getRecipient() {
     return this.recipient;
   }
 
@@ -102,7 +102,7 @@ public final class UnicityIdMintTransaction implements Transaction {
    *
    * @return target predicate
    */
-  public PayToPublicKeyPredicate getTargetPredicate() {
+  public SignaturePredicate getTargetPredicate() {
     return this.targetPredicate;
   }
 
@@ -139,11 +139,11 @@ public final class UnicityIdMintTransaction implements Transaction {
    * @return mint transaction
    */
   public static UnicityIdMintTransaction create(
-          PayToPublicKeyPredicate lockScript,
+          SignaturePredicate lockScript,
           Predicate recipient,
           UnicityId unicityId,
           TokenType tokenType,
-          PayToPublicKeyPredicate targetPredicate
+          SignaturePredicate targetPredicate
   ) {
     Objects.requireNonNull(lockScript, "lockScript cannot be null");
     Objects.requireNonNull(recipient, "recipient cannot be null");
@@ -155,8 +155,8 @@ public final class UnicityIdMintTransaction implements Transaction {
 
     return new UnicityIdMintTransaction(
             MintTransactionState.create(tokenId),
-            lockScript,
-            recipient,
+            EncodedPredicate.fromPredicate(lockScript),
+            EncodedPredicate.fromPredicate(recipient),
             tokenId,
             tokenType,
             targetPredicate,
@@ -187,13 +187,13 @@ public final class UnicityIdMintTransaction implements Transaction {
     }
 
     return UnicityIdMintTransaction.create(
-            PayToPublicKeyPredicate.fromPredicate(
+            SignaturePredicate.fromPredicate(
                     EncodedPredicate.fromCbor(data.get(1))
             ),
             EncodedPredicate.fromCbor(data.get(2)),
             UnicityId.fromCbor(data.get(3)),
             TokenType.fromCbor(data.get(4)),
-            PayToPublicKeyPredicate.fromPredicate(
+            SignaturePredicate.fromPredicate(
                     EncodedPredicate.fromCbor(data.get(5))
             )
     );
@@ -222,8 +222,8 @@ public final class UnicityIdMintTransaction implements Transaction {
             UnicityIdMintTransaction.CBOR_TAG,
             CborSerializer.encodeArray(
                     CborSerializer.encodeUnsignedInteger(UnicityIdMintTransaction.VERSION),
-                    EncodedPredicate.fromPredicate(this.lockScript).toCbor(),
-                    EncodedPredicate.fromPredicate(this.recipient).toCbor(),
+                    this.lockScript.toCbor(),
+                    this.recipient.toCbor(),
                     this.unicityId.toCbor(),
                     this.tokenType.toCbor(),
                     EncodedPredicate.fromPredicate(this.targetPredicate).toCbor()

@@ -25,15 +25,15 @@ public class TransferTransaction implements Transaction {
   private static final int VERSION = 1;
 
   private final DataHash sourceStateHash;
-  private final Predicate lockScript;
-  private final Predicate recipient;
+  private final EncodedPredicate lockScript;
+  private final EncodedPredicate recipient;
   private final byte[] stateMask;
   private final byte[] data;
 
   private TransferTransaction(
           DataHash sourceStateHash,
-          Predicate lockScript,
-          Predicate recipient,
+          EncodedPredicate lockScript,
+          EncodedPredicate recipient,
           byte[] stateMask,
           byte[] data
   ) {
@@ -55,12 +55,12 @@ public class TransferTransaction implements Transaction {
   }
 
   @Override
-  public Predicate getLockScript() {
+  public EncodedPredicate getLockScript() {
     return this.lockScript;
   }
 
   @Override
-  public Predicate getRecipient() {
+  public EncodedPredicate getRecipient() {
     return this.recipient;
   }
 
@@ -90,7 +90,7 @@ public class TransferTransaction implements Transaction {
     return new TransferTransaction(
             transaction.calculateStateHash(),
             transaction.getRecipient(),
-            recipient,
+            EncodedPredicate.fromPredicate(recipient),
             stateMask,
             data
     );

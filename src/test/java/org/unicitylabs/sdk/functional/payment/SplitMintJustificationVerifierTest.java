@@ -17,8 +17,8 @@ import org.unicitylabs.sdk.payment.SplitResult;
 import org.unicitylabs.sdk.payment.TokenSplit;
 import org.unicitylabs.sdk.payment.asset.Asset;
 import org.unicitylabs.sdk.payment.asset.AssetId;
-import org.unicitylabs.sdk.predicate.builtin.PayToPublicKeyPredicate;
-import org.unicitylabs.sdk.predicate.builtin.PayToPublicKeyPredicateUnlockScript;
+import org.unicitylabs.sdk.predicate.builtin.SignaturePredicate;
+import org.unicitylabs.sdk.predicate.builtin.SignaturePredicateUnlockScript;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
@@ -70,7 +70,7 @@ public class SplitMintJustificationVerifierTest {
     this.trustBase = aggregatorClient.getTrustBase();
 
     StateTransitionClient client = new StateTransitionClient(aggregatorClient);
-    this.predicateVerifier = PredicateVerifierService.create(this.trustBase);
+    this.predicateVerifier = PredicateVerifierService.create();
 
     this.splitMintJustificationVerifier = new SplitMintJustificationVerifier(
             this.trustBase, this.predicateVerifier, TestPaymentData::decode);
@@ -78,7 +78,7 @@ public class SplitMintJustificationVerifierTest {
     this.mintJustificationVerifier.register(this.splitMintJustificationVerifier);
 
     SigningService signingService = SigningService.generate();
-    PayToPublicKeyPredicate ownerPredicate = PayToPublicKeyPredicate.fromSigningService(signingService);
+    SignaturePredicate ownerPredicate = SignaturePredicate.fromSigningService(signingService);
 
     this.asset1 = new Asset(new AssetId("ASSET_1".getBytes(StandardCharsets.UTF_8)), BigInteger.valueOf(500));
     this.asset2 = new Asset(new AssetId("ASSET_2".getBytes(StandardCharsets.UTF_8)), BigInteger.valueOf(500));
@@ -108,7 +108,7 @@ public class SplitMintJustificationVerifierTest {
             this.predicateVerifier,
             sourceToken,
             split.getBurnTransaction(),
-            PayToPublicKeyPredicateUnlockScript.create(split.getBurnTransaction(), signingService)
+            SignaturePredicateUnlockScript.create(split.getBurnTransaction(), signingService)
     );
 
     this.splitJustification = SplitMintJustification.create(

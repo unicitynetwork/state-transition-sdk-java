@@ -3,8 +3,8 @@ package org.unicitylabs.sdk.unicityid;
 import org.unicitylabs.sdk.api.InclusionProof;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
-import org.unicitylabs.sdk.predicate.Predicate;
-import org.unicitylabs.sdk.predicate.builtin.PayToPublicKeyPredicate;
+import org.unicitylabs.sdk.predicate.EncodedPredicate;
+import org.unicitylabs.sdk.predicate.builtin.SignaturePredicate;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
@@ -39,12 +39,12 @@ public final class CertifiedUnicityIdMintTransaction implements Transaction {
   }
 
   @Override
-  public Predicate getLockScript() {
+  public EncodedPredicate getLockScript() {
     return this.transaction.getLockScript();
   }
 
   @Override
-  public Predicate getRecipient() {
+  public EncodedPredicate getRecipient() {
     return this.transaction.getRecipient();
   }
 
@@ -81,7 +81,7 @@ public final class CertifiedUnicityIdMintTransaction implements Transaction {
    *
    * @return target predicate
    */
-  public PayToPublicKeyPredicate getTargetPredicate() {
+  public SignaturePredicate getTargetPredicate() {
     return this.transaction.getTargetPredicate();
   }
 

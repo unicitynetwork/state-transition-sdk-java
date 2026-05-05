@@ -8,8 +8,8 @@ import org.unicitylabs.sdk.api.CertificationResponse;
 import org.unicitylabs.sdk.api.CertificationStatus;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
-import org.unicitylabs.sdk.predicate.builtin.PayToPublicKeyPredicate;
-import org.unicitylabs.sdk.predicate.builtin.PayToPublicKeyPredicateUnlockScript;
+import org.unicitylabs.sdk.predicate.builtin.SignaturePredicate;
+import org.unicitylabs.sdk.predicate.builtin.SignaturePredicateUnlockScript;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
 import org.unicitylabs.sdk.transaction.Token;
 import org.unicitylabs.sdk.transaction.TokenType;
@@ -45,7 +45,7 @@ public abstract class CommonTestFlow {
             this.trustBase,
             this.predicateVerifier,
             this.mintJustificationVerifier,
-            PayToPublicKeyPredicate.create(ALICE_SIGNING_SERVICE.getPublicKey())
+            SignaturePredicate.create(ALICE_SIGNING_SERVICE.getPublicKey())
     );
 
     Token bobToken = TokenUtils.transferToken(
@@ -54,7 +54,7 @@ public abstract class CommonTestFlow {
             this.predicateVerifier,
             this.mintJustificationVerifier,
             aliceToken.toCbor(),
-            PayToPublicKeyPredicate.create(BOB_SIGNING_SERVICE.getPublicKey()),
+            SignaturePredicate.create(BOB_SIGNING_SERVICE.getPublicKey()),
             ALICE_SIGNING_SERVICE
     );
 
@@ -64,7 +64,7 @@ public abstract class CommonTestFlow {
             this.predicateVerifier,
             this.mintJustificationVerifier,
             bobToken.toCbor(),
-            PayToPublicKeyPredicate.create(CAROL_SIGNING_SERVICE.getPublicKey()),
+            SignaturePredicate.create(CAROL_SIGNING_SERVICE.getPublicKey()),
             BOB_SIGNING_SERVICE
     );
 
@@ -79,12 +79,12 @@ public abstract class CommonTestFlow {
   @Test
   public void testUnicityIdMintFlow() throws Exception {
     SigningService unicityIdSigningService = SigningService.generate();
-    PayToPublicKeyPredicate targetPredicate = PayToPublicKeyPredicate.create(
+    SignaturePredicate targetPredicate = SignaturePredicate.create(
             ALICE_SIGNING_SERVICE.getPublicKey());
 
     UnicityId unicityId = new UnicityId("testuser", "unicity-labs/test");
     UnicityIdMintTransaction unicityIdMintTransaction = UnicityIdMintTransaction.create(
-            PayToPublicKeyPredicate.fromSigningService(unicityIdSigningService),
+            SignaturePredicate.fromSigningService(unicityIdSigningService),
             targetPredicate,
             unicityId,
             TokenType.generate(),
@@ -93,7 +93,7 @@ public abstract class CommonTestFlow {
 
     CertificationData unicityIdCertificationData = CertificationData.fromTransaction(
             unicityIdMintTransaction,
-            PayToPublicKeyPredicateUnlockScript.create(unicityIdMintTransaction, unicityIdSigningService)
+            SignaturePredicateUnlockScript.create(unicityIdMintTransaction, unicityIdSigningService)
     );
 
     CertificationResponse unicityIdResponse = this.client
@@ -112,13 +112,15 @@ public abstract class CommonTestFlow {
     );
 
     Assertions.assertEquals(VerificationStatus.OK,
-            aliceUnicityIdToken.verify(this.trustBase, this.predicateVerifier).getStatus());
+            aliceUnicityIdToken.verify(this.trustBase, this.predicateVerifier,
+                    unicityIdSigningService.getPublicKey()).getStatus());
 
     UnicityIdToken decodedUnicityIdToken = UnicityIdToken.fromCbor(aliceUnicityIdToken.toCbor());
     Assertions.assertArrayEquals(aliceUnicityIdToken.toCbor(), decodedUnicityIdToken.toCbor());
     Assertions.assertEquals(aliceUnicityIdToken.getId(), decodedUnicityIdToken.getId());
     Assertions.assertEquals(VerificationStatus.OK,
-            decodedUnicityIdToken.verify(this.trustBase, this.predicateVerifier).getStatus());
+            decodedUnicityIdToken.verify(this.trustBase, this.predicateVerifier,
+                    unicityIdSigningService.getPublicKey()).getStatus());
 
     Token aliceToken = TokenUtils.mintToken(
             this.client,

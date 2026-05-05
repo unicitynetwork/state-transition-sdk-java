@@ -5,9 +5,8 @@ import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
 import org.unicitylabs.sdk.predicate.EncodedPredicate;
-import org.unicitylabs.sdk.predicate.Predicate;
 import org.unicitylabs.sdk.predicate.UnlockScript;
-import org.unicitylabs.sdk.predicate.builtin.PayToPublicKeyPredicateUnlockScript;
+import org.unicitylabs.sdk.predicate.builtin.SignaturePredicateUnlockScript;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializationException;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
@@ -26,13 +25,13 @@ public class CertificationData {
   public static final long CBOR_TAG = 39031;
   private static final int VERSION = 1;
 
-  private final Predicate lockScript;
+  private final EncodedPredicate lockScript;
   private final DataHash sourceStateHash;
   private final DataHash transactionHash;
   private final byte[] unlockScript;
 
   CertificationData(
-          Predicate lockScript,
+          EncodedPredicate lockScript,
           DataHash sourceStateHash,
           DataHash transactionHash,
           byte[] unlockScript
@@ -52,7 +51,7 @@ public class CertificationData {
    *
    * @return lock script
    */
-  public Predicate getLockScript() {
+  public EncodedPredicate getLockScript() {
     return this.lockScript;
   }
 
@@ -123,7 +122,7 @@ public class CertificationData {
 
     return CertificationData.fromTransaction(
             transaction,
-            PayToPublicKeyPredicateUnlockScript.create(transaction, signingService).getSignature()
+            SignaturePredicateUnlockScript.create(transaction, signingService).getSignature()
                     .encode()
     );
   }
@@ -172,7 +171,7 @@ public class CertificationData {
             CertificationData.CBOR_TAG,
             CborSerializer.encodeArray(
                     CborSerializer.encodeUnsignedInteger(CertificationData.VERSION),
-                    EncodedPredicate.fromPredicate(this.getLockScript()).toCbor(),
+                    this.lockScript.toCbor(),
                     CborSerializer.encodeByteString(this.sourceStateHash.getData()),
                     CborSerializer.encodeByteString(this.transactionHash.getData()),
                     CborSerializer.encodeByteString(this.unlockScript)
@@ -186,7 +185,7 @@ public class CertificationData {
       return false;
     }
     CertificationData that = (CertificationData) o;
-    return Predicate.areEqual(this.lockScript, that.lockScript)
+    return Objects.equals(this.lockScript, that.lockScript)
             && Objects.equals(this.sourceStateHash, that.sourceStateHash)
             && Objects.equals(this.transactionHash, that.transactionHash)
             && Arrays.equals(this.unlockScript, that.unlockScript);
@@ -194,7 +193,7 @@ public class CertificationData {
 
   @Override
   public int hashCode() {
-    return Objects.hash(EncodedPredicate.fromPredicate(this.lockScript), this.sourceStateHash, this.transactionHash, Arrays.hashCode(this.unlockScript));
+    return Objects.hash(this.lockScript, this.sourceStateHash, this.transactionHash, Arrays.hashCode(this.unlockScript));
   }
 
   @Override

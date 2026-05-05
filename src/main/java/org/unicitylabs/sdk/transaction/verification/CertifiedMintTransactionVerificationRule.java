@@ -1,10 +1,11 @@
 package org.unicitylabs.sdk.transaction.verification;
 
+import org.unicitylabs.sdk.api.CertificationData;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.crypto.MintSigningService;
 import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
 import org.unicitylabs.sdk.predicate.EncodedPredicate;
-import org.unicitylabs.sdk.predicate.builtin.PayToPublicKeyPredicate;
+import org.unicitylabs.sdk.predicate.builtin.SignaturePredicate;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
 import org.unicitylabs.sdk.transaction.CertifiedMintTransaction;
 import org.unicitylabs.sdk.util.verification.VerificationResult;
@@ -44,13 +45,14 @@ public class CertifiedMintTransactionVerificationRule {
     List<VerificationResult<?>> results = new ArrayList<>();
 
     SigningService signingService = MintSigningService.create(transaction.getTokenId());
-    VerificationResult<?> result = Arrays.equals(
-            EncodedPredicate.fromPredicate(PayToPublicKeyPredicate.fromSigningService(signingService))
-                    .toCbor(),
-            transaction.getInclusionProof()
-                    .getCertificationData()
-                    .map(c -> EncodedPredicate.fromPredicate(c.getLockScript()).toCbor())
-                    .orElse(null))
+    EncodedPredicate expectedLockScript = EncodedPredicate.fromPredicate(SignaturePredicate.fromSigningService(signingService));
+    VerificationResult<?> result = expectedLockScript
+            .equals(
+                    transaction.getInclusionProof()
+                            .getCertificationData()
+                            .map(CertificationData::getLockScript)
+                            .orElse(null)
+            )
             ? new VerificationResult<>("IsLockScriptValidVerificationRule", VerificationStatus.OK)
             : new VerificationResult<>("IsLockScriptValidVerificationRule", VerificationStatus.FAIL);
 

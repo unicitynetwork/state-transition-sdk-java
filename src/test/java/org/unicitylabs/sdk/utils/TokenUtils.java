@@ -9,7 +9,7 @@ import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
 import org.unicitylabs.sdk.predicate.Predicate;
 import org.unicitylabs.sdk.predicate.UnlockScript;
-import org.unicitylabs.sdk.predicate.builtin.PayToPublicKeyPredicateUnlockScript;
+import org.unicitylabs.sdk.predicate.builtin.SignaturePredicateUnlockScript;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.transaction.*;
@@ -148,7 +148,7 @@ public class TokenUtils {
             predicateVerifier,
             token,
             transaction,
-            PayToPublicKeyPredicateUnlockScript.create(transaction, signingService)
+            SignaturePredicateUnlockScript.create(transaction, signingService)
     );
   }
 

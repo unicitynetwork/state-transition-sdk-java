@@ -9,7 +9,7 @@ import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
 import org.unicitylabs.sdk.predicate.EncodedPredicate;
 import org.unicitylabs.sdk.predicate.Predicate;
-import org.unicitylabs.sdk.predicate.builtin.PayToPublicKeyPredicate;
+import org.unicitylabs.sdk.predicate.builtin.SignaturePredicate;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializationException;
@@ -33,8 +33,8 @@ public class MintTransaction implements Transaction {
   private static final int VERSION = 1;
 
   private final MintTransactionState sourceStateHash;
-  private final Predicate lockScript;
-  private final Predicate recipient;
+  private final EncodedPredicate lockScript;
+  private final EncodedPredicate recipient;
   private final TokenId tokenId;
   private final TokenType tokenType;
   private final byte[] justification;
@@ -42,8 +42,8 @@ public class MintTransaction implements Transaction {
 
   private MintTransaction(
           MintTransactionState sourceStateHash,
-          Predicate lockScript,
-          Predicate recipient,
+          EncodedPredicate lockScript,
+          EncodedPredicate recipient,
           TokenId tokenId,
           TokenType tokenType,
           byte[] justification,
@@ -69,12 +69,12 @@ public class MintTransaction implements Transaction {
   }
 
   @Override
-  public Predicate getLockScript() {
+  public EncodedPredicate getLockScript() {
     return this.lockScript;
   }
 
   @Override
-  public Predicate getRecipient() {
+  public EncodedPredicate getRecipient() {
     return this.recipient;
   }
 
@@ -140,8 +140,8 @@ public class MintTransaction implements Transaction {
     SigningService signingService = MintSigningService.create(tokenId);
     return new MintTransaction(
             MintTransactionState.create(tokenId),
-            PayToPublicKeyPredicate.fromSigningService(signingService),
-            recipient,
+            EncodedPredicate.fromPredicate(SignaturePredicate.fromSigningService(signingService)),
+            EncodedPredicate.fromPredicate(recipient),
             tokenId,
             tokenType,
             justification != null ? Arrays.copyOf(justification, justification.length) : null,
@@ -215,7 +215,7 @@ public class MintTransaction implements Transaction {
             MintTransaction.CBOR_TAG,
             CborSerializer.encodeArray(
                     CborSerializer.encodeUnsignedInteger(MintTransaction.VERSION),
-                    EncodedPredicate.fromPredicate(this.recipient).toCbor(),
+                    this.recipient.toCbor(),
                     this.tokenId.toCbor(),
                     this.tokenType.toCbor(),
                     CborSerializer.encodeNullable(this.justification, CborSerializer::encodeByteString),
