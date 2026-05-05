@@ -17,6 +17,7 @@ import org.unicitylabs.sdk.util.verification.VerificationException;
 import org.unicitylabs.sdk.util.verification.VerificationResult;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -136,6 +137,11 @@ public final class CertifiedUnicityIdMintTransaction implements Transaction {
           UnicityIdMintTransaction transaction,
           InclusionProof inclusionProof
   ) {
+    Objects.requireNonNull(trustBase, "trustBase cannot be null");
+    Objects.requireNonNull(predicateVerifier, "predicateVerifier cannot be null");
+    Objects.requireNonNull(transaction, "transaction cannot be null");
+    Objects.requireNonNull(inclusionProof, "inclusionProof cannot be null");
+
     VerificationResult<InclusionProofVerificationStatus> result = InclusionProofVerificationRule.verify(
             trustBase,
             predicateVerifier,

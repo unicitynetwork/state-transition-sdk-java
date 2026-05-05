@@ -14,6 +14,7 @@ import org.unicitylabs.sdk.util.verification.VerificationStatus;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Immutable token aggregate containing the certified genesis mint transaction and transfer history.
@@ -132,6 +133,11 @@ public final class Token {
           MintJustificationVerifierService mintJustificationVerifier,
           CertifiedMintTransaction genesis
   ) {
+    Objects.requireNonNull(trustBase, "trustBase cannot be null");
+    Objects.requireNonNull(predicateVerifier, "predicateVerifier cannot be null");
+    Objects.requireNonNull(mintJustificationVerifier, "mintJustificationVerifier cannot be null");
+    Objects.requireNonNull(genesis, "genesis cannot be null");
+
     Token token = new Token(genesis);
     VerificationResult<VerificationStatus> result = token.verify(trustBase, predicateVerifier, mintJustificationVerifier);
     if (result.getStatus() != VerificationStatus.OK) {
@@ -150,8 +156,15 @@ public final class Token {
    * @return new token instance with appended transfer
    * @throws VerificationException if transfer verification fails
    */
-  public Token transfer(RootTrustBase trustBase, PredicateVerifierService predicateVerifier,
-                        CertifiedTransferTransaction transaction) {
+  public Token transfer(
+          RootTrustBase trustBase,
+          PredicateVerifierService predicateVerifier,
+          CertifiedTransferTransaction transaction
+  ) {
+    Objects.requireNonNull(trustBase, "trustBase cannot be null");
+    Objects.requireNonNull(predicateVerifier, "predicateVerifier cannot be null");
+    Objects.requireNonNull(transaction, "transaction cannot be null");
+
     VerificationResult<VerificationStatus> result = CertifiedTransferTransactionVerificationRule.verify(
             trustBase,
             predicateVerifier,
@@ -179,6 +192,10 @@ public final class Token {
           PredicateVerifierService predicateVerifier,
           MintJustificationVerifierService mintJustificationVerifier
   ) {
+    Objects.requireNonNull(trustBase, "trustBase cannot be null");
+    Objects.requireNonNull(predicateVerifier, "predicateVerifier cannot be null");
+    Objects.requireNonNull(mintJustificationVerifier, "mintJustificationVerifier cannot be null");
+
     List<VerificationResult<?>> results = new ArrayList<>();
     VerificationResult<?> result = CertifiedMintTransactionVerificationRule.verify(
             trustBase,

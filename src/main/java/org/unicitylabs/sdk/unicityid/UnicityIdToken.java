@@ -91,6 +91,10 @@ public final class UnicityIdToken {
           PredicateVerifierService predicateVerifier,
           CertifiedUnicityIdMintTransaction genesis
   ) {
+    Objects.requireNonNull(trustBase, "trustBase cannot be null");
+    Objects.requireNonNull(predicateVerifier, "predicateVerifier cannot be null");
+    Objects.requireNonNull(genesis, "genesis cannot be null");
+
     VerificationResult<VerificationStatus> result =
             CertifiedUnicityIdMintTransactionVerificationRule.verify(
                     trustBase,
@@ -119,7 +123,7 @@ public final class UnicityIdToken {
    *
    * @param trustBase trust base used for certification verification
    * @param predicateVerifier predicate verifier service
-   * @param issuerPublicKey expected issuer public key (required)
+   * @param issuerPublicKey expected issuer public key
    *
    * @return verification result
    * @throws NullPointerException if {@code issuerPublicKey} is {@code null}
@@ -129,6 +133,8 @@ public final class UnicityIdToken {
           PredicateVerifierService predicateVerifier,
           byte[] issuerPublicKey
   ) {
+    Objects.requireNonNull(trustBase, "trustBase cannot be null");
+    Objects.requireNonNull(predicateVerifier, "predicateVerifier cannot be null");
     Objects.requireNonNull(issuerPublicKey, "issuerPublicKey cannot be null");
 
     List<VerificationResult<?>> results = new ArrayList<>();

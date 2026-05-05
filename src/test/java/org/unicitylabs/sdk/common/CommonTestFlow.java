@@ -17,6 +17,7 @@ import org.unicitylabs.sdk.transaction.verification.MintJustificationVerifierSer
 import org.unicitylabs.sdk.unicityid.UnicityId;
 import org.unicitylabs.sdk.unicityid.UnicityIdMintTransaction;
 import org.unicitylabs.sdk.unicityid.UnicityIdToken;
+import org.unicitylabs.sdk.util.HexConverter;
 import org.unicitylabs.sdk.util.InclusionProofUtils;
 import org.unicitylabs.sdk.util.verification.VerificationStatus;
 import org.unicitylabs.sdk.utils.TokenUtils;
