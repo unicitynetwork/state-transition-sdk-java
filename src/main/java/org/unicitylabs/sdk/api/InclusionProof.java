@@ -74,7 +74,7 @@ public class InclusionProof {
     if (tag.getTag() != InclusionProof.CBOR_TAG) {
       throw new CborSerializationException(String.format("Invalid CBOR tag: %s", tag.getTag()));
     }
-    List<byte[]> data = CborDeserializer.decodeArray(tag.getData());
+    List<byte[]> data = CborDeserializer.decodeArray(tag.getData(), 4);
 
     int version = CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt();
     if (version != InclusionProof.VERSION) {
@@ -115,14 +115,12 @@ public class InclusionProof {
       return false;
     }
     InclusionProof that = (InclusionProof) o;
-    return Objects.equals(this.inclusionCertificate, that.inclusionCertificate) && Objects.equals(
-            this.certificationData,
-            that.certificationData);
+    return Objects.equals(this.inclusionCertificate, that.inclusionCertificate) && Objects.equals(this.certificationData, that.certificationData) && Objects.equals(this.unicityCertificate, that.unicityCertificate);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(InclusionProof.VERSION, this.inclusionCertificate, this.certificationData);
+    return Objects.hash(this.inclusionCertificate, this.certificationData, this.unicityCertificate);
   }
 
   @Override
@@ -130,6 +128,8 @@ public class InclusionProof {
     return String.format(
             "InclusionProof{certificationData=%s, inclusionCertificate=%s, unicityCertificate=%s}",
             this.inclusionCertificate,
-            this.certificationData, this.unicityCertificate);
+            this.certificationData,
+            this.unicityCertificate
+    );
   }
 }

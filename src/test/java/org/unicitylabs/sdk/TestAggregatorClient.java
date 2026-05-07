@@ -26,7 +26,7 @@ public class TestAggregatorClient implements AggregatorClient {
     this.sparseMerkleTree = smt;
     this.signingService = signingService;
     this.trustBase = RootTrustBaseUtils.generateRootTrustBase(this.signingService.getPublicKey());
-    this.predicateVerifier = PredicateVerifierService.create(this.trustBase);
+    this.predicateVerifier = PredicateVerifierService.create();
   }
 
   public RootTrustBase getTrustBase() {

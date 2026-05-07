@@ -6,13 +6,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.api.bft.RootTrustBaseUtils;
+import org.unicitylabs.sdk.api.bft.ShardId;
 import org.unicitylabs.sdk.api.bft.UnicityCertificate;
 import org.unicitylabs.sdk.api.bft.UnicityCertificateUtils;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
-import org.unicitylabs.sdk.predicate.builtin.PayToPublicKeyPredicate;
-import org.unicitylabs.sdk.predicate.builtin.PayToPublicKeyPredicateUnlockScript;
+import org.unicitylabs.sdk.predicate.builtin.SignaturePredicate;
+import org.unicitylabs.sdk.predicate.builtin.SignaturePredicateUnlockScript;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
 import org.unicitylabs.sdk.smt.radix.FinalizedNodeBranch;
 import org.unicitylabs.sdk.smt.radix.SparseMerkleTree;
@@ -41,7 +42,7 @@ public class InclusionProofTest {
 
 
     transaction = MintTransaction.create(
-            PayToPublicKeyPredicate.fromSigningService(signingService),
+            SignaturePredicate.fromSigningService(signingService),
             TokenId.generate(),
             TokenType.generate(),
             null,
@@ -56,10 +57,10 @@ public class InclusionProofTest {
 
     FinalizedNodeBranch root = smt.calculateRoot();
     inclusionCertificate = InclusionCertificate.create(root, stateId.getData());
-    SigningService ucSigningService = new SigningService(SigningService.generatePrivateKey());
-    trustBase = RootTrustBaseUtils.generateRootTrustBase(ucSigningService.getPublicKey());
-    unicityCertificate = UnicityCertificateUtils.generateCertificate(ucSigningService, root.getHash());
-    predicateVerifier = PredicateVerifierService.create(trustBase);
+    // Reuse user signing service as unicity certificate signing service.
+    trustBase = RootTrustBaseUtils.generateRootTrustBase(signingService.getPublicKey());
+    unicityCertificate = UnicityCertificateUtils.generateCertificate(signingService, root.getHash());
+    predicateVerifier = PredicateVerifierService.create();
   }
 
   @Test
@@ -146,7 +147,7 @@ public class InclusionProofTest {
                     this.certificationData.getLockScript(),
                     this.certificationData.getSourceStateHash(),
                     this.certificationData.getTransactionHash(),
-                    PayToPublicKeyPredicateUnlockScript.create(
+                    SignaturePredicateUnlockScript.create(
                             this.transaction,
                             new SigningService(SigningService.generatePrivateKey())
                     ).encode()
@@ -161,6 +162,39 @@ public class InclusionProofTest {
                     this.trustBase,
                     this.predicateVerifier,
                     invalidInclusionProof,
+                    this.transaction
+            ).getStatus()
+    );
+  }
+
+  @Test
+  public void testItFailsWithShardIdMismatch() {
+    // 1-byte shard id whose first byte doesn't match the state id's first byte. The shard check
+    // runs before the trust base check, so the signing service used for the new certificate's seal
+    // is irrelevant — reuse the test's fixed key.
+    byte mismatchingByte = (byte) (this.stateId.getData()[0] ^ 0xFF);
+    ShardId mismatchingShardId = ShardId.decode(new byte[]{mismatchingByte, (byte) 0x80});
+    DataHash rootHash = new DataHash(HashAlgorithm.SHA256,
+            this.unicityCertificate.getInputRecord().getHash());
+    SigningService signingService = SigningService.generate();
+    UnicityCertificate mismatchingCertificate = UnicityCertificateUtils.generateCertificate(
+            signingService,
+            rootHash,
+            mismatchingShardId
+    );
+
+    InclusionProof inclusionProof = new InclusionProof(
+            this.certificationData,
+            this.inclusionCertificate,
+            mismatchingCertificate
+    );
+
+    Assertions.assertEquals(
+            InclusionProofVerificationStatus.SHARD_ID_MISMATCH,
+            InclusionProofVerificationRule.verify(
+                    RootTrustBaseUtils.generateRootTrustBase(signingService.getPublicKey()),
+                    this.predicateVerifier,
+                    inclusionProof,
                     this.transaction
             ).getStatus()
     );

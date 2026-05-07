@@ -65,8 +65,20 @@ public class InclusionProofVerificationRule {
               InclusionProofVerificationStatus.PATH_INVALID);
     }
 
+    VerificationResult<?> result = ShardIdMatchesStateIdRule.verify(
+            stateId,
+            inclusionProof.getUnicityCertificate().getShardTreeCertificate()
+    );
+    if (result.getStatus() != VerificationStatus.OK) {
+      return new VerificationResult<>(
+              "InclusionProofVerificationRule",
+              InclusionProofVerificationStatus.SHARD_ID_MISMATCH,
+              "",
+              result
+      );
+    }
 
-    VerificationResult<?> result = UnicityCertificateVerification.verify(trustBase, inclusionProof);
+    result = UnicityCertificateVerification.verify(trustBase, inclusionProof);
     if (result.getStatus() != VerificationStatus.OK) {
       return new VerificationResult<>(
               "InclusionProofVerificationRule",

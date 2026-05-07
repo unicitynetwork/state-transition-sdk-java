@@ -38,7 +38,7 @@ public class TokenE2ETest extends CommonTestFlow {
     try (InputStream stream = getClass().getResourceAsStream("/trust-base.json")) {
       assertNotNull(stream, "trust-base.json not found");
       this.trustBase = RootTrustBase.fromJson(new String(stream.readAllBytes()));
-      this.predicateVerifier = PredicateVerifierService.create(this.trustBase);
+      this.predicateVerifier = PredicateVerifierService.create();
       this.mintJustificationVerifier = new MintJustificationVerifierService();
     }
   }

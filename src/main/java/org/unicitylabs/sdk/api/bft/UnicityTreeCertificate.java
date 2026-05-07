@@ -68,7 +68,7 @@ public class UnicityTreeCertificate {
     if (tag.getTag() != UnicityTreeCertificate.CBOR_TAG) {
       throw new CborSerializationException(String.format("Invalid CBOR tag: %s", tag.getTag()));
     }
-    List<byte[]> data = CborDeserializer.decodeArray(tag.getData());
+    List<byte[]> data = CborDeserializer.decodeArray(tag.getData(), 3);
 
     int version = CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt();
     if (version != UnicityTreeCertificate.VERSION) {
@@ -106,14 +106,13 @@ public class UnicityTreeCertificate {
       return false;
     }
     UnicityTreeCertificate that = (UnicityTreeCertificate) o;
-    return Objects.equals(
-            this.partitionIdentifier, that.partitionIdentifier) && Objects.equals(this.steps,
-            that.steps);
+    return Objects.equals(this.partitionIdentifier, that.partitionIdentifier)
+            && Objects.equals(this.steps, that.steps);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(UnicityTreeCertificate.VERSION, this.partitionIdentifier, this.steps);
+    return Objects.hash(this.partitionIdentifier, this.steps);
   }
 
   @Override
@@ -161,7 +160,7 @@ public class UnicityTreeCertificate {
      * @return hash step
      */
     public static HashStep fromCbor(byte[] bytes) {
-      List<byte[]> data = CborDeserializer.decodeArray(bytes);
+      List<byte[]> data = CborDeserializer.decodeArray(bytes, 2);
 
       return new HashStep(
               CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt(),
@@ -187,8 +186,8 @@ public class UnicityTreeCertificate {
         return false;
       }
       HashStep hashStep = (HashStep) o;
-      return Objects.equals(this.key, hashStep.key) && Objects.deepEquals(this.hash,
-              hashStep.hash);
+      return Objects.equals(this.key, hashStep.key)
+              && Objects.deepEquals(this.hash, hashStep.hash);
     }
 
     @Override

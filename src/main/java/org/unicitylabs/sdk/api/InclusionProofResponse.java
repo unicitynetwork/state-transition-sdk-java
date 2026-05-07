@@ -42,7 +42,7 @@ public class InclusionProofResponse {
    * @return inclusion proof response
    */
   public static InclusionProofResponse fromCbor(byte[] bytes) {
-    List<byte[]> data = CborDeserializer.decodeArray(bytes);
+    List<byte[]> data = CborDeserializer.decodeArray(bytes, 2);
     return new InclusionProofResponse(
             CborDeserializer.decodeUnsignedInteger(data.get(0)).asLong(),
             InclusionProof.fromCbor(data.get(1))

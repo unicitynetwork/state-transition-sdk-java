@@ -4,7 +4,6 @@ import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.crypto.hash.DataHasher;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.unicitylabs.sdk.predicate.EncodedPredicate;
-import org.unicitylabs.sdk.predicate.Predicate;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.transaction.Transaction;
@@ -70,11 +69,11 @@ public class StateId {
     return StateId.create(transaction.getLockScript(), transaction.getSourceStateHash());
   }
 
-  private static StateId create(Predicate predicate, DataHash stateHash) {
+  private static StateId create(EncodedPredicate predicate, DataHash stateHash) {
     DataHash hash = new DataHasher(HashAlgorithm.SHA256)
             .update(
                     CborSerializer.encodeArray(
-                            EncodedPredicate.fromPredicate(predicate).toCbor(),
+                            predicate.toCbor(),
                             CborSerializer.encodeByteString(stateHash.getData())
                     )
             )

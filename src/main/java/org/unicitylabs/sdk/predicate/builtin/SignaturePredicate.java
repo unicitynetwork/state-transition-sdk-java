@@ -1,9 +1,10 @@
 package org.unicitylabs.sdk.predicate.builtin;
 
 import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
-import org.unicitylabs.sdk.predicate.Predicate;
+import org.unicitylabs.sdk.predicate.EncodedPredicate;
 import org.unicitylabs.sdk.predicate.PredicateEngine;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
+import org.unicitylabs.sdk.util.HexConverter;
 
 import java.util.Arrays;
 import java.util.Objects;
@@ -11,11 +12,11 @@ import java.util.Objects;
 /**
  * Built-in predicate that locks an output to a secp256k1 public key.
  */
-public class PayToPublicKeyPredicate implements BuiltInPredicate {
+public class SignaturePredicate implements BuiltInPredicate {
 
   private final byte[] publicKey;
 
-  private PayToPublicKeyPredicate(byte[] publicKey) {
+  private SignaturePredicate(byte[] publicKey) {
     this.publicKey = publicKey;
   }
 
@@ -34,7 +35,7 @@ public class PayToPublicKeyPredicate implements BuiltInPredicate {
    * @return predicate type
    */
   public BuiltInPredicateType getType() {
-    return BuiltInPredicateType.PAY_TO_PUBLIC_KEY;
+    return BuiltInPredicateType.SIGNATURE;
   }
 
   /**
@@ -44,8 +45,8 @@ public class PayToPublicKeyPredicate implements BuiltInPredicate {
    *
    * @return pay-to-public-key predicate
    */
-  public static PayToPublicKeyPredicate create(byte[] publicKey) {
-    return new PayToPublicKeyPredicate(Arrays.copyOf(publicKey, publicKey.length));
+  public static SignaturePredicate create(byte[] publicKey) {
+    return new SignaturePredicate(Arrays.copyOf(publicKey, publicKey.length));
   }
 
   /**
@@ -55,7 +56,7 @@ public class PayToPublicKeyPredicate implements BuiltInPredicate {
    *
    * @return pay-to-public-key predicate
    */
-  public static PayToPublicKeyPredicate fromPredicate(Predicate predicate) {
+  public static SignaturePredicate fromPredicate(EncodedPredicate predicate) {
     PredicateEngine engine = predicate.getEngine();
     if (engine != PredicateEngine.BUILT_IN) {
       throw new IllegalArgumentException("Predicate engine must be BUILT_IN.");
@@ -63,11 +64,11 @@ public class PayToPublicKeyPredicate implements BuiltInPredicate {
 
     BuiltInPredicateType type = BuiltInPredicateType.fromId(
             CborDeserializer.decodeUnsignedInteger(predicate.encodeCode()).asInt());
-    if (type != BuiltInPredicateType.PAY_TO_PUBLIC_KEY) {
-      throw new IllegalArgumentException("Predicate type must be PAY_TO_PUBLIC_KEY.");
+    if (type != BuiltInPredicateType.SIGNATURE) {
+      throw new IllegalArgumentException("Predicate type must be SIGNATURE.");
     }
 
-    return new PayToPublicKeyPredicate(predicate.encodeParameters());
+    return new SignaturePredicate(predicate.encodeParameters());
   }
 
   /**
@@ -77,9 +78,9 @@ public class PayToPublicKeyPredicate implements BuiltInPredicate {
    *
    * @return pay-to-public-key predicate
    */
-  public static PayToPublicKeyPredicate fromSigningService(SigningService signingService) {
+  public static SignaturePredicate fromSigningService(SigningService signingService) {
     Objects.requireNonNull(signingService, "Signing service cannot be null");
-    return new PayToPublicKeyPredicate(signingService.getPublicKey());
+    return new SignaturePredicate(signingService.getPublicKey());
   }
 
   /**
@@ -90,6 +91,11 @@ public class PayToPublicKeyPredicate implements BuiltInPredicate {
   @Override
   public byte[] encodeParameters() {
     return this.getPublicKey();
+  }
+
+  @Override
+  public String toString() {
+    return String.format("SignaturePredicate{publicKey=%s}", HexConverter.encode(this.publicKey));
   }
 
 }

@@ -1,6 +1,6 @@
 package org.unicitylabs.sdk.predicate.builtin;
 
-import org.unicitylabs.sdk.predicate.Predicate;
+import org.unicitylabs.sdk.predicate.EncodedPredicate;
 import org.unicitylabs.sdk.predicate.PredicateEngine;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 
@@ -55,7 +55,7 @@ public class BurnPredicate implements BuiltInPredicate {
    * @return converted burn predicate
    * @throws IllegalArgumentException if the predicate engine is not built-in or predicate type is not burn
    */
-  public static BurnPredicate fromPredicate(Predicate predicate) {
+  public static BurnPredicate fromPredicate(EncodedPredicate predicate) {
     PredicateEngine engine = predicate.getEngine();
     if (engine != PredicateEngine.BUILT_IN) {
       throw new IllegalArgumentException("Predicate engine must be BUILT_IN.");

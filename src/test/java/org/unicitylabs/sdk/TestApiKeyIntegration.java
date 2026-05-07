@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.unicitylabs.sdk.api.*;
 import org.unicitylabs.sdk.api.jsonrpc.JsonRpcNetworkException;
 import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
-import org.unicitylabs.sdk.predicate.builtin.PayToPublicKeyPredicate;
+import org.unicitylabs.sdk.predicate.builtin.SignaturePredicate;
 import org.unicitylabs.sdk.transaction.MintTransaction;
 import org.unicitylabs.sdk.transaction.TokenId;
 import org.unicitylabs.sdk.transaction.TokenType;
@@ -43,7 +43,7 @@ public class TestApiKeyIntegration {
             HexConverter.decode("0000000000000000000000000000000000000000000000000000000000000001"));
 
     MintTransaction transaction = MintTransaction.create(
-            PayToPublicKeyPredicate.fromSigningService(signingService),
+            SignaturePredicate.fromSigningService(signingService),
             TokenId.generate(),
             TokenType.generate(),
             null,
