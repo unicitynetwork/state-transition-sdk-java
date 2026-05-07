@@ -1,13 +1,11 @@
 package org.unicitylabs.sdk.predicate.builtin;
 
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
-import org.unicitylabs.sdk.predicate.Predicate;
+import org.unicitylabs.sdk.predicate.EncodedPredicate;
 import org.unicitylabs.sdk.predicate.PredicateEngine;
 import org.unicitylabs.sdk.predicate.builtin.verification.BuiltInPredicateVerifier;
-import org.unicitylabs.sdk.predicate.builtin.verification.PayToPublicKeyPredicateVerifier;
+import org.unicitylabs.sdk.predicate.builtin.verification.SignaturePredicateVerifier;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifier;
-import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.util.verification.VerificationResult;
 import org.unicitylabs.sdk.util.verification.VerificationStatus;
@@ -52,20 +50,18 @@ public class DefaultBuiltInPredicateVerifier implements PredicateVerifier {
   /**
    * Creates the default built-in predicate verifier set.
    *
-   * @param service predicate verifier service
-   * @param trustBase root trust base
    * @return default built-in predicate verifier
    */
-  public static DefaultBuiltInPredicateVerifier create(PredicateVerifierService service, RootTrustBase trustBase) {
+  public static DefaultBuiltInPredicateVerifier create() {
     return new DefaultBuiltInPredicateVerifier(
             List.of(
-                    new PayToPublicKeyPredicateVerifier()
+                    new SignaturePredicateVerifier()
             )
     );
   }
 
   @Override
-  public VerificationResult<VerificationStatus> verify(Predicate predicate,
+  public VerificationResult<VerificationStatus> verify(EncodedPredicate predicate,
                                                        DataHash sourceStateHash,
                                                        DataHash transactionHash, byte[] unlockScript) {
     BuiltInPredicateType type = BuiltInPredicateType.fromId(

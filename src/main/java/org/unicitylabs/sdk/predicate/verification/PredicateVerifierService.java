@@ -1,8 +1,7 @@
 package org.unicitylabs.sdk.predicate.verification;
 
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
-import org.unicitylabs.sdk.predicate.Predicate;
+import org.unicitylabs.sdk.predicate.EncodedPredicate;
 import org.unicitylabs.sdk.predicate.PredicateEngine;
 import org.unicitylabs.sdk.predicate.builtin.DefaultBuiltInPredicateVerifier;
 import org.unicitylabs.sdk.util.verification.VerificationResult;
@@ -25,12 +24,11 @@ public class PredicateVerifierService {
   /**
    * Creates a predicate verifier service with default verifier registrations.
    *
-   * @param trustBase root trust base used by verifiers that require trust context
    * @return initialized predicate verifier service
    */
-  public static PredicateVerifierService create(RootTrustBase trustBase) {
+  public static PredicateVerifierService create() {
     PredicateVerifierService verifier = new PredicateVerifierService();
-    verifier.addVerifier(DefaultBuiltInPredicateVerifier.create(verifier, trustBase));
+    verifier.addVerifier(DefaultBuiltInPredicateVerifier.create());
 
     return verifier;
   }
@@ -63,8 +61,12 @@ public class PredicateVerifierService {
    * @return verification result from the engine-specific verifier
    * @throws IllegalArgumentException if no verifier is registered for the predicate engine
    */
-  public VerificationResult<VerificationStatus> verify(Predicate predicate,
-                                                       DataHash sourceStateHash, DataHash transactionHash, byte[] unlockScript) {
+  public VerificationResult<VerificationStatus> verify(
+          EncodedPredicate predicate,
+          DataHash sourceStateHash,
+          DataHash transactionHash,
+          byte[] unlockScript
+  ) {
     PredicateVerifier verifier = this.verifiers.get(predicate.getEngine());
     if (verifier == null) {
       throw new IllegalArgumentException(

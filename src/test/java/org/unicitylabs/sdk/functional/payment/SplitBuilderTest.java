@@ -12,8 +12,8 @@ import org.unicitylabs.sdk.payment.SplitResult;
 import org.unicitylabs.sdk.payment.TokenSplit;
 import org.unicitylabs.sdk.payment.asset.Asset;
 import org.unicitylabs.sdk.payment.asset.AssetId;
-import org.unicitylabs.sdk.predicate.builtin.PayToPublicKeyPredicate;
-import org.unicitylabs.sdk.predicate.builtin.PayToPublicKeyPredicateUnlockScript;
+import org.unicitylabs.sdk.predicate.builtin.SignaturePredicate;
+import org.unicitylabs.sdk.predicate.builtin.SignaturePredicateUnlockScript;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
 import org.unicitylabs.sdk.transaction.Token;
 import org.unicitylabs.sdk.transaction.TokenId;
@@ -40,14 +40,14 @@ public class SplitBuilderTest {
     TestAggregatorClient aggregatorClient = TestAggregatorClient.create();
     RootTrustBase trustBase = aggregatorClient.getTrustBase();
     StateTransitionClient client = new StateTransitionClient(aggregatorClient);
-    PredicateVerifierService predicateVerifier = PredicateVerifierService.create(trustBase);
+    PredicateVerifierService predicateVerifier = PredicateVerifierService.create();
 
     MintJustificationVerifierService mintJustificationVerifier = new MintJustificationVerifierService();
     mintJustificationVerifier.register(new SplitMintJustificationVerifier(
             trustBase, predicateVerifier, TestPaymentData::decode));
 
     SigningService signingService = SigningService.generate();
-    PayToPublicKeyPredicate ownerPredicate = PayToPublicKeyPredicate.fromSigningService(signingService);
+    SignaturePredicate ownerPredicate = SignaturePredicate.fromSigningService(signingService);
 
     Set<Asset> assets = Set.of(
             new Asset(new AssetId("ASSET_1".getBytes(StandardCharsets.UTF_8)), BigInteger.valueOf(500)),
@@ -77,7 +77,7 @@ public class SplitBuilderTest {
             predicateVerifier,
             sourceToken,
             split.getBurnTransaction(),
-            PayToPublicKeyPredicateUnlockScript.create(split.getBurnTransaction(), signingService)
+            SignaturePredicateUnlockScript.create(split.getBurnTransaction(), signingService)
     );
 
     SplitMintJustification justification = SplitMintJustification.create(

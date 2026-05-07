@@ -13,6 +13,7 @@ import org.unicitylabs.sdk.util.verification.VerificationStatus;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Token whose genesis is a {@link CertifiedUnicityIdMintTransaction}. The token's identifier is
@@ -90,13 +91,22 @@ public final class UnicityIdToken {
           PredicateVerifierService predicateVerifier,
           CertifiedUnicityIdMintTransaction genesis
   ) {
-    UnicityIdToken token = new UnicityIdToken(genesis);
-    VerificationResult<VerificationStatus> result = token.verify(trustBase, predicateVerifier);
+    Objects.requireNonNull(trustBase, "trustBase cannot be null");
+    Objects.requireNonNull(predicateVerifier, "predicateVerifier cannot be null");
+    Objects.requireNonNull(genesis, "genesis cannot be null");
+
+    VerificationResult<VerificationStatus> result =
+            CertifiedUnicityIdMintTransactionVerificationRule.verify(
+                    trustBase,
+                    predicateVerifier,
+                    genesis,
+                    null
+            );
     if (result.getStatus() != VerificationStatus.OK) {
       throw new VerificationException("Invalid token genesis", result);
     }
 
-    return token;
+    return new UnicityIdToken(genesis);
   }
 
   /**
@@ -109,22 +119,30 @@ public final class UnicityIdToken {
   }
 
   /**
-   * Verify the token by validating its certified mint transaction.
+   * Verify the token by validating its certified mint transaction against an expected issuer.
    *
    * @param trustBase trust base used for certification verification
    * @param predicateVerifier predicate verifier service
+   * @param issuerPublicKey expected issuer public key
    *
    * @return verification result
+   * @throws NullPointerException if {@code issuerPublicKey} is {@code null}
    */
   public VerificationResult<VerificationStatus> verify(
           RootTrustBase trustBase,
-          PredicateVerifierService predicateVerifier
+          PredicateVerifierService predicateVerifier,
+          byte[] issuerPublicKey
   ) {
+    Objects.requireNonNull(trustBase, "trustBase cannot be null");
+    Objects.requireNonNull(predicateVerifier, "predicateVerifier cannot be null");
+    Objects.requireNonNull(issuerPublicKey, "issuerPublicKey cannot be null");
+
     List<VerificationResult<?>> results = new ArrayList<>();
     VerificationResult<VerificationStatus> result = CertifiedUnicityIdMintTransactionVerificationRule.verify(
             trustBase,
             predicateVerifier,
-            this.genesis
+            this.genesis,
+            issuerPublicKey
     );
     results.add(result);
     if (result.getStatus() != VerificationStatus.OK) {

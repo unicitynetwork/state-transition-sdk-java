@@ -1,7 +1,7 @@
 package org.unicitylabs.sdk.transaction;
 
 import org.unicitylabs.sdk.crypto.hash.DataHash;
-import org.unicitylabs.sdk.predicate.Predicate;
+import org.unicitylabs.sdk.predicate.EncodedPredicate;
 
 import java.util.Optional;
 
@@ -22,14 +22,14 @@ public interface Transaction {
    *
    * @return lock script predicate
    */
-  Predicate getLockScript();
+  EncodedPredicate getLockScript();
 
   /**
    * Gets the transaction recipient.
    *
    * @return recipient predicate
    */
-  Predicate getRecipient();
+  EncodedPredicate getRecipient();
 
   /**
    * Gets the source state hash.

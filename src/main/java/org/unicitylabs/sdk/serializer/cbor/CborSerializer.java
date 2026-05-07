@@ -236,19 +236,13 @@ public class CborSerializer {
      */
     public CborMap(Set<Entry> entries) {
       this.entries = new ArrayList<>(entries);
-      this.entries.sort((a, b) -> {
-        if (a.key.length != b.key.length) {
-          return a.key.length - b.key.length;
-        }
+      this.entries.sort(CborMap::compareEntries);
 
-        for (int i = 0; i < a.key.length; i++) {
-          if (a.key[i] != b.key[i]) {
-            return a.key[i] - b.key[i];
-          }
+      for (int i = 1; i < this.entries.size(); i++) {
+        if (CborMap.compareEntries(this.entries.get(i - 1), this.entries.get(i)) == 0) {
+          throw new CborSerializationException("Duplicate map key in CborMap.");
         }
-
-        return 0;
-      });
+      }
     }
 
     /**
@@ -258,6 +252,26 @@ public class CborSerializer {
      */
     public List<Entry> getEntries() {
       return List.copyOf(this.entries);
+    }
+
+    /**
+     * Compare two map entries by their CBOR-encoded keys using canonical bytewise lexicographic
+     * order (compare bytes byte-by-byte, then break ties by length).
+     *
+     * @param a first entry
+     * @param b second entry
+     * @return negative, zero, or positive per {@link Comparable}
+     */
+    public static int compareEntries(Entry a, Entry b) {
+      int length = Math.min(a.key.length, b.key.length);
+      for (int i = 0; i < length; i++) {
+        int diff = Byte.toUnsignedInt(a.key[i]) - Byte.toUnsignedInt(b.key[i]);
+        if (diff != 0) {
+          return diff;
+        }
+      }
+
+      return a.key.length - b.key.length;
     }
 
     /**

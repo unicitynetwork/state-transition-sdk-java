@@ -12,8 +12,8 @@ import org.unicitylabs.sdk.api.bft.UnicityCertificateUtils;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
-import org.unicitylabs.sdk.predicate.builtin.PayToPublicKeyPredicate;
-import org.unicitylabs.sdk.predicate.builtin.PayToPublicKeyPredicateUnlockScript;
+import org.unicitylabs.sdk.predicate.builtin.SignaturePredicate;
+import org.unicitylabs.sdk.predicate.builtin.SignaturePredicateUnlockScript;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
 import org.unicitylabs.sdk.smt.radix.FinalizedNodeBranch;
 import org.unicitylabs.sdk.smt.radix.SparseMerkleTree;
@@ -42,7 +42,7 @@ public class InclusionProofTest {
 
 
     transaction = MintTransaction.create(
-            PayToPublicKeyPredicate.fromSigningService(signingService),
+            SignaturePredicate.fromSigningService(signingService),
             TokenId.generate(),
             TokenType.generate(),
             null,
@@ -60,7 +60,7 @@ public class InclusionProofTest {
     // Reuse user signing service as unicity certificate signing service.
     trustBase = RootTrustBaseUtils.generateRootTrustBase(signingService.getPublicKey());
     unicityCertificate = UnicityCertificateUtils.generateCertificate(signingService, root.getHash());
-    predicateVerifier = PredicateVerifierService.create(trustBase);
+    predicateVerifier = PredicateVerifierService.create();
   }
 
   @Test
@@ -147,7 +147,7 @@ public class InclusionProofTest {
                     this.certificationData.getLockScript(),
                     this.certificationData.getSourceStateHash(),
                     this.certificationData.getTransactionHash(),
-                    PayToPublicKeyPredicateUnlockScript.create(
+                    SignaturePredicateUnlockScript.create(
                             this.transaction,
                             new SigningService(SigningService.generatePrivateKey())
                     ).encode()

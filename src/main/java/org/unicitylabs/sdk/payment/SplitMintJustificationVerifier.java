@@ -112,6 +112,14 @@ public class SplitMintJustificationVerifier implements MintJustificationVerifier
     Transaction burnTokenLastTransaction = justification.getToken().getLatestTransaction();
     DataHash root = justification.getProofs().get(0).getAggregationPath().getRootHash();
     for (SplitAssetProof proof : justification.getProofs()) {
+      if (!validatedAssets.add(proof.getAssetId())) {
+        return new VerificationResult<>(
+                "SplitMintJustificationVerificationRule",
+                VerificationStatus.FAIL,
+                String.format("Duplicate split proof for asset id %s.", proof.getAssetId())
+        );
+      }
+
       MerkleTreePathVerificationResult aggregationPathResult = proof.getAggregationPath()
               .verify(proof.getAssetId().toBitString().toBigInteger());
       if (!aggregationPathResult.isSuccessful()) {
@@ -171,20 +179,17 @@ public class SplitMintJustificationVerifier implements MintJustificationVerifier
         );
       }
 
-      EncodedPredicate recipient = EncodedPredicate.fromPredicate(burnTokenLastTransaction.getRecipient());
       EncodedPredicate expectedRecipient = EncodedPredicate.fromPredicate(
               BurnPredicate.create(proof.getAggregationPath().getRootHash().getImprint())
       );
 
-      if (!expectedRecipient.equals(recipient)) {
+      if (!expectedRecipient.equals(burnTokenLastTransaction.getRecipient())) {
         return new VerificationResult<>(
                 "SplitMintJustificationVerificationRule",
                 VerificationStatus.FAIL,
                 "Aggregation path root does not match burn predicate."
         );
       }
-
-      validatedAssets.add(proof.getAssetId());
     }
 
     if (validatedAssets.size() != assets.size()) {
