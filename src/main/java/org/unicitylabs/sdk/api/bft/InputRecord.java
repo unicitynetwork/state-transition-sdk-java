@@ -150,7 +150,7 @@ public class InputRecord {
     if (tag.getTag() != InputRecord.CBOR_TAG) {
       throw new CborSerializationException(String.format("Invalid CBOR tag: %s", tag.getTag()));
     }
-    List<byte[]> data = CborDeserializer.decodeArray(tag.getData());
+    List<byte[]> data = CborDeserializer.decodeArray(tag.getData(), 10);
 
     int version = CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt();
     if (version != InputRecord.VERSION) {
@@ -212,7 +212,7 @@ public class InputRecord {
 
   @Override
   public int hashCode() {
-    return Objects.hash(InputRecord.VERSION, this.roundNumber, this.epoch,
+    return Objects.hash(this.roundNumber, this.epoch,
             Arrays.hashCode(this.previousHash),
             Arrays.hashCode(this.hash), Arrays.hashCode(this.summaryValue), this.timestamp,
             Arrays.hashCode(this.blockHash),

@@ -10,13 +10,13 @@ import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.transaction.Transaction;
 
 /**
- * Unlock script for {@link PayToPublicKeyPredicate} containing a transaction signature.
+ * Unlock script for {@link SignaturePredicate} containing a transaction signature.
  */
-public class PayToPublicKeyPredicateUnlockScript implements UnlockScript {
+public class SignaturePredicateUnlockScript implements UnlockScript {
 
   private final Signature signature;
 
-  private PayToPublicKeyPredicateUnlockScript(Signature signature) {
+  private SignaturePredicateUnlockScript(Signature signature) {
     this.signature = signature;
   }
 
@@ -36,7 +36,7 @@ public class PayToPublicKeyPredicateUnlockScript implements UnlockScript {
    * @param signingService signing service used to produce the signature
    * @return created unlock script
    */
-  public static PayToPublicKeyPredicateUnlockScript create(
+  public static SignaturePredicateUnlockScript create(
           Transaction transaction,
           SigningService signingService
   ) {
@@ -49,7 +49,7 @@ public class PayToPublicKeyPredicateUnlockScript implements UnlockScript {
             )
             .digest();
 
-    return new PayToPublicKeyPredicateUnlockScript(signingService.sign(hash));
+    return new SignaturePredicateUnlockScript(signingService.sign(hash));
   }
 
   /**
@@ -58,8 +58,8 @@ public class PayToPublicKeyPredicateUnlockScript implements UnlockScript {
    * @param bytes encoded signature bytes
    * @return decoded unlock script
    */
-  public static PayToPublicKeyPredicateUnlockScript decode(byte[] bytes) {
-    return new PayToPublicKeyPredicateUnlockScript(Signature.decode(bytes));
+  public static SignaturePredicateUnlockScript decode(byte[] bytes) {
+    return new SignaturePredicateUnlockScript(Signature.decode(bytes));
   }
 
   @Override

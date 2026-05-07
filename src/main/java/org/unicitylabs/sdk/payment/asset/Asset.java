@@ -56,7 +56,7 @@ public final class Asset {
    * @return asset
    */
   public static Asset fromCbor(byte[] bytes) {
-    List<byte[]> data = CborDeserializer.decodeArray(bytes);
+    List<byte[]> data = CborDeserializer.decodeArray(bytes, 2);
 
     return new Asset(
             AssetId.fromCbor(data.get(0)),

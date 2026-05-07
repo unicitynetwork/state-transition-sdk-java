@@ -5,35 +5,35 @@ import org.unicitylabs.sdk.crypto.hash.DataHasher;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.unicitylabs.sdk.crypto.secp256k1.Signature;
 import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
-import org.unicitylabs.sdk.predicate.Predicate;
+import org.unicitylabs.sdk.predicate.EncodedPredicate;
 import org.unicitylabs.sdk.predicate.builtin.BuiltInPredicateType;
-import org.unicitylabs.sdk.predicate.builtin.PayToPublicKeyPredicate;
+import org.unicitylabs.sdk.predicate.builtin.SignaturePredicate;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.util.verification.VerificationResult;
 import org.unicitylabs.sdk.util.verification.VerificationStatus;
 
 /**
- * Verifies {@link PayToPublicKeyPredicate} unlock scripts using secp256k1 signatures.
+ * Verifies {@link SignaturePredicate} unlock scripts using secp256k1 signatures.
  */
-public class PayToPublicKeyPredicateVerifier implements BuiltInPredicateVerifier {
+public class SignaturePredicateVerifier implements BuiltInPredicateVerifier {
 
   /**
    * Creates a verifier instance for pay-to-public-key predicates.
    */
-  public PayToPublicKeyPredicateVerifier() {
+  public SignaturePredicateVerifier() {
   }
 
   @Override
   public BuiltInPredicateType getType() {
-    return BuiltInPredicateType.PAY_TO_PUBLIC_KEY;
+    return BuiltInPredicateType.SIGNATURE;
   }
 
 
   @Override
-  public VerificationResult<VerificationStatus> verify(Predicate encodedPredicate,
+  public VerificationResult<VerificationStatus> verify(EncodedPredicate encodedPredicate,
                                                        DataHash sourceStateHash,
                                                        DataHash transactionHash, byte[] unlockScript) {
-    PayToPublicKeyPredicate predicate = PayToPublicKeyPredicate.fromPredicate(encodedPredicate);
+    SignaturePredicate predicate = SignaturePredicate.fromPredicate(encodedPredicate);
 
     boolean result = SigningService.verifyWithPublicKey(
             new DataHasher(HashAlgorithm.SHA256)
@@ -49,10 +49,10 @@ public class PayToPublicKeyPredicateVerifier implements BuiltInPredicateVerifier
     );
 
     if (!result) {
-      return new VerificationResult<>("PayToPublicKeyPredicateVerifier", VerificationStatus.FAIL,
+      return new VerificationResult<>("SignaturePredicateVerifier", VerificationStatus.FAIL,
               "Signature verification failed.");
     }
 
-    return new VerificationResult<>("PayToPublicKeyPredicateVerifier", VerificationStatus.OK);
+    return new VerificationResult<>("SignaturePredicateVerifier", VerificationStatus.OK);
   }
 }

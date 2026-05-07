@@ -67,7 +67,7 @@ public class SparseMerkleSumTreePathStep {
    * @return step
    */
   public static SparseMerkleSumTreePathStep fromCbor(byte[] bytes) {
-    List<byte[]> data = CborDeserializer.decodeArray(bytes);
+    List<byte[]> data = CborDeserializer.decodeArray(bytes, 3);
 
     return new SparseMerkleSumTreePathStep(
             BigIntegerConverter.decode(CborDeserializer.decodeByteString(data.get(0))),

@@ -144,7 +144,7 @@ public class UnicitySeal {
     if (tag.getTag() != UnicitySeal.CBOR_TAG) {
       throw new CborSerializationException(String.format("Invalid CBOR tag: %s", tag.getTag()));
     }
-    List<byte[]> data = CborDeserializer.decodeArray(tag.getData());
+    List<byte[]> data = CborDeserializer.decodeArray(tag.getData(), 8);
 
     int version = CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt();
     if (version != UnicitySeal.VERSION) {
@@ -235,7 +235,7 @@ public class UnicitySeal {
 
   @Override
   public int hashCode() {
-    return Objects.hash(UnicitySeal.VERSION, this.networkId, this.rootChainRoundNumber, this.epoch,
+    return Objects.hash(this.networkId, this.rootChainRoundNumber, this.epoch,
             this.timestamp,
             Arrays.hashCode(this.previousHash), Arrays.hashCode(this.hash), this.signatures);
   }

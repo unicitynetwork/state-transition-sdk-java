@@ -1,12 +1,10 @@
-package org.unicitylabs.sdk.transaction;
+package org.unicitylabs.sdk.unicityid;
 
 import org.unicitylabs.sdk.api.InclusionProof;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
-import org.unicitylabs.sdk.crypto.MintSigningService;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.crypto.hash.DataHasher;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
-import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
 import org.unicitylabs.sdk.predicate.EncodedPredicate;
 import org.unicitylabs.sdk.predicate.Predicate;
 import org.unicitylabs.sdk.predicate.builtin.SignaturePredicate;
@@ -14,21 +12,20 @@ import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializationException;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
-import org.unicitylabs.sdk.util.HexConverter;
+import org.unicitylabs.sdk.transaction.MintTransactionState;
+import org.unicitylabs.sdk.transaction.TokenId;
+import org.unicitylabs.sdk.transaction.TokenType;
+import org.unicitylabs.sdk.transaction.Transaction;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
-
 /**
- * Represents a Mint Transaction.
- *
- * <p>This transaction is responsible for minting new tokens with specific attributes and assigns
- * it to an initial owner.
+ * Mint transaction that derives its token id from a {@link UnicityId}. The token's data field is
+ * the encoded target predicate.
  */
-public class MintTransaction implements Transaction {
+public final class UnicityIdMintTransaction implements Transaction {
   public static final long CBOR_TAG = 39041;
   private static final int VERSION = 1;
 
@@ -37,31 +34,35 @@ public class MintTransaction implements Transaction {
   private final EncodedPredicate recipient;
   private final TokenId tokenId;
   private final TokenType tokenType;
-  private final byte[] justification;
-  private final byte[] data;
+  private final SignaturePredicate targetPredicate;
+  private final UnicityId unicityId;
 
-  private MintTransaction(
+  private UnicityIdMintTransaction(
           MintTransactionState sourceStateHash,
           EncodedPredicate lockScript,
           EncodedPredicate recipient,
           TokenId tokenId,
           TokenType tokenType,
-          byte[] justification,
-          byte[] data
+          SignaturePredicate targetPredicate,
+          UnicityId unicityId
   ) {
     this.sourceStateHash = sourceStateHash;
     this.lockScript = lockScript;
     this.recipient = recipient;
     this.tokenId = tokenId;
     this.tokenType = tokenType;
-    this.justification = justification;
-    this.data = data;
+    this.targetPredicate = targetPredicate;
+    this.unicityId = unicityId;
   }
 
+  /**
+   * Get the version number.
+   *
+   * @return version
+   */
   public int getVersion() {
-    return MintTransaction.VERSION;
+    return UnicityIdMintTransaction.VERSION;
   }
-
 
   @Override
   public MintTransactionState getSourceStateHash() {
@@ -79,35 +80,44 @@ public class MintTransaction implements Transaction {
   }
 
   /**
-   * Retrieves the unique token identifier.
+   * Get the token id derived from the unicity id.
    *
-   * @return the token identifier as a {@code TokenId}.
+   * @return token id
    */
   public TokenId getTokenId() {
     return this.tokenId;
   }
 
   /**
-   * Retrieves the type identifier of the token.
+   * Get the token type.
    *
-   * @return the token type as a {@code TokenType}.
+   * @return token type
    */
   public TokenType getTokenType() {
     return this.tokenType;
   }
 
   /**
-   * Retrieves the justification for the mint transaction, if any.
+   * Get the target predicate (the predicate the minted token is locked to).
    *
-   * @return optional justification bytes
+   * @return target predicate
    */
-  public Optional<byte[]> getJustification() {
-    return Optional.ofNullable(this.justification != null ? Arrays.copyOf(this.justification, this.justification.length) : null);
+  public SignaturePredicate getTargetPredicate() {
+    return this.targetPredicate;
+  }
+
+  /**
+   * Get the unicity id.
+   *
+   * @return unicity id
+   */
+  public UnicityId getUnicityId() {
+    return this.unicityId;
   }
 
   @Override
   public Optional<byte[]> getData() {
-    return Optional.ofNullable(this.data != null ? Arrays.copyOf(this.data, this.data.length) : null);
+    return Optional.of(EncodedPredicate.fromPredicate(this.targetPredicate).toCbor());
   }
 
   @Override
@@ -116,72 +126,79 @@ public class MintTransaction implements Transaction {
   }
 
   /**
-   * Create a mint transaction.
+   * Create a unicity id mint transaction. The token id is derived from the unicity id; the lock
+   * script is supplied by the caller.
    *
+   * @param lockScript lock script predicate (the predicate that must be unlocked to spend this
+   *     transaction)
    * @param recipient recipient predicate
-   * @param tokenId token identifier
+   * @param unicityId unicity id producing the token id
    * @param tokenType token type identifier
-   * @param justification mint justification bytes, may be null
-   * @param data payload bytes, may be null
+   * @param targetPredicate target predicate the minted token will be locked to
    *
    * @return mint transaction
    */
-  public static MintTransaction create(
+  public static UnicityIdMintTransaction create(
+          SignaturePredicate lockScript,
           Predicate recipient,
-          TokenId tokenId,
+          UnicityId unicityId,
           TokenType tokenType,
-          byte[] justification,
-          byte[] data
+          SignaturePredicate targetPredicate
   ) {
-    Objects.requireNonNull(recipient, "Recipient cannot be null");
-    Objects.requireNonNull(tokenId, "Token ID cannot be null");
-    Objects.requireNonNull(tokenType, "Token type cannot be null");
+    Objects.requireNonNull(lockScript, "lockScript cannot be null");
+    Objects.requireNonNull(recipient, "recipient cannot be null");
+    Objects.requireNonNull(unicityId, "unicityId cannot be null");
+    Objects.requireNonNull(tokenType, "tokenType cannot be null");
+    Objects.requireNonNull(targetPredicate, "targetPredicate cannot be null");
 
-    SigningService signingService = MintSigningService.create(tokenId);
-    return new MintTransaction(
+    TokenId tokenId = unicityId.toTokenId();
+
+    return new UnicityIdMintTransaction(
             MintTransactionState.create(tokenId),
-            EncodedPredicate.fromPredicate(SignaturePredicate.fromSigningService(signingService)),
+            EncodedPredicate.fromPredicate(lockScript),
             EncodedPredicate.fromPredicate(recipient),
             tokenId,
             tokenType,
-            justification != null ? Arrays.copyOf(justification, justification.length) : null,
-            data != null ? Arrays.copyOf(data, data.length) : null
+            targetPredicate,
+            unicityId
     );
   }
 
   /**
-   * Deserialize mint transaction from CBOR bytes.
+   * Deserialize a unicity id mint transaction from CBOR bytes.
    *
    * @param bytes CBOR bytes
    *
    * @return mint transaction
+   *
+   * @throws CborSerializationException if the bytes do not carry the expected tag, version, or if
+   *     the encoded token id does not match the unicity id
    */
-  public static MintTransaction fromCbor(byte[] bytes) {
+  public static UnicityIdMintTransaction fromCbor(byte[] bytes) {
     CborDeserializer.CborTag tag = CborDeserializer.decodeTag(bytes);
-    if (tag.getTag() != MintTransaction.CBOR_TAG) {
+    if (tag.getTag() != UnicityIdMintTransaction.CBOR_TAG) {
       throw new CborSerializationException(String.format("Invalid CBOR tag: %s", tag.getTag()));
     }
     List<byte[]> data = CborDeserializer.decodeArray(tag.getData(), 6);
 
     int version = CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt();
-    if (version != MintTransaction.VERSION) {
+    if (version != UnicityIdMintTransaction.VERSION) {
       throw new CborSerializationException(String.format("Unsupported version: %s", version));
     }
 
-    return MintTransaction.create(
-            EncodedPredicate.fromCbor(data.get(1)),
-            TokenId.fromCbor(data.get(2)),
-            TokenType.fromCbor(data.get(3)),
-            CborDeserializer.decodeNullable(data.get(4), CborDeserializer::decodeByteString),
-            CborDeserializer.decodeNullable(data.get(5), CborDeserializer::decodeByteString)
+    return UnicityIdMintTransaction.create(
+            SignaturePredicate.fromPredicate(
+                    EncodedPredicate.fromCbor(data.get(1))
+            ),
+            EncodedPredicate.fromCbor(data.get(2)),
+            UnicityId.fromCbor(data.get(3)),
+            TokenType.fromCbor(data.get(4)),
+            SignaturePredicate.fromPredicate(
+                    EncodedPredicate.fromCbor(data.get(5))
+            )
     );
   }
 
-  /**
-   * Calculate mint transaction state hash.
-   *
-   * @return state hash
-   */
   @Override
   public DataHash calculateStateHash() {
     return new DataHasher(HashAlgorithm.SHA256)
@@ -194,38 +211,28 @@ public class MintTransaction implements Transaction {
             .digest();
   }
 
-  /**
-   * Calculate hash of serialized mint transaction.
-   *
-   * @return transaction hash
-   */
   @Override
   public DataHash calculateTransactionHash() {
     return new DataHasher(HashAlgorithm.SHA256).update(this.toCbor()).digest();
   }
 
-  /**
-   * Serialize mint transaction to CBOR bytes.
-   *
-   * @return CBOR bytes
-   */
   @Override
   public byte[] toCbor() {
     return CborSerializer.encodeTag(
-            MintTransaction.CBOR_TAG,
+            UnicityIdMintTransaction.CBOR_TAG,
             CborSerializer.encodeArray(
-                    CborSerializer.encodeUnsignedInteger(MintTransaction.VERSION),
+                    CborSerializer.encodeUnsignedInteger(UnicityIdMintTransaction.VERSION),
+                    this.lockScript.toCbor(),
                     this.recipient.toCbor(),
-                    this.tokenId.toCbor(),
+                    this.unicityId.toCbor(),
                     this.tokenType.toCbor(),
-                    CborSerializer.encodeNullable(this.justification, CborSerializer::encodeByteString),
-                    CborSerializer.encodeNullable(this.data, CborSerializer::encodeByteString)
+                    EncodedPredicate.fromPredicate(this.targetPredicate).toCbor()
             )
     );
   }
 
   /**
-   * Build certified mint transaction by attaching and verifying inclusion proof.
+   * Build the certified version by attaching and verifying an inclusion proof.
    *
    * @param trustBase root trust base
    * @param predicateVerifier predicate verifier
@@ -233,20 +240,21 @@ public class MintTransaction implements Transaction {
    *
    * @return certified mint transaction
    */
-  public CertifiedMintTransaction toCertifiedTransaction(
+  public CertifiedUnicityIdMintTransaction toCertifiedTransaction(
           RootTrustBase trustBase,
           PredicateVerifierService predicateVerifier,
           InclusionProof inclusionProof
   ) {
-    return CertifiedMintTransaction.fromTransaction(trustBase, predicateVerifier, this,
+    return CertifiedUnicityIdMintTransaction.fromTransaction(trustBase, predicateVerifier, this,
             inclusionProof);
   }
 
   @Override
   public String toString() {
     return String.format(
-            "MintTransaction{sourceStateHash=%s, lockScript=%s, recipient=%s, tokenId=%s, tokenType=%s, data=%s}",
-            this.sourceStateHash, this.lockScript, this.recipient, this.tokenId, this.tokenType,
-            HexConverter.encode(this.data));
+            "UnicityIdMintTransaction{lockScript=%s, recipient=%s, tokenId=%s, tokenType=%s, unicityId=%s, targetPredicate=%s}",
+            this.lockScript, this.recipient, this.tokenId, this.tokenType, this.unicityId,
+            this.targetPredicate
+    );
   }
 }

@@ -79,7 +79,7 @@ public final class SplitAssetProof {
    * @return split reason proof
    */
   public static SplitAssetProof fromCbor(byte[] bytes) {
-    List<byte[]> data = CborDeserializer.decodeArray(bytes);
+    List<byte[]> data = CborDeserializer.decodeArray(bytes, 3);
 
     return new SplitAssetProof(
             AssetId.fromCbor(data.get(0)),

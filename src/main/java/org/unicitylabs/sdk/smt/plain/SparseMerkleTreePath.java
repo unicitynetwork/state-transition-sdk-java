@@ -122,7 +122,7 @@ public class SparseMerkleTreePath {
    * @return path
    */
   public static SparseMerkleTreePath fromCbor(byte[] bytes) {
-    List<byte[]> data = CborDeserializer.decodeArray(bytes);
+    List<byte[]> data = CborDeserializer.decodeArray(bytes, 2);
 
     return new SparseMerkleTreePath(
             DataHash.fromCbor(data.get(0)),
