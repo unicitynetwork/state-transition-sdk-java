@@ -73,6 +73,10 @@ public class ShardId {
   }
 
   public boolean isPrefixOf(byte[] data) {
+    if (data.length * 8 < this.length) {
+      return false;
+    }
+
     int fullBytes = this.length / 8;
     int remainingBits = this.length % 8;
 

@@ -7,16 +7,17 @@ import org.unicitylabs.sdk.smt.plain.SparseMerkleTreePath;
 import org.unicitylabs.sdk.smt.sum.SparseMerkleSumTreePath;
 
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Proof material for one split reason entry.
  */
-public class SplitReasonProof {
+public final class SplitAssetProof {
   private final AssetId assetId;
   private final SparseMerkleTreePath aggregationPath;
   private final SparseMerkleSumTreePath assetTreePath;
 
-  private SplitReasonProof(
+  private SplitAssetProof(
           AssetId assetId,
           SparseMerkleTreePath aggregationPath,
           SparseMerkleSumTreePath assetTreePath
@@ -62,12 +63,12 @@ public class SplitReasonProof {
    *
    * @return split reason proof
    */
-  public static SplitReasonProof create(
+  public static SplitAssetProof create(
           AssetId assetId,
           SparseMerkleTreePath aggregationPath,
           SparseMerkleSumTreePath assetTreePath
   ) {
-    return new SplitReasonProof(assetId, aggregationPath, assetTreePath);
+    return new SplitAssetProof(assetId, aggregationPath, assetTreePath);
   }
 
   /**
@@ -77,10 +78,10 @@ public class SplitReasonProof {
    *
    * @return split reason proof
    */
-  public static SplitReasonProof fromCbor(byte[] bytes) {
-    List<byte[]> data = CborDeserializer.decodeArray(bytes);
+  public static SplitAssetProof fromCbor(byte[] bytes) {
+    List<byte[]> data = CborDeserializer.decodeArray(bytes, 3);
 
-    return new SplitReasonProof(
+    return new SplitAssetProof(
             AssetId.fromCbor(data.get(0)),
             SparseMerkleTreePath.fromCbor(data.get(1)),
             SparseMerkleSumTreePath.fromCbor(data.get(2))
@@ -98,5 +99,17 @@ public class SplitReasonProof {
             this.aggregationPath.toCbor(),
             this.assetTreePath.toCbor()
     );
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (!(o instanceof SplitAssetProof)) return false;
+    SplitAssetProof that = (SplitAssetProof) o;
+    return Objects.equals(this.assetId, that.assetId);
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hashCode(this.assetId);
   }
 }

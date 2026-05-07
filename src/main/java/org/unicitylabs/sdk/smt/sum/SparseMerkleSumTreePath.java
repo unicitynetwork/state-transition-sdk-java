@@ -69,7 +69,7 @@ public class SparseMerkleSumTreePath {
               .update(
                       CborSerializer.encodeArray(
                               CborSerializer.encodeByteString(BigIntegerConverter.encode(step.getPath())),
-                              CborSerializer.encodeOptional(
+                              CborSerializer.encodeNullable(
                                       step.getData().orElse(null),
                                       CborSerializer::encodeByteString
                               ),
@@ -98,9 +98,9 @@ public class SparseMerkleSumTreePath {
               .update(
                       CborSerializer.encodeArray(
                               CborSerializer.encodeByteString(BigIntegerConverter.encode(step.getPath())),
-                              CborSerializer.encodeOptional(leftHash, CborSerializer::encodeByteString),
+                              CborSerializer.encodeNullable(leftHash, CborSerializer::encodeByteString),
                               CborSerializer.encodeByteString(BigIntegerConverter.encode(leftCounter)),
-                              CborSerializer.encodeOptional(rightHash, CborSerializer::encodeByteString),
+                              CborSerializer.encodeNullable(rightHash, CborSerializer::encodeByteString),
                               CborSerializer.encodeByteString(BigIntegerConverter.encode(rightCounter))
                       )
               )
@@ -132,7 +132,7 @@ public class SparseMerkleSumTreePath {
    * @return path
    */
   public static SparseMerkleSumTreePath fromCbor(byte[] bytes) {
-    List<byte[]> data = CborDeserializer.decodeArray(bytes);
+    List<byte[]> data = CborDeserializer.decodeArray(bytes, 2);
 
     return new SparseMerkleSumTreePath(
             DataHash.fromCbor(data.get(0)),
@@ -175,72 +175,5 @@ public class SparseMerkleSumTreePath {
   @Override
   public String toString() {
     return String.format("MerkleTreePath{rootHash=%s, steps=%s}", this.rootHash, this.steps);
-  }
-
-  /**
-   * Root of the sparse merkle sum tree path.
-   */
-  public static class Root {
-
-    private final DataHash hash;
-    private final BigInteger counter;
-
-    Root(
-            DataHash hash,
-            BigInteger counter
-    ) {
-      this.hash = Objects.requireNonNull(hash, "hash cannot be null");
-      this.counter = Objects.requireNonNull(counter, "counter cannot be null");
-    }
-
-    /**
-     * Get hash of the root.
-     *
-     * @return hash
-     */
-    public DataHash getHash() {
-      return this.hash;
-    }
-
-    /**
-     * Get the counter of the root.
-     *
-     * @return counter
-     */
-    public BigInteger getCounter() {
-      return this.counter;
-    }
-
-    /**
-     * Create root from CBOR bytes.
-     *
-     * @param bytes CBOR bytes
-     * @return root
-     */
-    public static Root fromCbor(byte[] bytes) {
-      List<byte[]> data = CborDeserializer.decodeArray(bytes);
-
-      return new Root(
-              DataHash.fromCbor(data.get(0)),
-              BigIntegerConverter.decode(CborDeserializer.decodeByteString(data.get(1)))
-      );
-    }
-
-    /**
-     * Serialize root to CBOR bytes.
-     *
-     * @return CBOR bytes
-     */
-    public byte[] toCbor() {
-      return CborSerializer.encodeArray(
-              this.hash.toCbor(),
-              CborSerializer.encodeByteString(BigIntegerConverter.encode(this.counter))
-      );
-    }
-
-    @Override
-    public String toString() {
-      return String.format("Root{hash=%s, counter=%s}", this.hash, this.counter);
-    }
   }
 }

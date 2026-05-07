@@ -9,13 +9,22 @@ import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
 
 public class UnicityCertificateUtils {
 
   public static UnicityCertificate generateCertificate(
           SigningService signingService,
           DataHash rootHash
+  ) {
+    return generateCertificate(signingService, rootHash,
+            ShardId.decode(new byte[]{(byte) 0b10000000}));
+  }
+
+  public static UnicityCertificate generateCertificate(
+          SigningService signingService,
+          DataHash rootHash,
+          ShardId shardId
   ) {
     InputRecord inputRecord = new InputRecord(
             0,
@@ -31,9 +40,7 @@ public class UnicityCertificateUtils {
     UnicityTreeCertificate unicityTreeCertificate = new UnicityTreeCertificate(0, List.of());
     byte[] technicalRecordHash = new byte[32];
     byte[] shardConfigurationHash = new byte[32];
-    ShardTreeCertificate shardTreeCertificate = new ShardTreeCertificate(
-            ShardId.decode(new byte[]{(byte) 0b10000000}), List.of()
-    );
+    ShardTreeCertificate shardTreeCertificate = new ShardTreeCertificate(shardId, List.of());
 
     DataHash shardTreeCertificateRootHash = UnicityCertificate.calculateShardTreeCertificateRootHash(
             inputRecord,
@@ -82,11 +89,13 @@ public class UnicityCertificateUtils {
             shardTreeCertificate,
             new UnicityTreeCertificate(0, List.of()),
             seal.withSignatures(
-                    Map.of(
-                            "NODE",
-                            signingService.sign(
-                                    new DataHasher(HashAlgorithm.SHA256).update(seal.toCbor()).digest()
-                            ).encode()
+                    Set.of(
+                            new UnicitySeal.SignatureEntry(
+                                    "NODE",
+                                    signingService.sign(
+                                            new DataHasher(HashAlgorithm.SHA256).update(seal.toCbor()).digest()
+                                    ).encode()
+                            )
                     )
             )
     );

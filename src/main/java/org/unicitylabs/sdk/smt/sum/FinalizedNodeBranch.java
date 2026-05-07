@@ -58,9 +58,9 @@ class FinalizedNodeBranch implements NodeBranch, FinalizedBranch {
             .update(
                     CborSerializer.encodeArray(
                             CborSerializer.encodeByteString(BigIntegerConverter.encode(path)),
-                            CborSerializer.encodeOptional(leftHash, CborSerializer::encodeByteString),
+                            CborSerializer.encodeNullable(leftHash, CborSerializer::encodeByteString),
                             CborSerializer.encodeByteString(BigIntegerConverter.encode(leftCounter)),
-                            CborSerializer.encodeOptional(rightHash, CborSerializer::encodeByteString),
+                            CborSerializer.encodeNullable(rightHash, CborSerializer::encodeByteString),
                             CborSerializer.encodeByteString(BigIntegerConverter.encode(rightCounter))
                     )
             )

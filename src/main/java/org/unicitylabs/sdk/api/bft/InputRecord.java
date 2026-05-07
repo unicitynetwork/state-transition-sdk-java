@@ -150,7 +150,7 @@ public class InputRecord {
     if (tag.getTag() != InputRecord.CBOR_TAG) {
       throw new CborSerializationException(String.format("Invalid CBOR tag: %s", tag.getTag()));
     }
-    List<byte[]> data = CborDeserializer.decodeArray(tag.getData());
+    List<byte[]> data = CborDeserializer.decodeArray(tag.getData(), 10);
 
     int version = CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt();
     if (version != InputRecord.VERSION) {
@@ -182,13 +182,13 @@ public class InputRecord {
                     CborSerializer.encodeUnsignedInteger(InputRecord.VERSION),
                     CborSerializer.encodeUnsignedInteger(this.roundNumber),
                     CborSerializer.encodeUnsignedInteger(this.epoch),
-                    CborSerializer.encodeOptional(this.previousHash, CborSerializer::encodeByteString),
+                    CborSerializer.encodeNullable(this.previousHash, CborSerializer::encodeByteString),
                     CborSerializer.encodeByteString(this.hash),
                     CborSerializer.encodeByteString(this.summaryValue),
                     CborSerializer.encodeUnsignedInteger(this.timestamp),
-                    CborSerializer.encodeOptional(this.blockHash, CborSerializer::encodeByteString),
+                    CborSerializer.encodeNullable(this.blockHash, CborSerializer::encodeByteString),
                     CborSerializer.encodeUnsignedInteger(this.sumOfEarnedFees),
-                    CborSerializer.encodeOptional(this.executedTransactionsHash,
+                    CborSerializer.encodeNullable(this.executedTransactionsHash,
                             CborSerializer::encodeByteString)
             ));
   }
@@ -199,19 +199,20 @@ public class InputRecord {
       return false;
     }
     InputRecord that = (InputRecord) o;
-    return Objects.equals(this.roundNumber,
-            that.roundNumber) && Objects.equals(this.epoch, that.epoch)
+    return Objects.equals(this.roundNumber, that.roundNumber)
+            && Objects.equals(this.epoch, that.epoch)
             && Objects.deepEquals(this.previousHash, that.previousHash)
-            && Objects.deepEquals(this.hash, that.hash) && Objects.deepEquals(this.summaryValue,
-            that.summaryValue) && Objects.equals(this.timestamp, that.timestamp)
-            && Objects.deepEquals(this.blockHash, that.blockHash) && Objects.equals(
-            this.sumOfEarnedFees, that.sumOfEarnedFees) && Objects.deepEquals(
-            this.executedTransactionsHash, that.executedTransactionsHash);
+            && Objects.deepEquals(this.hash, that.hash)
+            && Objects.deepEquals(this.summaryValue, that.summaryValue)
+            && Objects.equals(this.timestamp, that.timestamp)
+            && Objects.deepEquals(this.blockHash, that.blockHash)
+            && Objects.equals(this.sumOfEarnedFees, that.sumOfEarnedFees)
+            && Objects.deepEquals(this.executedTransactionsHash, that.executedTransactionsHash);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(InputRecord.VERSION, this.roundNumber, this.epoch,
+    return Objects.hash(this.roundNumber, this.epoch,
             Arrays.hashCode(this.previousHash),
             Arrays.hashCode(this.hash), Arrays.hashCode(this.summaryValue), this.timestamp,
             Arrays.hashCode(this.blockHash),

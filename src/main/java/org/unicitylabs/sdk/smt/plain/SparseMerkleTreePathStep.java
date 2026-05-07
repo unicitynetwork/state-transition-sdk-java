@@ -63,7 +63,7 @@ public class SparseMerkleTreePathStep {
    * @return sparse Merkle tree path step
    */
   public static SparseMerkleTreePathStep fromCbor(byte[] bytes) {
-    List<byte[]> data = CborDeserializer.decodeArray(bytes);
+    List<byte[]> data = CborDeserializer.decodeArray(bytes, 2);
 
     return new SparseMerkleTreePathStep(
             BigIntegerConverter.decode(CborDeserializer.decodeByteString(data.get(0))),
@@ -79,7 +79,7 @@ public class SparseMerkleTreePathStep {
   public byte[] toCbor() {
     return CborSerializer.encodeArray(
             CborSerializer.encodeByteString(BigIntegerConverter.encode(this.path)),
-            CborSerializer.encodeOptional(this.data, CborSerializer::encodeByteString)
+            CborSerializer.encodeNullable(this.data, CborSerializer::encodeByteString)
     );
   }
 

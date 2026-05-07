@@ -18,6 +18,8 @@ public enum InclusionProofVerificationStatus {
   INCLUSION_CERTIFICATE_MISSING,
   /** Proof path structure or hashes are invalid. */
   PATH_INVALID,
+  /** Shard id of the unicity certificate does not match the transaction state id. */
+  SHARD_ID_MISMATCH,
   /** Inclusion proof verification succeeded. */
   OK
 }

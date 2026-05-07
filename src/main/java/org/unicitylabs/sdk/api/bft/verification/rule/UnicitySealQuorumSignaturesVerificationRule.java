@@ -13,7 +13,6 @@ import org.unicitylabs.sdk.util.verification.VerificationStatus;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Rule to verify that the UnicitySeal contains valid quorum signatures.
@@ -37,9 +36,9 @@ public class UnicitySealQuorumSignaturesVerificationRule {
             .update(unicitySeal.toCborWithoutSignatures())
             .digest();
     int successful = 0;
-    for (Map.Entry<String, byte[]> entry : unicitySeal.getSignatures().entrySet()) {
+    for (UnicitySeal.SignatureEntry entry : unicitySeal.getSignatures()) {
       String nodeId = entry.getKey();
-      byte[] signature = entry.getValue();
+      byte[] signature = entry.getSignature();
 
       VerificationResult<?> result = UnicitySealQuorumSignaturesVerificationRule.verifySignature(
               trustBase,

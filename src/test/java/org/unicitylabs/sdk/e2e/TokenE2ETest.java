@@ -9,6 +9,7 @@ import org.unicitylabs.sdk.api.JsonRpcAggregatorClient;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.common.CommonTestFlow;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
+import org.unicitylabs.sdk.transaction.verification.MintJustificationVerifierService;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -37,7 +38,8 @@ public class TokenE2ETest extends CommonTestFlow {
     try (InputStream stream = getClass().getResourceAsStream("/trust-base.json")) {
       assertNotNull(stream, "trust-base.json not found");
       this.trustBase = RootTrustBase.fromJson(new String(stream.readAllBytes()));
-      this.predicateVerifier = PredicateVerifierService.create(this.trustBase);
+      this.predicateVerifier = PredicateVerifierService.create();
+      this.mintJustificationVerifier = new MintJustificationVerifierService();
     }
   }
 

@@ -1,12 +1,16 @@
-package org.unicitylabs.sdk.transaction;
+package org.unicitylabs.sdk.unicityid;
 
 import org.unicitylabs.sdk.api.InclusionProof;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.predicate.EncodedPredicate;
+import org.unicitylabs.sdk.predicate.builtin.SignaturePredicate;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
+import org.unicitylabs.sdk.transaction.TokenId;
+import org.unicitylabs.sdk.transaction.TokenType;
+import org.unicitylabs.sdk.transaction.Transaction;
 import org.unicitylabs.sdk.transaction.verification.InclusionProofVerificationRule;
 import org.unicitylabs.sdk.transaction.verification.InclusionProofVerificationStatus;
 import org.unicitylabs.sdk.util.verification.VerificationException;
@@ -17,17 +21,15 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * Transfer transaction with a verified inclusion proof.
+ * Unicity id mint transaction bundled with a verified inclusion proof.
  */
-public class CertifiedTransferTransaction implements Transaction {
+public final class CertifiedUnicityIdMintTransaction implements Transaction {
 
-  private final TransferTransaction transaction;
+  private final UnicityIdMintTransaction transaction;
   private final InclusionProof inclusionProof;
 
-  private CertifiedTransferTransaction(
-          TransferTransaction transaction,
-          InclusionProof inclusionProof
-  ) {
+  private CertifiedUnicityIdMintTransaction(UnicityIdMintTransaction transaction,
+                                            InclusionProof inclusionProof) {
     this.transaction = transaction;
     this.inclusionProof = inclusionProof;
   }
@@ -58,7 +60,43 @@ public class CertifiedTransferTransaction implements Transaction {
   }
 
   /**
-   * Get inclusion proof for this transaction.
+   * Returns the token id derived from the unicity id.
+   *
+   * @return token id
+   */
+  public TokenId getTokenId() {
+    return this.transaction.getTokenId();
+  }
+
+  /**
+   * Returns the token type.
+   *
+   * @return token type
+   */
+  public TokenType getTokenType() {
+    return this.transaction.getTokenType();
+  }
+
+  /**
+   * Returns the target predicate.
+   *
+   * @return target predicate
+   */
+  public SignaturePredicate getTargetPredicate() {
+    return this.transaction.getTargetPredicate();
+  }
+
+  /**
+   * Returns the unicity id.
+   *
+   * @return unicity id
+   */
+  public UnicityId getUnicityId() {
+    return this.transaction.getUnicityId();
+  }
+
+  /**
+   * Returns the inclusion proof certifying this transaction.
    *
    * @return inclusion proof
    */
@@ -67,41 +105,36 @@ public class CertifiedTransferTransaction implements Transaction {
   }
 
   /**
-   * Deserialize a certified transfer transaction from CBOR bytes.
+   * Deserializes a certified unicity id mint transaction from CBOR.
    *
-   * @param bytes CBOR encoded certified transfer transaction
-   * @param token token providing the source state for the deserialized transfer
+   * @param bytes CBOR-encoded certified mint transaction
    *
-   * @return certified transfer transaction
+   * @return decoded certified mint transaction
    */
-  public static CertifiedTransferTransaction fromCbor(byte[] bytes, Token token) {
+  public static CertifiedUnicityIdMintTransaction fromCbor(byte[] bytes) {
     List<byte[]> data = CborDeserializer.decodeArray(bytes, 2);
-
-    return new CertifiedTransferTransaction(
-            TransferTransaction.fromCbor(data.get(0), token),
+    return new CertifiedUnicityIdMintTransaction(
+            UnicityIdMintTransaction.fromCbor(data.get(0)),
             InclusionProof.fromCbor(data.get(1))
     );
   }
 
   /**
-   * Create a certified transfer transaction from a transfer transaction and inclusion proof.
+   * Creates a certified unicity id mint transaction after verifying its inclusion proof.
    *
-   * <p>The inclusion proof is verified against the transaction before creating the certified
-   * instance.
+   * @param trustBase trust base used to verify inclusion proof signatures
+   * @param predicateVerifier predicate verifier service
+   * @param transaction unicity id mint transaction to certify
+   * @param inclusionProof inclusion proof for the transaction
    *
-   * @param trustBase trust base used for proof verification
-   * @param predicateVerifier predicate verifier used by verification rules
-   * @param transaction transfer transaction
-   * @param inclusionProof inclusion proof
-   *
-   * @return certified transfer transaction
+   * @return certified mint transaction
    *
    * @throws VerificationException if inclusion proof verification fails
    */
-  public static CertifiedTransferTransaction fromTransaction(
+  public static CertifiedUnicityIdMintTransaction fromTransaction(
           RootTrustBase trustBase,
           PredicateVerifierService predicateVerifier,
-          TransferTransaction transaction,
+          UnicityIdMintTransaction transaction,
           InclusionProof inclusionProof
   ) {
     Objects.requireNonNull(trustBase, "trustBase cannot be null");
@@ -119,34 +152,19 @@ public class CertifiedTransferTransaction implements Transaction {
       throw new VerificationException("Inclusion proof verification failed", result);
     }
 
-    return new CertifiedTransferTransaction(transaction, inclusionProof);
+    return new CertifiedUnicityIdMintTransaction(transaction, inclusionProof);
   }
 
-  /**
-   * Calculate state hash of the transfer transaction.
-   *
-   * @return state hash
-   */
   @Override
   public DataHash calculateStateHash() {
     return this.transaction.calculateStateHash();
   }
 
-  /**
-   * Calculate hash of the transfer transaction.
-   *
-   * @return transaction hash
-   */
   @Override
   public DataHash calculateTransactionHash() {
     return this.transaction.calculateTransactionHash();
   }
 
-  /**
-   * Serialize this certified transfer transaction to CBOR bytes.
-   *
-   * @return CBOR bytes
-   */
   @Override
   public byte[] toCbor() {
     return CborSerializer.encodeArray(this.transaction.toCbor(), this.inclusionProof.toCbor());
@@ -154,7 +172,7 @@ public class CertifiedTransferTransaction implements Transaction {
 
   @Override
   public String toString() {
-    return String.format("CertifiedTransferTransaction{transaction=%s, inclusionProof=%s}",
+    return String.format("CertifiedUnicityIdMintTransaction{transaction=%s, inclusionProof=%s}",
             this.transaction, this.inclusionProof);
   }
 }

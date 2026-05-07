@@ -64,7 +64,7 @@ public class ShardTreeCertificate {
     if (tag.getTag() != ShardTreeCertificate.CBOR_TAG) {
       throw new CborSerializationException(String.format("Invalid CBOR tag: %s", tag.getTag()));
     }
-    List<byte[]> data = CborDeserializer.decodeArray(tag.getData());
+    List<byte[]> data = CborDeserializer.decodeArray(tag.getData(), 3);
 
     int version = CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt();
     if (version != ShardTreeCertificate.VERSION) {
@@ -105,13 +105,13 @@ public class ShardTreeCertificate {
       return false;
     }
     ShardTreeCertificate that = (ShardTreeCertificate) o;
-    return Objects.deepEquals(this.shard, that.shard) && Objects.equals(
-            this.siblingHashList, that.siblingHashList);
+    return Objects.deepEquals(this.shard, that.shard)
+            && Objects.equals(this.siblingHashList, that.siblingHashList);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(ShardTreeCertificate.VERSION, this.shard, this.siblingHashList);
+    return Objects.hash(this.shard, this.siblingHashList);
   }
 
   @Override
