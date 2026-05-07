@@ -6,6 +6,8 @@ import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
  * Submit certification request.
  */
 public class CertificationRequest {
+  public static final long CBOR_TAG = 39030;
+  private static final int VERSION = 1;
 
   private final StateId stateId;
   private final CertificationData certificationData;
@@ -17,11 +19,15 @@ public class CertificationRequest {
    * @param certificationData transaction hash
    */
   private CertificationRequest(
-      StateId stateId,
-      CertificationData certificationData
+          StateId stateId,
+          CertificationData certificationData
   ) {
     this.stateId = stateId;
     this.certificationData = certificationData;
+  }
+
+  public int getVersion() {
+    return CertificationRequest.VERSION;
   }
 
   /**
@@ -50,7 +56,7 @@ public class CertificationRequest {
    */
   public static CertificationRequest create(CertificationData certificationData) {
     return new CertificationRequest(StateId.fromCertificationData(certificationData),
-        certificationData);
+            certificationData);
   }
 
   /**
@@ -59,10 +65,14 @@ public class CertificationRequest {
    * @return CBOR bytes
    */
   public byte[] toCbor() {
-    return CborSerializer.encodeArray(
-        this.stateId.toCbor(),
-        this.certificationData.toCbor(),
-        CborSerializer.encodeUnsignedInteger(0)
+    return CborSerializer.encodeTag(
+            CertificationRequest.CBOR_TAG,
+            CborSerializer.encodeArray(
+                    CborSerializer.encodeUnsignedInteger(CertificationRequest.VERSION),
+                    this.stateId.toCbor(),
+                    this.certificationData.toCbor(),
+                    CborSerializer.encodeUnsignedInteger(0)
+            )
     );
   }
 }

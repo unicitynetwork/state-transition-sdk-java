@@ -1,21 +1,20 @@
 package org.unicitylabs.sdk.api;
 
-import java.util.Objects;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.crypto.hash.DataHasher;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.unicitylabs.sdk.predicate.EncodedPredicate;
-import org.unicitylabs.sdk.predicate.Predicate;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.transaction.Transaction;
-import org.unicitylabs.sdk.util.BitString;
 import org.unicitylabs.sdk.util.HexConverter;
+
+import java.util.Objects;
 
 /**
  * Represents a state identifier for requests.
  */
-public final class StateId {
+public class StateId {
 
   private final DataHash hash;
 
@@ -33,15 +32,6 @@ public final class StateId {
   }
 
   /**
-   * Returns the hash imprint bytes.
-   *
-   * @return state id imprint bytes
-   */
-  public byte[] getImprint() {
-    return this.hash.getImprint();
-  }
-
-  /**
    * Deserializes a state id from CBOR.
    *
    * @param bytes CBOR byte string containing SHA-256 hash bytes
@@ -49,7 +39,7 @@ public final class StateId {
    */
   public static StateId fromCbor(byte[] bytes) {
     return new StateId(
-        new DataHash(HashAlgorithm.SHA256, CborDeserializer.decodeByteString(bytes)));
+            new DataHash(HashAlgorithm.SHA256, CborDeserializer.decodeByteString(bytes)));
   }
 
   /**
@@ -63,7 +53,7 @@ public final class StateId {
     Objects.requireNonNull(certificationData, "Certification data cannot be null");
 
     return StateId.create(certificationData.getLockScript(),
-        certificationData.getSourceStateHash());
+            certificationData.getSourceStateHash());
   }
 
   /**
@@ -79,15 +69,15 @@ public final class StateId {
     return StateId.create(transaction.getLockScript(), transaction.getSourceStateHash());
   }
 
-  private static StateId create(Predicate predicate, DataHash stateHash) {
+  private static StateId create(EncodedPredicate predicate, DataHash stateHash) {
     DataHash hash = new DataHasher(HashAlgorithm.SHA256)
-        .update(
-            CborSerializer.encodeArray(
-                EncodedPredicate.fromPredicate(predicate).toCbor(),
-                CborSerializer.encodeByteString(stateHash.getData())
+            .update(
+                    CborSerializer.encodeArray(
+                            predicate.toCbor(),
+                            CborSerializer.encodeByteString(stateHash.getData())
+                    )
             )
-        )
-        .digest();
+            .digest();
 
     return new StateId(hash);
   }
@@ -99,15 +89,6 @@ public final class StateId {
    */
   public byte[] toCbor() {
     return CborSerializer.encodeByteString(this.getData());
-  }
-
-  /**
-   * Converts this state id to a {@link BitString}.
-   *
-   * @return bit string representation of this state id
-   */
-  public BitString toBitString() {
-    return new BitString(this.getImprint());
   }
 
   @Override
@@ -126,6 +107,6 @@ public final class StateId {
 
   @Override
   public String toString() {
-    return String.format("StateId[%s]", HexConverter.encode(this.getImprint()));
+    return String.format("StateId[%s]", HexConverter.encode(this.getData()));
   }
 }

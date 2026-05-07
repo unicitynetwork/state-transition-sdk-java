@@ -5,11 +5,11 @@ package org.unicitylabs.sdk.predicate.builtin;
  */
 public enum BuiltInPredicateType {
   /** Predicate that locks state to a public key. */
-  PAY_TO_PUBLIC_KEY(1),
-  /** Predicate that references a Unicity identifier. */
-  UNICITY_ID(2),
+  SIGNATURE(0x01),
   /** Predicate that marks state as unspendable (burned). */
-  BURN(3);
+  BURN(0x02),
+  /** Predicate that references a Unicity identifier. */
+  UNICITY_ID(0x100);
 
   private final int id;
 

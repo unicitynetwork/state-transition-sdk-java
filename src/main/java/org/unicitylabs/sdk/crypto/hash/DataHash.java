@@ -1,11 +1,12 @@
 
 package org.unicitylabs.sdk.crypto.hash;
 
-import java.util.Arrays;
-import java.util.Objects;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.util.HexConverter;
+
+import java.util.Arrays;
+import java.util.Objects;
 
 /**
  * DataHash represents a hash of data using a specific hash algorithm.

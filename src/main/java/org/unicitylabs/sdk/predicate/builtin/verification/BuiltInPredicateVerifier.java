@@ -1,7 +1,7 @@
 package org.unicitylabs.sdk.predicate.builtin.verification;
 
 import org.unicitylabs.sdk.crypto.hash.DataHash;
-import org.unicitylabs.sdk.predicate.Predicate;
+import org.unicitylabs.sdk.predicate.EncodedPredicate;
 import org.unicitylabs.sdk.predicate.builtin.BuiltInPredicateType;
 import org.unicitylabs.sdk.util.verification.VerificationResult;
 import org.unicitylabs.sdk.util.verification.VerificationStatus;
@@ -27,6 +27,6 @@ public interface BuiltInPredicateVerifier {
    * @param unlockScript unlock script bytes provided for the predicate
    * @return verification result with status and optional diagnostics
    */
-  VerificationResult<VerificationStatus> verify(Predicate predicate, DataHash sourceStateHash,
-      DataHash transactionHash, byte[] unlockScript);
+  VerificationResult<VerificationStatus> verify(EncodedPredicate predicate, DataHash sourceStateHash,
+                                                DataHash transactionHash, byte[] unlockScript);
 }

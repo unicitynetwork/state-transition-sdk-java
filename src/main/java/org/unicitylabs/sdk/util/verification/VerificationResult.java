@@ -23,9 +23,9 @@ public class VerificationResult<S> {
    * @param message descriptive message
    */
   public VerificationResult(
-      String rule,
-      S status,
-      String message
+          String rule,
+          S status,
+          String message
   ) {
     this(rule, status, message, List.of());
   }
@@ -37,8 +37,8 @@ public class VerificationResult<S> {
    * @param status verification status
    */
   public VerificationResult(
-      String rule,
-      S status
+          String rule,
+          S status
   ) {
     this(rule, status, "", List.of());
   }
@@ -52,10 +52,10 @@ public class VerificationResult<S> {
    * @param results nested verification results
    */
   public VerificationResult(
-      String rule,
-      S status,
-      String message,
-      VerificationResult<?>... results
+          String rule,
+          S status,
+          String message,
+          VerificationResult<?>... results
   ) {
     this(rule, status, message, List.of(results));
   }
@@ -69,10 +69,10 @@ public class VerificationResult<S> {
    * @param results nested verification results
    */
   public VerificationResult(
-      String rule,
-      S status,
-      String message,
-      List<VerificationResult<?>> results
+          String rule,
+          S status,
+          String message,
+          List<VerificationResult<?>> results
   ) {
     Objects.requireNonNull(rule, "Rule cannot be null");
     Objects.requireNonNull(status, "Status cannot be null");
@@ -125,11 +125,11 @@ public class VerificationResult<S> {
   @Override
   public String toString() {
     return String.format(
-        "VerificationResult{rule=%s, status=%s, message=%s, results=%s}",
-        this.rule,
-        this.status,
-        this.message,
-        this.results
+            "VerificationResult{rule=%s, status=%s, message=%s, results=%s}",
+            this.rule,
+            this.status,
+            this.message,
+            this.results
     );
   }
 }

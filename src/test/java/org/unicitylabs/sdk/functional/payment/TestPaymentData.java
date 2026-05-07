@@ -1,11 +1,12 @@
 package org.unicitylabs.sdk.functional.payment;
 
-import java.util.Set;
-import java.util.stream.Collectors;
 import org.unicitylabs.sdk.payment.PaymentData;
 import org.unicitylabs.sdk.payment.asset.Asset;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
+
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public class TestPaymentData implements PaymentData {
 
@@ -22,8 +23,8 @@ public class TestPaymentData implements PaymentData {
 
   public static TestPaymentData decode(byte[] bytes) {
     Set<Asset> assets = CborDeserializer.decodeArray(bytes).stream()
-        .map(Asset::fromCbor)
-        .collect(Collectors.toSet());
+            .map(Asset::fromCbor)
+            .collect(Collectors.toSet());
 
     return new TestPaymentData(assets);
   }
@@ -31,9 +32,9 @@ public class TestPaymentData implements PaymentData {
   @Override
   public byte[] encode() {
     return CborSerializer.encodeArray(
-        this.assets.stream()
-            .map(Asset::toCbor)
-            .toArray(byte[][]::new)
+            this.assets.stream()
+                    .map(Asset::toCbor)
+                    .toArray(byte[][]::new)
     );
   }
 }

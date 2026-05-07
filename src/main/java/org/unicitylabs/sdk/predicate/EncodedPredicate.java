@@ -1,16 +1,19 @@
 package org.unicitylabs.sdk.predicate;
 
+import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
+import org.unicitylabs.sdk.serializer.cbor.CborSerializationException;
+import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
+import org.unicitylabs.sdk.util.HexConverter;
+
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
-import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
-import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
-import org.unicitylabs.sdk.util.HexConverter;
 
 /**
  * Generic predicate representation that stores engine, code, and parameters as encoded bytes.
  */
 public class EncodedPredicate implements Predicate {
+  public static final long CBOR_TAG = 39032;
 
   private final PredicateEngine engine;
   private final byte[] code;
@@ -34,14 +37,18 @@ public class EncodedPredicate implements Predicate {
    * @return decoded encoded predicate
    */
   public static EncodedPredicate fromCbor(byte[] bytes) {
-    List<byte[]> data = CborDeserializer.decodeArray(bytes);
+    CborDeserializer.CborTag tag = CborDeserializer.decodeTag(bytes);
+    if (tag.getTag() != EncodedPredicate.CBOR_TAG) {
+      throw new CborSerializationException(String.format("Invalid CBOR tag: %s", tag.getTag()));
+    }
+    List<byte[]> data = CborDeserializer.decodeArray(tag.getData(), 3);
     PredicateEngine engine = PredicateEngine.fromId(
-        CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt());
+            CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt());
 
     return new EncodedPredicate(
-        engine,
-        CborDeserializer.decodeByteString(data.get(1)),
-        CborDeserializer.decodeByteString(data.get(2))
+            engine,
+            CborDeserializer.decodeByteString(data.get(1)),
+            CborDeserializer.decodeByteString(data.get(2))
     );
   }
 
@@ -52,11 +59,8 @@ public class EncodedPredicate implements Predicate {
    * @return encoded predicate containing engine, code, and parameters
    */
   public static EncodedPredicate fromPredicate(Predicate predicate) {
-    return new EncodedPredicate(
-        predicate.getEngine(),
-        predicate.encodeCode(),
-        predicate.encodeParameters()
-    );
+    return new EncodedPredicate(predicate.getEngine(), predicate.encodeCode(),
+            predicate.encodeParameters());
   }
 
   @Override
@@ -75,10 +79,13 @@ public class EncodedPredicate implements Predicate {
    * @return CBOR-encoded predicate bytes
    */
   public byte[] toCbor() {
-    return CborSerializer.encodeArray(
-        CborSerializer.encodeUnsignedInteger(this.engine.getId()),
-        CborSerializer.encodeByteString(this.code),
-        CborSerializer.encodeByteString(this.parameters)
+    return CborSerializer.encodeTag(
+            EncodedPredicate.CBOR_TAG,
+            CborSerializer.encodeArray(
+                    CborSerializer.encodeUnsignedInteger(this.engine.getId()),
+                    CborSerializer.encodeByteString(this.code),
+                    CborSerializer.encodeByteString(this.parameters)
+            )
     );
   }
 
@@ -89,7 +96,7 @@ public class EncodedPredicate implements Predicate {
     }
     EncodedPredicate that = (EncodedPredicate) o;
     return this.engine == that.engine && Arrays.equals(this.code, that.code) && Arrays.equals(
-        this.parameters, that.parameters);
+            this.parameters, that.parameters);
   }
 
   @Override
@@ -100,10 +107,10 @@ public class EncodedPredicate implements Predicate {
   @Override
   public String toString() {
     return String.format(
-        "EncodedPredicate{engine=%s, code=%s, parameters=%s}",
-        this.engine,
-        HexConverter.encode(this.code),
-        HexConverter.encode(this.parameters)
+            "EncodedPredicate{engine=%s, code=%s, parameters=%s}",
+            this.engine,
+            HexConverter.encode(this.code),
+            HexConverter.encode(this.parameters)
     );
   }
 }

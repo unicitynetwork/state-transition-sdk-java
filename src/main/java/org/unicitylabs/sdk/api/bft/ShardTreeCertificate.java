@@ -1,29 +1,36 @@
 package org.unicitylabs.sdk.api.bft;
 
+import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
+import org.unicitylabs.sdk.serializer.cbor.CborSerializationException;
+import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
+
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
-import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
-import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
-import org.unicitylabs.sdk.util.HexConverter;
 
 /**
  * Shard tree certificate.
  */
 public class ShardTreeCertificate {
+  public static final long CBOR_TAG = 39003;
+  private static final int VERSION = 1;
 
-  private final byte[] shard;
+  private final ShardId shard;
   private final List<byte[]> siblingHashList;
 
-  ShardTreeCertificate(byte[] shard, List<byte[]> siblingHashList) {
+  ShardTreeCertificate(ShardId shard, List<byte[]> siblingHashList) {
     Objects.requireNonNull(shard, "Shard cannot be null");
     Objects.requireNonNull(siblingHashList, "Sibling hash list cannot be null");
 
-    this.shard = Arrays.copyOf(shard, shard.length);
+    this.shard = shard;
     this.siblingHashList = siblingHashList.stream()
-        .map(hash -> Arrays.copyOf(hash, hash.length))
-        .collect(Collectors.toList());
+            .map(hash -> Arrays.copyOf(hash, hash.length))
+            .collect(Collectors.toList());
+  }
+
+  public int getVersion() {
+    return ShardTreeCertificate.VERSION;
   }
 
   /**
@@ -31,8 +38,8 @@ public class ShardTreeCertificate {
    *
    * @return shard
    */
-  public byte[] getShard() {
-    return Arrays.copyOf(this.shard, this.shard.length);
+  public ShardId getShard() {
+    return this.shard;
   }
 
   /**
@@ -42,8 +49,8 @@ public class ShardTreeCertificate {
    */
   public List<byte[]> getSiblingHashList() {
     return this.siblingHashList.stream()
-        .map(hash -> Arrays.copyOf(hash, hash.length))
-        .collect(Collectors.toList());
+            .map(hash -> Arrays.copyOf(hash, hash.length))
+            .collect(Collectors.toList());
   }
 
   /**
@@ -53,13 +60,22 @@ public class ShardTreeCertificate {
    * @return shard tree certificate
    */
   public static ShardTreeCertificate fromCbor(byte[] bytes) {
-    List<byte[]> data = CborDeserializer.decodeArray(bytes);
+    CborDeserializer.CborTag tag = CborDeserializer.decodeTag(bytes);
+    if (tag.getTag() != ShardTreeCertificate.CBOR_TAG) {
+      throw new CborSerializationException(String.format("Invalid CBOR tag: %s", tag.getTag()));
+    }
+    List<byte[]> data = CborDeserializer.decodeArray(tag.getData(), 3);
+
+    int version = CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt();
+    if (version != ShardTreeCertificate.VERSION) {
+      throw new CborSerializationException(String.format("Unsupported version: %s", version));
+    }
 
     return new ShardTreeCertificate(
-        CborDeserializer.decodeByteString(data.get(0)),
-        CborDeserializer.decodeArray(data.get(1)).stream()
-            .map(CborDeserializer::decodeByteString)
-            .collect(Collectors.toList())
+            ShardId.decode(CborDeserializer.decodeByteString(data.get(1))),
+            CborDeserializer.decodeArray(data.get(2)).stream()
+                    .map(CborDeserializer::decodeByteString)
+                    .collect(Collectors.toList())
     );
   }
 
@@ -69,13 +85,17 @@ public class ShardTreeCertificate {
    * @return CBOR bytes
    */
   public byte[] toCbor() {
-    return CborSerializer.encodeArray(
-        CborSerializer.encodeByteString(this.shard),
-        CborSerializer.encodeArray(
-            this.siblingHashList.stream()
-                .map(CborSerializer::encodeByteString)
-                .toArray(byte[][]::new)
-        )
+    return CborSerializer.encodeTag(
+            ShardTreeCertificate.CBOR_TAG,
+            CborSerializer.encodeArray(
+                    CborSerializer.encodeUnsignedInteger(ShardTreeCertificate.VERSION),
+                    CborSerializer.encodeByteString(this.shard.encode()),
+                    CborSerializer.encodeArray(
+                            this.siblingHashList.stream()
+                                    .map(CborSerializer::encodeByteString)
+                                    .toArray(byte[][]::new)
+                    )
+            )
     );
   }
 
@@ -85,18 +105,18 @@ public class ShardTreeCertificate {
       return false;
     }
     ShardTreeCertificate that = (ShardTreeCertificate) o;
-    return Objects.deepEquals(this.shard, that.shard) && Objects.equals(
-        this.siblingHashList, that.siblingHashList);
+    return Objects.deepEquals(this.shard, that.shard)
+            && Objects.equals(this.siblingHashList, that.siblingHashList);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(Arrays.hashCode(this.shard), this.siblingHashList);
+    return Objects.hash(this.shard, this.siblingHashList);
   }
 
   @Override
   public String toString() {
     return String.format("ShardTreeCertificate{shard=%s, siblingHashList=%s}",
-        HexConverter.encode(this.shard), this.siblingHashList);
+            this.shard, this.siblingHashList);
   }
 }

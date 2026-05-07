@@ -1,22 +1,24 @@
 package org.unicitylabs.sdk.api.bft;
 
-import java.util.Arrays;
-import java.util.List;
-import java.util.Objects;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.crypto.hash.DataHasher;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
-import org.unicitylabs.sdk.serializer.cbor.CborDeserializer.CborTag;
+import org.unicitylabs.sdk.serializer.cbor.CborSerializationException;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.util.HexConverter;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.Objects;
 
 /**
  * Unicity certificate.
  */
 public class UnicityCertificate {
+  public static final long CBOR_TAG = 39001;
+  private static final int VERSION = 1;
 
-  private final int version;
   private final InputRecord inputRecord;
   private final byte[] technicalRecordHash;
   private final byte[] shardConfigurationHash;
@@ -25,13 +27,12 @@ public class UnicityCertificate {
   private final UnicitySeal unicitySeal;
 
   UnicityCertificate(
-      int version,
-      InputRecord inputRecord,
-      byte[] technicalRecordHash,
-      byte[] shardConfigurationHash,
-      ShardTreeCertificate shardTreeCertificate,
-      UnicityTreeCertificate unicityTreeCertificate,
-      UnicitySeal unicitySeal
+          InputRecord inputRecord,
+          byte[] technicalRecordHash,
+          byte[] shardConfigurationHash,
+          ShardTreeCertificate shardTreeCertificate,
+          UnicityTreeCertificate unicityTreeCertificate,
+          UnicitySeal unicitySeal
   ) {
     Objects.requireNonNull(inputRecord, "Input record cannot be null");
     Objects.requireNonNull(shardConfigurationHash, "Shard configuration hash cannot be null");
@@ -39,14 +40,13 @@ public class UnicityCertificate {
     Objects.requireNonNull(unicityTreeCertificate, "Unicity tree certificate cannot be null");
     Objects.requireNonNull(unicitySeal, "Unicity seal cannot be null");
 
-    this.version = version;
     this.inputRecord = inputRecord;
     this.technicalRecordHash = technicalRecordHash != null
-        ? Arrays.copyOf(technicalRecordHash, technicalRecordHash.length)
-        : null;
+            ? Arrays.copyOf(technicalRecordHash, technicalRecordHash.length)
+            : null;
     this.shardConfigurationHash = Arrays.copyOf(
-        shardConfigurationHash,
-        shardConfigurationHash.length
+            shardConfigurationHash,
+            shardConfigurationHash.length
     );
     this.shardTreeCertificate = shardTreeCertificate;
     this.unicityTreeCertificate = unicityTreeCertificate;
@@ -59,7 +59,7 @@ public class UnicityCertificate {
    * @return certificate version
    */
   public int getVersion() {
-    return this.version;
+    return UnicityCertificate.VERSION;
   }
 
   /**
@@ -78,8 +78,8 @@ public class UnicityCertificate {
    */
   public byte[] getTechnicalRecordHash() {
     return this.technicalRecordHash != null
-        ? Arrays.copyOf(this.technicalRecordHash, this.technicalRecordHash.length)
-        : null;
+            ? Arrays.copyOf(this.technicalRecordHash, this.technicalRecordHash.length)
+            : null;
   }
 
   /**
@@ -128,33 +128,33 @@ public class UnicityCertificate {
    * @return root hash
    */
   public static DataHash calculateShardTreeCertificateRootHash(
-      InputRecord inputRecord,
-      byte[] technicalRecordHash,
-      byte[] shardConfigurationHash,
-      ShardTreeCertificate shardTreeCertificate
+          InputRecord inputRecord,
+          byte[] technicalRecordHash,
+          byte[] shardConfigurationHash,
+          ShardTreeCertificate shardTreeCertificate
   ) {
 
     DataHash rootHash = new DataHasher(HashAlgorithm.SHA256)
-        .update(inputRecord.toCbor())
-        .update(
-            CborSerializer.encodeOptional(technicalRecordHash, CborSerializer::encodeByteString))
-        .update(CborSerializer.encodeByteString(shardConfigurationHash))
-        .digest();
+            .update(inputRecord.toCbor())
+            .update(
+                    CborSerializer.encodeNullable(technicalRecordHash, CborSerializer::encodeByteString))
+            .update(CborSerializer.encodeByteString(shardConfigurationHash))
+            .digest();
 
-    byte[] shardId = shardTreeCertificate.getShard();
+    ShardId shardId = shardTreeCertificate.getShard();
     List<byte[]> siblingHashes = shardTreeCertificate.getSiblingHashList();
     for (int i = 0; i < siblingHashes.size(); i++) {
-      boolean isRight = shardId[(shardId.length - 1) - (i / 8)] == 1;
+      boolean isRight = shardId.getBit(shardId.getLength() - 1 - i) == 1;
       if (isRight) {
         rootHash = new DataHasher(HashAlgorithm.SHA256)
-            .update(siblingHashes.get(i))
-            .update(rootHash.getData())
-            .digest();
+                .update(CborSerializer.encodeByteString(siblingHashes.get(i)))
+                .update(CborSerializer.encodeByteString(rootHash.getData()))
+                .digest();
       } else {
         rootHash = new DataHasher(HashAlgorithm.SHA256)
-            .update(rootHash.getData())
-            .update(siblingHashes.get(i))
-            .digest();
+                .update(CborSerializer.encodeByteString(rootHash.getData()))
+                .update(CborSerializer.encodeByteString(siblingHashes.get(i)))
+                .digest();
       }
     }
 
@@ -169,17 +169,24 @@ public class UnicityCertificate {
    * @return unicity certificate
    */
   public static UnicityCertificate fromCbor(byte[] bytes) {
-    CborTag tag = CborDeserializer.decodeTag(bytes);
-    List<byte[]> data = CborDeserializer.decodeArray(tag.getData());
+    CborDeserializer.CborTag tag = CborDeserializer.decodeTag(bytes);
+    if (tag.getTag() != UnicityCertificate.CBOR_TAG) {
+      throw new CborSerializationException(String.format("Invalid CBOR tag: %s", tag.getTag()));
+    }
+    List<byte[]> data = CborDeserializer.decodeArray(tag.getData(), 7);
+
+    int version = CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt();
+    if (version != UnicityCertificate.VERSION) {
+      throw new CborSerializationException(String.format("Unsupported version: %s", version));
+    }
 
     return new UnicityCertificate(
-        CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt(),
-        InputRecord.fromCbor(data.get(1)),
-        CborDeserializer.decodeNullable(data.get(2), CborDeserializer::decodeByteString),
-        CborDeserializer.decodeByteString(data.get(3)),
-        ShardTreeCertificate.fromCbor(data.get(4)),
-        UnicityTreeCertificate.fromCbor(data.get(5)),
-        UnicitySeal.fromCbor(data.get(6))
+            InputRecord.fromCbor(data.get(1)),
+            CborDeserializer.decodeNullable(data.get(2), CborDeserializer::decodeByteString),
+            CborDeserializer.decodeByteString(data.get(3)),
+            ShardTreeCertificate.fromCbor(data.get(4)),
+            UnicityTreeCertificate.fromCbor(data.get(5)),
+            UnicitySeal.fromCbor(data.get(6))
     );
   }
 
@@ -190,17 +197,17 @@ public class UnicityCertificate {
    */
   public byte[] toCbor() {
     return CborSerializer.encodeTag(
-        1007,
-        CborSerializer.encodeArray(
-            CborSerializer.encodeUnsignedInteger(this.version),
-            this.inputRecord.toCbor(),
-            CborSerializer.encodeOptional(this.technicalRecordHash,
-                CborSerializer::encodeByteString),
-            CborSerializer.encodeByteString(this.shardConfigurationHash),
-            this.shardTreeCertificate.toCbor(),
-            this.unicityTreeCertificate.toCbor(),
-            this.unicitySeal.toCbor()
-        ));
+            UnicityCertificate.CBOR_TAG,
+            CborSerializer.encodeArray(
+                    CborSerializer.encodeUnsignedInteger(UnicityCertificate.VERSION),
+                    this.inputRecord.toCbor(),
+                    CborSerializer.encodeNullable(this.technicalRecordHash,
+                            CborSerializer::encodeByteString),
+                    CborSerializer.encodeByteString(this.shardConfigurationHash),
+                    this.shardTreeCertificate.toCbor(),
+                    this.unicityTreeCertificate.toCbor(),
+                    this.unicitySeal.toCbor()
+            ));
   }
 
   @Override
@@ -209,33 +216,32 @@ public class UnicityCertificate {
       return false;
     }
     UnicityCertificate that = (UnicityCertificate) o;
-    return Objects.equals(this.version, that.version) && Objects.equals(this.inputRecord,
-        that.inputRecord) && Objects.deepEquals(this.technicalRecordHash,
-        that.technicalRecordHash) && Objects.deepEquals(this.shardConfigurationHash,
-        that.shardConfigurationHash) && Objects.equals(this.shardTreeCertificate,
-        that.shardTreeCertificate) && Objects.equals(this.unicityTreeCertificate,
-        that.unicityTreeCertificate) && Objects.equals(this.unicitySeal, that.unicitySeal);
+    return Objects.equals(this.inputRecord, that.inputRecord)
+            && Objects.deepEquals(this.technicalRecordHash, that.technicalRecordHash)
+            && Objects.deepEquals(this.shardConfigurationHash, that.shardConfigurationHash)
+            && Objects.equals(this.shardTreeCertificate, that.shardTreeCertificate)
+            && Objects.equals(this.unicityTreeCertificate, that.unicityTreeCertificate)
+            && Objects.equals(this.unicitySeal, that.unicitySeal);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(this.version, this.inputRecord, Arrays.hashCode(this.technicalRecordHash),
-        Arrays.hashCode(this.shardConfigurationHash), this.shardTreeCertificate,
-        this.unicityTreeCertificate, this.unicitySeal);
+    return Objects.hash(this.inputRecord, Arrays.hashCode(this.technicalRecordHash),
+            Arrays.hashCode(this.shardConfigurationHash), this.shardTreeCertificate,
+            this.unicityTreeCertificate, this.unicitySeal);
   }
 
   @Override
   public String toString() {
-    return String.format("UnicityCertificate{version=%s, inputRecord=%s, technicalRecordHash=%s, "
-            + "shardConfigurationHash=%s, shardTreeCertificate=%s, unicityTreeCertificate=%s, "
-            + "unicitySeal=%s}",
-        this.version,
-        this.inputRecord,
-        this.technicalRecordHash != null ? HexConverter.encode(this.technicalRecordHash) : null,
-        HexConverter.encode(this.shardConfigurationHash),
-        this.shardTreeCertificate,
-        this.unicityTreeCertificate,
-        this.unicitySeal
+    return String.format("UnicityCertificate{inputRecord=%s, technicalRecordHash=%s, "
+                    + "shardConfigurationHash=%s, shardTreeCertificate=%s, unicityTreeCertificate=%s, "
+                    + "unicitySeal=%s}",
+            this.inputRecord,
+            this.technicalRecordHash != null ? HexConverter.encode(this.technicalRecordHash) : null,
+            HexConverter.encode(this.shardConfigurationHash),
+            this.shardTreeCertificate,
+            this.unicityTreeCertificate,
+            this.unicitySeal
     );
   }
 }

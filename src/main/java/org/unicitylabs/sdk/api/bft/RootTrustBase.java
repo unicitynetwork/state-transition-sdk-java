@@ -4,14 +4,15 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import org.unicitylabs.sdk.serializer.UnicityObjectMapper;
+import org.unicitylabs.sdk.serializer.json.JsonSerializationException;
+import org.unicitylabs.sdk.serializer.json.LongAsStringSerializer;
+
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
-import org.unicitylabs.sdk.serializer.UnicityObjectMapper;
-import org.unicitylabs.sdk.serializer.json.JsonSerializationException;
-import org.unicitylabs.sdk.serializer.json.LongAsStringSerializer;
 
 /**
  * Root trust base information.
@@ -31,16 +32,16 @@ public class RootTrustBase {
 
   @JsonCreator
   RootTrustBase(
-      @JsonProperty("version") long version,
-      @JsonProperty("networkId") int networkId,
-      @JsonProperty("epoch") long epoch,
-      @JsonProperty("epochStartRound") long epochStartRound,
-      @JsonProperty("rootNodes") Set<NodeInfo> rootNodes,
-      @JsonProperty("quorumThreshold") long quorumThreshold,
-      @JsonProperty("stateHash") byte[] stateHash,
-      @JsonProperty("changeRecordHash") byte[] changeRecordHash,
-      @JsonProperty("previousEntryHash") byte[] previousEntryHash,
-      @JsonProperty("signatures") Map<String, byte[]> signatures
+          @JsonProperty("version") long version,
+          @JsonProperty("networkId") int networkId,
+          @JsonProperty("epoch") long epoch,
+          @JsonProperty("epochStartRound") long epochStartRound,
+          @JsonProperty("rootNodes") Set<NodeInfo> rootNodes,
+          @JsonProperty("quorumThreshold") long quorumThreshold,
+          @JsonProperty("stateHash") byte[] stateHash,
+          @JsonProperty("changeRecordHash") byte[] changeRecordHash,
+          @JsonProperty("previousEntryHash") byte[] previousEntryHash,
+          @JsonProperty("signatures") Map<String, byte[]> signatures
   ) {
     this.version = version;
     this.networkId = networkId;
@@ -50,16 +51,16 @@ public class RootTrustBase {
     this.quorumThreshold = quorumThreshold;
     this.stateHash = Arrays.copyOf(stateHash, stateHash.length);
     this.changeRecordHash = changeRecordHash == null
-        ? null
-        : Arrays.copyOf(changeRecordHash, changeRecordHash.length);
+            ? null
+            : Arrays.copyOf(changeRecordHash, changeRecordHash.length);
     this.previousEntryHash = previousEntryHash == null
-        ? null
-        : Arrays.copyOf(previousEntryHash, previousEntryHash.length);
+            ? null
+            : Arrays.copyOf(previousEntryHash, previousEntryHash.length);
     this.signatures = signatures.entrySet().stream()
-        .collect(Collectors.toMap(
-            Map.Entry::getKey,
-            e -> Arrays.copyOf(e.getValue(), e.getValue().length)
-        ));
+            .collect(Collectors.toMap(
+                    Map.Entry::getKey,
+                    e -> Arrays.copyOf(e.getValue(), e.getValue().length)
+            ));
   }
 
   /**
@@ -136,8 +137,8 @@ public class RootTrustBase {
    */
   public byte[] getChangeRecordHash() {
     return this.changeRecordHash == null
-        ? null
-        : Arrays.copyOf(this.changeRecordHash, this.changeRecordHash.length);
+            ? null
+            : Arrays.copyOf(this.changeRecordHash, this.changeRecordHash.length);
   }
 
   /**
@@ -147,8 +148,8 @@ public class RootTrustBase {
    */
   public byte[] getPreviousEntryHash() {
     return this.previousEntryHash == null
-        ? null
-        : Arrays.copyOf(this.previousEntryHash, this.previousEntryHash.length);
+            ? null
+            : Arrays.copyOf(this.previousEntryHash, this.previousEntryHash.length);
   }
 
   /**
@@ -158,11 +159,11 @@ public class RootTrustBase {
    */
   public Map<String, byte[]> getSignatures() {
     return Map.copyOf(
-        this.signatures.entrySet().stream()
-            .collect(Collectors.toMap(
-                Map.Entry::getKey,
-                e -> Arrays.copyOf(e.getValue(), e.getValue().length)
-            ))
+            this.signatures.entrySet().stream()
+                    .collect(Collectors.toMap(
+                            Map.Entry::getKey,
+                            e -> Arrays.copyOf(e.getValue(), e.getValue().length)
+                    ))
     );
   }
 
@@ -204,9 +205,9 @@ public class RootTrustBase {
 
     @JsonCreator
     NodeInfo(
-        @JsonProperty("nodeId") String nodeId,
-        @JsonProperty("sigKey") byte[] signingKey,
-        @JsonProperty("stake") long stakedAmount
+            @JsonProperty("nodeId") String nodeId,
+            @JsonProperty("sigKey") byte[] signingKey,
+            @JsonProperty("stake") long stakedAmount
     ) {
       this.nodeId = nodeId;
       this.signingKey = Arrays.copyOf(signingKey, signingKey.length);

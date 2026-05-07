@@ -1,10 +1,11 @@
 package org.unicitylabs.sdk.predicate.builtin;
 
-import java.util.Arrays;
-import java.util.Objects;
-import org.unicitylabs.sdk.predicate.Predicate;
+import org.unicitylabs.sdk.predicate.EncodedPredicate;
 import org.unicitylabs.sdk.predicate.PredicateEngine;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
+
+import java.util.Arrays;
+import java.util.Objects;
 
 /**
  * Built-in predicate representing a burn operation.
@@ -54,14 +55,14 @@ public class BurnPredicate implements BuiltInPredicate {
    * @return converted burn predicate
    * @throws IllegalArgumentException if the predicate engine is not built-in or predicate type is not burn
    */
-  public static BurnPredicate fromPredicate(Predicate predicate) {
+  public static BurnPredicate fromPredicate(EncodedPredicate predicate) {
     PredicateEngine engine = predicate.getEngine();
     if (engine != PredicateEngine.BUILT_IN) {
       throw new IllegalArgumentException("Predicate engine must be BUILT_IN.");
     }
 
     BuiltInPredicateType type = BuiltInPredicateType.fromId(
-        CborDeserializer.decodeUnsignedInteger(predicate.encodeCode()).asInt());
+            CborDeserializer.decodeUnsignedInteger(predicate.encodeCode()).asInt());
     if (type != BuiltInPredicateType.BURN) {
       throw new IllegalArgumentException("Predicate type must be BURN.");
     }

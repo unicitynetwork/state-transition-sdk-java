@@ -1,12 +1,9 @@
 
 package org.unicitylabs.sdk;
 
+import org.unicitylabs.sdk.api.*;
+
 import java.util.concurrent.CompletableFuture;
-import org.unicitylabs.sdk.api.AggregatorClient;
-import org.unicitylabs.sdk.api.CertificationData;
-import org.unicitylabs.sdk.api.CertificationResponse;
-import org.unicitylabs.sdk.api.InclusionProofResponse;
-import org.unicitylabs.sdk.api.StateId;
 
 /**
  * Client for handling state transitions of tokens, including submitting commitments and finalizing transactions.

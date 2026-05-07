@@ -1,11 +1,12 @@
 package org.unicitylabs.sdk.payment.asset;
 
-import java.math.BigInteger;
-import java.util.List;
-import java.util.Objects;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.util.BigIntegerConverter;
+
+import java.math.BigInteger;
+import java.util.List;
+import java.util.Objects;
 
 /**
  * Represents an asset with an ID and a value.
@@ -55,11 +56,11 @@ public final class Asset {
    * @return asset
    */
   public static Asset fromCbor(byte[] bytes) {
-    List<byte[]> data = CborDeserializer.decodeArray(bytes);
+    List<byte[]> data = CborDeserializer.decodeArray(bytes, 2);
 
     return new Asset(
-        AssetId.fromCbor(data.get(0)),
-        BigIntegerConverter.decode(CborDeserializer.decodeByteString(data.get(1)))
+            AssetId.fromCbor(data.get(0)),
+            BigIntegerConverter.decode(CborDeserializer.decodeByteString(data.get(1)))
     );
   }
 
@@ -70,8 +71,8 @@ public final class Asset {
    */
   public byte[] toCbor() {
     return CborSerializer.encodeArray(
-        this.id.toCbor(),
-        CborSerializer.encodeByteString(BigIntegerConverter.encode(this.value))
+            this.id.toCbor(),
+            CborSerializer.encodeByteString(BigIntegerConverter.encode(this.value))
     );
   }
 

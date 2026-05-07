@@ -1,7 +1,5 @@
 package org.unicitylabs.sdk.transaction;
 
-import java.util.Arrays;
-import java.util.List;
 import org.unicitylabs.sdk.api.InclusionProof;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
@@ -11,47 +9,58 @@ import org.unicitylabs.sdk.predicate.EncodedPredicate;
 import org.unicitylabs.sdk.predicate.Predicate;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
+import org.unicitylabs.sdk.serializer.cbor.CborSerializationException;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.util.HexConverter;
+
+import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
 
 /**
  * Transfer transaction that moves token ownership from a source state to a recipient.
  */
 public class TransferTransaction implements Transaction {
+  public static final long CBOR_TAG = 39045;
+  private static final int VERSION = 1;
 
   private final DataHash sourceStateHash;
-  private final Predicate lockScript;
-  private final Address recipient;
-  private final byte[] nonce;
+  private final EncodedPredicate lockScript;
+  private final EncodedPredicate recipient;
+  private final byte[] stateMask;
   private final byte[] data;
 
   private TransferTransaction(
-      DataHash sourceStateHash,
-      Predicate lockScript,
-      Address recipient,
-      byte[] x,
-      byte[] data
+          DataHash sourceStateHash,
+          EncodedPredicate lockScript,
+          EncodedPredicate recipient,
+          byte[] stateMask,
+          byte[] data
   ) {
     this.sourceStateHash = sourceStateHash;
     this.lockScript = lockScript;
     this.recipient = recipient;
-    this.nonce = x;
+    this.stateMask = stateMask;
     this.data = data;
   }
 
+  public int getVersion() {
+    return TransferTransaction.VERSION;
+  }
+
 
   @Override
-  public byte[] getData() {
-    return Arrays.copyOf(this.data, this.data.length);
+  public Optional<byte[]> getData() {
+    return Optional.ofNullable(this.data != null ? Arrays.copyOf(this.data, this.data.length) : null);
   }
 
   @Override
-  public Predicate getLockScript() {
+  public EncodedPredicate getLockScript() {
     return this.lockScript;
   }
 
   @Override
-  public Address getRecipient() {
+  public EncodedPredicate getRecipient() {
     return this.recipient;
   }
 
@@ -61,34 +70,29 @@ public class TransferTransaction implements Transaction {
   }
 
   @Override
-  public byte[] getNonce() {
-    return Arrays.copyOf(this.nonce, this.nonce.length);
+  public byte[] getStateMask() {
+    return Arrays.copyOf(this.stateMask, this.stateMask.length);
   }
 
   /**
    * Creates a transfer transaction from the latest state of the provided token.
    *
    * @param token token whose latest transaction is used as the source
-   * @param owner current owner predicate
-   * @param recipient recipient address
-   * @param x transaction randomness component
+   * @param recipient recipient predicate
+   * @param stateMask transaction randomness component
    * @param data transfer payload
    * @return created transfer transaction
-   * @throws RuntimeException if the owner predicate does not match the latest recipient
    */
-  public static TransferTransaction create(Token token, Predicate owner, Address recipient,
-      byte[] x, byte[] data) {
+  public static TransferTransaction create(Token token, Predicate recipient,
+                                           byte[] stateMask, byte[] data) {
     Transaction transaction = token.getLatestTransaction();
-    if (!transaction.getRecipient().equals(Address.fromPredicate(owner))) {
-      throw new RuntimeException("Predicate does not match pay to script hash.");
-    }
 
     return new TransferTransaction(
-        transaction.calculateStateHash(),
-        owner,
-        recipient,
-        x,
-        data
+            transaction.calculateStateHash(),
+            transaction.getRecipient(),
+            EncodedPredicate.fromPredicate(recipient),
+            stateMask,
+            data
     );
   }
 
@@ -96,53 +100,58 @@ public class TransferTransaction implements Transaction {
    * Deserializes a transfer transaction from CBOR bytes.
    *
    * @param bytes CBOR-encoded transfer transaction
+   * @param token token providing the source state for the deserialized transfer
    * @return decoded transfer transaction
    */
-  public static TransferTransaction fromCbor(byte[] bytes) {
-    List<byte[]> data = CborDeserializer.decodeArray(bytes);
+  public static TransferTransaction fromCbor(byte[] bytes, Token token) {
+    CborDeserializer.CborTag tag = CborDeserializer.decodeTag(bytes);
+    if (tag.getTag() != TransferTransaction.CBOR_TAG) {
+      throw new CborSerializationException(String.format("Invalid CBOR tag: %s", tag.getTag()));
+    }
+    List<byte[]> data = CborDeserializer.decodeArray(tag.getData(), 4);
 
-    return new TransferTransaction(
-        new DataHash(HashAlgorithm.SHA256, CborDeserializer.decodeByteString(data.get(0))),
-        EncodedPredicate.fromCbor(data.get(1)),
-        Address.fromCbor(data.get(2)),
-        CborDeserializer.decodeByteString(data.get(3)),
-        CborDeserializer.decodeByteString(data.get(4))
+    int version = CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt();
+    if (version != TransferTransaction.VERSION) {
+      throw new CborSerializationException(String.format("Unsupported version: %s", version));
+    }
+
+    return TransferTransaction.create(
+            token,
+            EncodedPredicate.fromCbor(data.get(1)),
+            CborDeserializer.decodeByteString(data.get(2)),
+            CborDeserializer.decodeNullable(data.get(3), CborDeserializer::decodeByteString)
     );
   }
 
   @Override
   public DataHash calculateStateHash() {
     return new DataHasher(HashAlgorithm.SHA256)
-        .update(
-            CborSerializer.encodeArray(
-                CborSerializer.encodeByteString(this.sourceStateHash.getImprint()),
-                CborSerializer.encodeByteString(this.nonce)
+            .update(
+                    CborSerializer.encodeArray(
+                            CborSerializer.encodeByteString(this.sourceStateHash.getImprint()),
+                            CborSerializer.encodeByteString(this.stateMask)
+                    )
             )
-        )
-        .digest();
+            .digest();
   }
 
   @Override
   public DataHash calculateTransactionHash() {
     return new DataHasher(HashAlgorithm.SHA256)
-        .update(
-            CborSerializer.encodeArray(
-                this.recipient.toCbor(),
-                CborSerializer.encodeByteString(this.nonce),
-                CborSerializer.encodeByteString(this.data)
-            )
-        )
-        .digest();
+            .update(this.toCbor())
+            .digest();
   }
 
   @Override
   public byte[] toCbor() {
-    return CborSerializer.encodeArray(
-        CborSerializer.encodeByteString(this.sourceStateHash.getData()),
-        EncodedPredicate.fromPredicate(this.lockScript).toCbor(),
-        this.recipient.toCbor(),
-        CborSerializer.encodeByteString(this.nonce),
-        CborSerializer.encodeByteString(this.data)
+    return CborSerializer.encodeTag(
+            TransferTransaction.CBOR_TAG,
+            CborSerializer.encodeArray(
+                    CborSerializer.encodeUnsignedInteger(TransferTransaction.VERSION),
+                    EncodedPredicate.fromPredicate(this.recipient).toCbor(),
+                    CborSerializer.encodeByteString(this.stateMask),
+                    CborSerializer.encodeNullable(this.data, CborSerializer::encodeByteString)
+            )
     );
   }
 
@@ -155,19 +164,23 @@ public class TransferTransaction implements Transaction {
    * @return certified transfer transaction
    */
   public CertifiedTransferTransaction toCertifiedTransaction(
-      RootTrustBase trustBase,
-      PredicateVerifierService predicateVerifier,
-      InclusionProof inclusionProof
+          RootTrustBase trustBase,
+          PredicateVerifierService predicateVerifier,
+          InclusionProof inclusionProof
   ) {
-    return CertifiedTransferTransaction.fromTransaction(trustBase, predicateVerifier, this,
-        inclusionProof);
+    return CertifiedTransferTransaction.fromTransaction(
+            trustBase,
+            predicateVerifier,
+            this,
+            inclusionProof
+    );
   }
 
   @Override
   public String toString() {
     return String.format(
-        "TransferTransaction{sourceStateHash=%s, lockScript=%s, recipient=%s, x=%s, data=%s}",
-        this.sourceStateHash, this.lockScript, this.recipient, HexConverter.encode(this.nonce),
-        HexConverter.encode(this.data));
+            "TransferTransaction{sourceStateHash=%s, lockScript=%s, recipient=%s, stateMask=%s, data=%s}",
+            this.sourceStateHash, this.lockScript, this.recipient, HexConverter.encode(this.stateMask),
+            HexConverter.encode(this.data));
   }
 }

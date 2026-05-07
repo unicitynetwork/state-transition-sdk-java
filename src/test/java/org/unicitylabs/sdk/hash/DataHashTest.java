@@ -4,8 +4,6 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
-import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
-import org.unicitylabs.sdk.serializer.json.JsonSerializationException;
 import org.unicitylabs.sdk.util.HexConverter;
 
 public class DataHashTest {
@@ -13,10 +11,10 @@ public class DataHashTest {
   @Test
   public void testInvalidDataHashArguments() {
     NullPointerException exception = Assertions.assertThrows(NullPointerException.class,
-        () -> new DataHash(null, new byte[32]));
+            () -> new DataHash(null, new byte[32]));
     Assertions.assertEquals("algorithm cannot be null", exception.getMessage());
     exception = Assertions.assertThrows(NullPointerException.class,
-        () -> new DataHash(HashAlgorithm.SHA256, null));
+            () -> new DataHash(HashAlgorithm.SHA256, null));
     Assertions.assertEquals("data cannot be null", exception.getMessage());
   }
 

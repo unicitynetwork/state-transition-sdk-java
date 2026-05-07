@@ -1,34 +1,23 @@
 package org.unicitylabs.sdk;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
-
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
 import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.unicitylabs.sdk.api.AggregatorClient;
-import org.unicitylabs.sdk.api.CertificationData;
-import org.unicitylabs.sdk.api.CertificationResponse;
-import org.unicitylabs.sdk.api.CertificationStatus;
-import org.unicitylabs.sdk.api.JsonRpcAggregatorClient;
-import org.unicitylabs.sdk.crypto.hash.DataHash;
-import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
+import org.unicitylabs.sdk.api.*;
 import org.unicitylabs.sdk.api.jsonrpc.JsonRpcNetworkException;
 import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
-import org.unicitylabs.sdk.predicate.builtin.PayToPublicKeyPredicate;
-import org.unicitylabs.sdk.transaction.Address;
+import org.unicitylabs.sdk.predicate.builtin.SignaturePredicate;
 import org.unicitylabs.sdk.transaction.MintTransaction;
 import org.unicitylabs.sdk.transaction.TokenId;
 import org.unicitylabs.sdk.transaction.TokenType;
 import org.unicitylabs.sdk.util.HexConverter;
+
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 public class TestApiKeyIntegration {
 
@@ -47,17 +36,18 @@ public class TestApiKeyIntegration {
     mockServer.start();
 
     clientWithApiKey = new JsonRpcAggregatorClient(
-        mockServer.getUrl(), TEST_API_KEY);
+            mockServer.getUrl(), TEST_API_KEY);
     clientWithoutApiKey = new JsonRpcAggregatorClient(mockServer.getUrl());
 
     SigningService signingService = new SigningService(
-        HexConverter.decode("0000000000000000000000000000000000000000000000000000000000000001"));
+            HexConverter.decode("0000000000000000000000000000000000000000000000000000000000000001"));
 
     MintTransaction transaction = MintTransaction.create(
-            Address.fromPredicate(PayToPublicKeyPredicate.fromSigningService(signingService)),
+            SignaturePredicate.fromSigningService(signingService),
             TokenId.generate(),
             TokenType.generate(),
-            new byte[32]
+            null,
+            null
     );
     certificationData = CertificationData.fromMintTransaction(transaction);
   }
@@ -70,7 +60,7 @@ public class TestApiKeyIntegration {
   @Test
   public void testSubmitCommitmentWithApiKey() throws Exception {
     CompletableFuture<CertificationResponse> future = clientWithApiKey.submitCertificationRequest(
-        certificationData
+            certificationData
     );
 
     CertificationResponse response = future.get(5, TimeUnit.SECONDS);
@@ -83,7 +73,7 @@ public class TestApiKeyIntegration {
   @Test
   public void testSubmitCommitmentWithoutApiKeyThrowsUnauthorized() throws Exception {
     CompletableFuture<CertificationResponse> future = clientWithoutApiKey.submitCertificationRequest(
-        certificationData
+            certificationData
     );
 
     try {
@@ -104,7 +94,7 @@ public class TestApiKeyIntegration {
     mockServer.setExpectedApiKey("different-api-key");
 
     CompletableFuture<CertificationResponse> future = clientWithApiKey.submitCertificationRequest(
-        certificationData
+            certificationData
     );
 
     try {
@@ -125,7 +115,7 @@ public class TestApiKeyIntegration {
     mockServer.simulateRateLimitForNextRequest(30);
 
     CompletableFuture<CertificationResponse> future = clientWithApiKey.submitCertificationRequest(
-        certificationData
+            certificationData
     );
 
     try {
@@ -135,7 +125,7 @@ public class TestApiKeyIntegration {
       assertInstanceOf(ExecutionException.class, e);
       assertInstanceOf(JsonRpcNetworkException.class, e.getCause());
       assertTrue(e.getCause().getMessage().contains("Network error [429] occurred: Too Many Requests"),
-          e.getCause().getMessage());
+              e.getCause().getMessage());
     }
   }
 

@@ -1,11 +1,12 @@
 package org.unicitylabs.sdk.payment.asset;
 
-import java.util.Arrays;
-import java.util.Objects;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.util.BitString;
 import org.unicitylabs.sdk.util.HexConverter;
+
+import java.util.Arrays;
+import java.util.Objects;
 
 /**
  * Unique identifier of an asset.
@@ -50,7 +51,7 @@ public class AssetId {
    * @return bit string
    */
   public BitString toBitString() {
-    return new BitString(this.bytes);
+    return BitString.fromBytes(this.bytes);
   }
 
   /**
@@ -73,7 +74,7 @@ public class AssetId {
 
   @Override
   public int hashCode() {
-    return Arrays.hashCode(bytes);
+    return Arrays.hashCode(this.bytes);
   }
 
   @Override

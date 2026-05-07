@@ -1,17 +1,18 @@
 package org.unicitylabs.sdk.transaction;
 
-import java.security.SecureRandom;
-import java.util.Arrays;
-import java.util.Objects;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.util.BitString;
 import org.unicitylabs.sdk.util.HexConverter;
 
+import java.security.SecureRandom;
+import java.util.Arrays;
+import java.util.Objects;
+
 /**
  * Type identifier of a token.
  */
-public final class TokenType {
+public class TokenType {
 
   private static final SecureRandom RANDOM = new SecureRandom();
   private final byte[] bytes;
@@ -73,7 +74,7 @@ public final class TokenType {
    * @return bit string
    */
   public BitString toBitString() {
-    return new BitString(this.bytes);
+    return BitString.fromBytes(this.bytes);
   }
 
   @Override

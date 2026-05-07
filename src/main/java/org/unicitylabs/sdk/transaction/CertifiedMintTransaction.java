@@ -1,10 +1,9 @@
 package org.unicitylabs.sdk.transaction;
 
-import java.util.List;
 import org.unicitylabs.sdk.api.InclusionProof;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
-import org.unicitylabs.sdk.predicate.Predicate;
+import org.unicitylabs.sdk.predicate.EncodedPredicate;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
@@ -12,6 +11,10 @@ import org.unicitylabs.sdk.transaction.verification.InclusionProofVerificationRu
 import org.unicitylabs.sdk.transaction.verification.InclusionProofVerificationStatus;
 import org.unicitylabs.sdk.util.verification.VerificationException;
 import org.unicitylabs.sdk.util.verification.VerificationResult;
+
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Mint transaction bundled with an inclusion proof.
@@ -27,17 +30,17 @@ public class CertifiedMintTransaction implements Transaction {
   }
 
   @Override
-  public byte[] getData() {
+  public Optional<byte[]> getData() {
     return this.transaction.getData();
   }
 
   @Override
-  public Predicate getLockScript() {
+  public EncodedPredicate getLockScript() {
     return this.transaction.getLockScript();
   }
 
   @Override
-  public Address getRecipient() {
+  public EncodedPredicate getRecipient() {
     return this.transaction.getRecipient();
   }
 
@@ -64,9 +67,13 @@ public class CertifiedMintTransaction implements Transaction {
     return this.transaction.getTokenType();
   }
 
+  public Optional<byte[]> getJustification() {
+    return this.transaction.getJustification();
+  }
+
   @Override
-  public byte[] getNonce() {
-    return this.transaction.getNonce();
+  public byte[] getStateMask() {
+    return this.transaction.getStateMask();
   }
 
   /**
@@ -85,9 +92,9 @@ public class CertifiedMintTransaction implements Transaction {
    * @return decoded certified mint transaction
    */
   public static CertifiedMintTransaction fromCbor(byte[] bytes) {
-    List<byte[]> data = CborDeserializer.decodeArray(bytes);
+    List<byte[]> data = CborDeserializer.decodeArray(bytes, 2);
     return new CertifiedMintTransaction(MintTransaction.fromCbor(data.get(0)),
-        InclusionProof.fromCbor(data.get(1)));
+            InclusionProof.fromCbor(data.get(1)));
   }
 
   /**
@@ -100,14 +107,22 @@ public class CertifiedMintTransaction implements Transaction {
    * @return certified mint transaction
    * @throws VerificationException if inclusion proof verification fails
    */
-  public static CertifiedMintTransaction fromTransaction(RootTrustBase trustBase,
-      PredicateVerifierService predicateVerifier, MintTransaction transaction,
-      InclusionProof inclusionProof) {
+  public static CertifiedMintTransaction fromTransaction(
+          RootTrustBase trustBase,
+          PredicateVerifierService predicateVerifier,
+          MintTransaction transaction,
+          InclusionProof inclusionProof
+  ) {
+    Objects.requireNonNull(trustBase, "trustBase cannot be null");
+    Objects.requireNonNull(predicateVerifier, "predicateVerifier cannot be null");
+    Objects.requireNonNull(transaction, "transaction cannot be null");
+    Objects.requireNonNull(inclusionProof, "inclusionProof cannot be null");
+
     VerificationResult<InclusionProofVerificationStatus> result = InclusionProofVerificationRule.verify(
-        trustBase,
-        predicateVerifier,
-        inclusionProof,
-        transaction
+            trustBase,
+            predicateVerifier,
+            inclusionProof,
+            transaction
     );
     if (result.getStatus() != InclusionProofVerificationStatus.OK) {
       throw new VerificationException("Inclusion proof verification failed", result);
@@ -134,6 +149,6 @@ public class CertifiedMintTransaction implements Transaction {
   @Override
   public String toString() {
     return String.format("CertifiedMintTransaction{transaction=%s, inclusionProof=%s}",
-        this.transaction, this.inclusionProof);
+            this.transaction, this.inclusionProof);
   }
 }

@@ -1,30 +1,39 @@
 package org.unicitylabs.sdk.api;
 
+import org.unicitylabs.sdk.api.bft.UnicityCertificate;
+import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
+import org.unicitylabs.sdk.serializer.cbor.CborSerializationException;
+import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
+
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import org.unicitylabs.sdk.api.bft.UnicityCertificate;
-import org.unicitylabs.sdk.mtree.plain.SparseMerkleTreePath;
-import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
-import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 
 /**
  * Represents a proof of inclusion or non-inclusion in a sparse merkle tree.
  */
 public class InclusionProof {
+  public static final long CBOR_TAG = 39033;
+  private static final int VERSION = 1;
 
-  private final SparseMerkleTreePath merkleTreePath;
+  private final InclusionCertificate inclusionCertificate;
   private final CertificationData certificationData;
   private final UnicityCertificate unicityCertificate;
 
   InclusionProof(
-      SparseMerkleTreePath merkleTreePath,
-      CertificationData certificationData,
-      UnicityCertificate unicityCertificate
+          CertificationData certificationData,
+          InclusionCertificate inclusionCertificate,
+          UnicityCertificate unicityCertificate
   ) {
-    this.merkleTreePath = Objects.requireNonNull(merkleTreePath, "Merkle tree path cannot be null.");;
+    Objects.requireNonNull(unicityCertificate, "Unicity certificate cannot be null.");
+
+    this.inclusionCertificate = inclusionCertificate;
     this.certificationData = certificationData;
-    this.unicityCertificate = Objects.requireNonNull(unicityCertificate, "Unicity certificate cannot be null.");;
+    this.unicityCertificate = unicityCertificate;
+  }
+
+  public int getVersion() {
+    return InclusionProof.VERSION;
   }
 
   /**
@@ -32,8 +41,8 @@ public class InclusionProof {
    *
    * @return merkle tree path
    */
-  public SparseMerkleTreePath getMerkleTreePath() {
-    return this.merkleTreePath;
+  public InclusionCertificate getInclusionCertificate() {
+    return this.inclusionCertificate;
   }
 
   /**
@@ -61,12 +70,23 @@ public class InclusionProof {
    * @return inclusion proof
    */
   public static InclusionProof fromCbor(byte[] bytes) {
-    List<byte[]> data = CborDeserializer.decodeArray(bytes);
+    CborDeserializer.CborTag tag = CborDeserializer.decodeTag(bytes);
+    if (tag.getTag() != InclusionProof.CBOR_TAG) {
+      throw new CborSerializationException(String.format("Invalid CBOR tag: %s", tag.getTag()));
+    }
+    List<byte[]> data = CborDeserializer.decodeArray(tag.getData(), 4);
+
+    int version = CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt();
+    if (version != InclusionProof.VERSION) {
+      throw new CborSerializationException(String.format("Unsupported version: %s", version));
+    }
 
     return new InclusionProof(
-        SparseMerkleTreePath.fromCbor(data.get(1)),
-        CborDeserializer.decodeNullable(data.get(0), CertificationData::fromCbor),
-        UnicityCertificate.fromCbor(data.get(2))
+            CborDeserializer.decodeNullable(data.get(1), CertificationData::fromCbor),
+            CborDeserializer.decodeNullable(data.get(2), (inclusionCertificate) ->
+                    InclusionCertificate.decode(CborDeserializer.decodeByteString(inclusionCertificate))
+            ),
+            UnicityCertificate.fromCbor(data.get(3))
     );
   }
 
@@ -76,10 +96,16 @@ public class InclusionProof {
    * @return CBOR bytes
    */
   public byte[] toCbor() {
-    return CborSerializer.encodeArray(
-        CborSerializer.encodeOptional(this.certificationData, CertificationData::toCbor),
-        this.merkleTreePath.toCbor(),
-        this.unicityCertificate.toCbor()
+    return CborSerializer.encodeTag(
+            InclusionProof.CBOR_TAG,
+            CborSerializer.encodeArray(
+                    CborSerializer.encodeUnsignedInteger(InclusionProof.VERSION),
+                    CborSerializer.encodeNullable(this.certificationData, CertificationData::toCbor),
+                    CborSerializer.encodeNullable(this.inclusionCertificate, (inclusionCertificate) ->
+                            CborSerializer.encodeByteString(inclusionCertificate.encode())
+                    ),
+                    this.unicityCertificate.toCbor()
+            )
     );
   }
 
@@ -89,21 +115,21 @@ public class InclusionProof {
       return false;
     }
     InclusionProof that = (InclusionProof) o;
-    return Objects.equals(this.merkleTreePath, that.merkleTreePath) && Objects.equals(
-        this.certificationData,
-        that.certificationData);
+    return Objects.equals(this.inclusionCertificate, that.inclusionCertificate) && Objects.equals(this.certificationData, that.certificationData) && Objects.equals(this.unicityCertificate, that.unicityCertificate);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(this.merkleTreePath, this.certificationData);
+    return Objects.hash(this.inclusionCertificate, this.certificationData, this.unicityCertificate);
   }
 
   @Override
   public String toString() {
     return String.format(
-        "InclusionProof{merkleTreePath=%s, certificationData=%s, unicityCertificate=%s}",
-        this.merkleTreePath,
-        this.certificationData, this.unicityCertificate);
+            "InclusionProof{certificationData=%s, inclusionCertificate=%s, unicityCertificate=%s}",
+            this.inclusionCertificate,
+            this.certificationData,
+            this.unicityCertificate
+    );
   }
 }

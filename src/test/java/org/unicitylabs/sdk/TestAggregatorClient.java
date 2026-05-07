@@ -1,24 +1,19 @@
 package org.unicitylabs.sdk;
 
-import java.util.HashMap;
-import java.util.concurrent.CompletableFuture;
-import org.unicitylabs.sdk.api.AggregatorClient;
-import org.unicitylabs.sdk.api.CertificationData;
-import org.unicitylabs.sdk.api.CertificationResponse;
-import org.unicitylabs.sdk.api.CertificationStatus;
-import org.unicitylabs.sdk.api.InclusionProofResponse;
-import org.unicitylabs.sdk.api.InclusionProofFixture;
-import org.unicitylabs.sdk.api.StateId;
+import org.unicitylabs.sdk.api.*;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.api.bft.RootTrustBaseUtils;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
-import org.unicitylabs.sdk.mtree.plain.SparseMerkleTree;
-import org.unicitylabs.sdk.mtree.plain.SparseMerkleTreeRootNode;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
+import org.unicitylabs.sdk.smt.radix.FinalizedNodeBranch;
+import org.unicitylabs.sdk.smt.radix.SparseMerkleTree;
 import org.unicitylabs.sdk.util.verification.VerificationResult;
 import org.unicitylabs.sdk.util.verification.VerificationStatus;
+
+import java.util.HashMap;
+import java.util.concurrent.CompletableFuture;
 
 public class TestAggregatorClient implements AggregatorClient {
   private final RootTrustBase trustBase;
@@ -31,7 +26,7 @@ public class TestAggregatorClient implements AggregatorClient {
     this.sparseMerkleTree = smt;
     this.signingService = signingService;
     this.trustBase = RootTrustBaseUtils.generateRootTrustBase(this.signingService.getPublicKey());
-    this.predicateVerifier = PredicateVerifierService.create(this.trustBase);
+    this.predicateVerifier = PredicateVerifierService.create();
   }
 
   public RootTrustBase getTrustBase() {
@@ -53,8 +48,8 @@ public class TestAggregatorClient implements AggregatorClient {
    */
   public static TestAggregatorClient create(byte[] privateKey) {
     return new TestAggregatorClient(
-        new SparseMerkleTree(HashAlgorithm.SHA256),
-        new SigningService(privateKey)
+            new SparseMerkleTree(HashAlgorithm.SHA256),
+            new SigningService(privateKey)
     );
   }
 
@@ -65,10 +60,10 @@ public class TestAggregatorClient implements AggregatorClient {
       StateId stateId = StateId.fromCertificationData(certificationData);
 
       VerificationResult<VerificationStatus> result = this.predicateVerifier.verify(
-          certificationData.getLockScript(),
-          certificationData.getSourceStateHash(),
-          certificationData.getTransactionHash(),
-          certificationData.getUnlockScript()
+              certificationData.getLockScript(),
+              certificationData.getSourceStateHash(),
+              certificationData.getTransactionHash(),
+              certificationData.getUnlockScript()
       );
 
       if (result.getStatus() != VerificationStatus.OK) {
@@ -76,8 +71,8 @@ public class TestAggregatorClient implements AggregatorClient {
       }
 
       if (!this.requests.containsKey(stateId)) {
-        DataHash leafValue = certificationData.calculateLeafValue();
-        this.sparseMerkleTree.addLeaf(stateId.toBitString().toBigInteger(), leafValue.getImprint());
+        DataHash leafValue = certificationData.getTransactionHash();
+        this.sparseMerkleTree.addLeaf(stateId.getData(), leafValue.getData());
         this.requests.put(stateId, certificationData);
       }
 
@@ -89,15 +84,21 @@ public class TestAggregatorClient implements AggregatorClient {
 
   @Override
   public CompletableFuture<InclusionProofResponse> getInclusionProof(StateId stateId) {
+    FinalizedNodeBranch root = this.sparseMerkleTree.calculateRoot();
+
+    if (!requests.containsKey(stateId)) {
+      return CompletableFuture.completedFuture(InclusionProofFixture.createResponse(null, null, root.getHash(), this.signingService));
+    }
+
     CertificationData certificationData = requests.get(stateId);
-    SparseMerkleTreeRootNode root = this.sparseMerkleTree.calculateRoot();
-      return CompletableFuture.completedFuture(
-        InclusionProofFixture.create(
-            root.getPath(stateId.toBitString().toBigInteger()),
-            certificationData,
-            root.getRootHash(),
-            this.signingService
-        )
+
+    return CompletableFuture.completedFuture(
+            InclusionProofFixture.createResponse(
+                    certificationData,
+                    InclusionCertificate.create(root, stateId.getData()),
+                    root.getHash(),
+                    this.signingService
+            )
     );
   }
 

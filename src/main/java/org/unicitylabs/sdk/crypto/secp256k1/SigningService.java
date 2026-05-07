@@ -1,8 +1,5 @@
 package org.unicitylabs.sdk.crypto.secp256k1;
 
-import java.math.BigInteger;
-import java.security.SecureRandom;
-import java.util.Arrays;
 import org.bouncycastle.crypto.digests.SHA256Digest;
 import org.bouncycastle.crypto.params.ECDomainParameters;
 import org.bouncycastle.crypto.params.ECPrivateKeyParameters;
@@ -15,6 +12,10 @@ import org.bouncycastle.math.ec.ECCurve;
 import org.bouncycastle.math.ec.ECPoint;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
 
+import java.math.BigInteger;
+import java.security.SecureRandom;
+import java.util.Arrays;
+
 /**
  * Default signing service.
  */
@@ -23,10 +24,10 @@ public class SigningService {
   private static final String CURVE_NAME = "secp256k1";
   private static final ECParameterSpec EC_SPEC = ECNamedCurveTable.getParameterSpec(CURVE_NAME);
   private static final ECDomainParameters EC_DOMAIN_PARAMETERS = new ECDomainParameters(
-      EC_SPEC.getCurve(),
-      EC_SPEC.getG(),
-      EC_SPEC.getN(),
-      EC_SPEC.getH()
+          EC_SPEC.getCurve(),
+          EC_SPEC.getG(),
+          EC_SPEC.getN(),
+          EC_SPEC.getH()
   );
 
   private final ECPrivateKeyParameters privateKey;
@@ -44,7 +45,7 @@ public class SigningService {
 
     BigInteger privateKeyAsBigInt = new BigInteger(1, privateKey);
     if (privateKeyAsBigInt.compareTo(BigInteger.ONE) < 0
-        || privateKeyAsBigInt.compareTo(EC_SPEC.getN()) >= 0) {
+            || privateKeyAsBigInt.compareTo(EC_SPEC.getN()) >= 0) {
       throw new IllegalArgumentException("Invalid private key: must be in range [1, N)");
     }
 
@@ -52,8 +53,8 @@ public class SigningService {
     ECPoint q = EC_SPEC.getG().multiply(privateKeyAsBigInt);
     this.publicKey = q.getEncoded(true); // compressed format
     this.privateKey = new ECPrivateKeyParameters(
-        privateKeyAsBigInt,
-        EC_DOMAIN_PARAMETERS
+            privateKeyAsBigInt,
+            EC_DOMAIN_PARAMETERS
     );
   }
 
@@ -204,10 +205,10 @@ public class SigningService {
    * Recover public key from signature for a specific recovery ID.
    */
   private static ECPoint recoverFromSignature(
-      int recId,
-      BigInteger r,
-      BigInteger s,
-      byte[] message
+          int recId,
+          BigInteger r,
+          BigInteger s,
+          byte[] message
   ) {
     BigInteger n = EC_DOMAIN_PARAMETERS.getN();
     BigInteger x = r;
@@ -235,8 +236,8 @@ public class SigningService {
     ECPoint point1 = y.multiply(s);
     ECPoint point2 = EC_DOMAIN_PARAMETERS.getG().multiply(e);
     return point1
-        .subtract(point2)
-        .multiply(r.modInverse(n));
+            .subtract(point2)
+            .multiply(r.modInverse(n));
   }
 
 

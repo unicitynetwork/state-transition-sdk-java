@@ -3,11 +3,7 @@ package org.unicitylabs.sdk.serializer.cbor;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.function.Function;
 
 /**
@@ -26,7 +22,7 @@ public class CborSerializer {
    * @param <T>     value type
    * @return bytes
    */
-  public static <T> byte[] encodeOptional(T data, Function<T, byte[]> encoder) {
+  public static <T> byte[] encodeNullable(T data, Function<T, byte[]> encoder) {
     if (data == null) {
       return new byte[]{(byte) 0xf6};
     }
@@ -48,7 +44,7 @@ public class CborSerializer {
     byte[] result = new byte[1 + bytes.length];
     System.arraycopy(bytes, 0, result, 1, bytes.length);
     result[0] = (byte) (CborMajorType.UNSIGNED_INTEGER.getType()
-        | CborSerializer.getAdditionalInformationBits(bytes.length));
+            | CborSerializer.getAdditionalInformationBits(bytes.length));
 
     return result;
   }
@@ -155,7 +151,7 @@ public class CborSerializer {
     byte[] bytes = CborSerializer.getUnsignedLongAsPaddedBytes(tag);
     byte[] result = new byte[1 + bytes.length + input.length];
     result[0] = (byte) (CborMajorType.TAG.getType()
-        | CborSerializer.getAdditionalInformationBits(bytes.length));
+            | CborSerializer.getAdditionalInformationBits(bytes.length));
     System.arraycopy(bytes, 0, result, 1, bytes.length);
     System.arraycopy(input, 0, result, 1 + bytes.length, input.length);
 
@@ -193,7 +189,7 @@ public class CborSerializer {
     byte[] lengthBytes = CborSerializer.getUnsignedLongAsPaddedBytes(length);
     byte[] result = new byte[1 + lengthBytes.length + input.length];
     result[0] = (byte) (type.getType()
-        | CborSerializer.getAdditionalInformationBits(lengthBytes.length));
+            | CborSerializer.getAdditionalInformationBits(lengthBytes.length));
     System.arraycopy(lengthBytes, 0, result, 1, lengthBytes.length);
     System.arraycopy(input, 0, result, 1 + lengthBytes.length, input.length);
 
@@ -211,8 +207,8 @@ public class CborSerializer {
     }
 
     ByteBuffer buffer = ByteBuffer
-        .allocate((int) Math.pow(2, (int) Math.ceil(Math.log(length) / Math.log(2))))
-        .order(ByteOrder.BIG_ENDIAN);
+            .allocate((int) Math.pow(2, (int) Math.ceil(Math.log(length) / Math.log(2))))
+            .order(ByteOrder.BIG_ENDIAN);
     if (length <= 1) {
       buffer.put((byte) input);
     } else if (length <= 2) {
@@ -240,19 +236,13 @@ public class CborSerializer {
      */
     public CborMap(Set<Entry> entries) {
       this.entries = new ArrayList<>(entries);
-      this.entries.sort((a, b) -> {
-        if (a.key.length != b.key.length) {
-          return a.key.length - b.key.length;
-        }
+      this.entries.sort(CborMap::compareEntries);
 
-        for (int i = 0; i < a.key.length; i++) {
-          if (a.key[i] != b.key[i]) {
-            return a.key[i] - b.key[i];
-          }
+      for (int i = 1; i < this.entries.size(); i++) {
+        if (CborMap.compareEntries(this.entries.get(i - 1), this.entries.get(i)) == 0) {
+          throw new CborSerializationException("Duplicate map key in CborMap.");
         }
-
-        return 0;
-      });
+      }
     }
 
     /**
@@ -262,6 +252,26 @@ public class CborSerializer {
      */
     public List<Entry> getEntries() {
       return List.copyOf(this.entries);
+    }
+
+    /**
+     * Compare two map entries by their CBOR-encoded keys using canonical bytewise lexicographic
+     * order (compare bytes byte-by-byte, then break ties by length).
+     *
+     * @param a first entry
+     * @param b second entry
+     * @return negative, zero, or positive per {@link Comparable}
+     */
+    public static int compareEntries(Entry a, Entry b) {
+      int length = Math.min(a.key.length, b.key.length);
+      for (int i = 0; i < length; i++) {
+        int diff = Byte.toUnsignedInt(a.key[i]) - Byte.toUnsignedInt(b.key[i]);
+        if (diff != 0) {
+          return diff;
+        }
+      }
+
+      return a.key.length - b.key.length;
     }
 
     /**

@@ -6,8 +6,6 @@ package org.unicitylabs.sdk.transaction.verification;
 public enum InclusionProofVerificationStatus {
   /** The provided trust base is invalid or cannot be used for verification. */
   INVALID_TRUSTBASE,
-  /** Leaf value in the proof does not match the expected transaction. */
-  LEAF_VALUE_MISMATCH,
   /** Certification data required for verification is missing. */
   MISSING_CERTIFICATION_DATA,
   /** Transaction hash does not match the value referenced by the proof. */
@@ -16,8 +14,12 @@ public enum InclusionProofVerificationStatus {
   NOT_AUTHENTICATED,
   /** Proof path is not included in the committed tree state. */
   PATH_NOT_INCLUDED,
+
+  INCLUSION_CERTIFICATE_MISSING,
   /** Proof path structure or hashes are invalid. */
   PATH_INVALID,
+  /** Shard id of the unicity certificate does not match the transaction state id. */
+  SHARD_ID_MISMATCH,
   /** Inclusion proof verification succeeded. */
   OK
 }

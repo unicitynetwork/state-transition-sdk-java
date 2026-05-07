@@ -1,10 +1,9 @@
 package org.unicitylabs.sdk.transaction;
 
-import java.util.List;
 import org.unicitylabs.sdk.api.InclusionProof;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
-import org.unicitylabs.sdk.predicate.Predicate;
+import org.unicitylabs.sdk.predicate.EncodedPredicate;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
@@ -12,6 +11,10 @@ import org.unicitylabs.sdk.transaction.verification.InclusionProofVerificationRu
 import org.unicitylabs.sdk.transaction.verification.InclusionProofVerificationStatus;
 import org.unicitylabs.sdk.util.verification.VerificationException;
 import org.unicitylabs.sdk.util.verification.VerificationResult;
+
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Transfer transaction with a verified inclusion proof.
@@ -22,61 +25,36 @@ public class CertifiedTransferTransaction implements Transaction {
   private final InclusionProof inclusionProof;
 
   private CertifiedTransferTransaction(
-      TransferTransaction transaction,
-      InclusionProof inclusionProof
+          TransferTransaction transaction,
+          InclusionProof inclusionProof
   ) {
     this.transaction = transaction;
     this.inclusionProof = inclusionProof;
   }
 
-  /**
-   * Get transaction payload data.
-   *
-   * @return payload data bytes
-   */
   @Override
-  public byte[] getData() {
+  public Optional<byte[]> getData() {
     return this.transaction.getData();
   }
 
-  /**
-   * Get predicate locking script for this transaction output.
-   *
-   * @return lock script predicate
-   */
   @Override
-  public Predicate getLockScript() {
+  public EncodedPredicate getLockScript() {
     return this.transaction.getLockScript();
   }
 
-  /**
-   * Get recipient address of this transaction.
-   *
-   * @return recipient address
-   */
   @Override
-  public Address getRecipient() {
+  public EncodedPredicate getRecipient() {
     return this.transaction.getRecipient();
   }
 
-  /**
-   * Get source state hash of this transaction.
-   *
-   * @return source state hash
-   */
   @Override
   public DataHash getSourceStateHash() {
     return this.transaction.getSourceStateHash();
   }
 
-  /**
-   * Get transaction chosen random bytes.
-   *
-   * @return random bytes
-   */
   @Override
-  public byte[] getNonce() {
-    return this.transaction.getNonce();
+  public byte[] getStateMask() {
+    return this.transaction.getStateMask();
   }
 
   /**
@@ -92,14 +70,17 @@ public class CertifiedTransferTransaction implements Transaction {
    * Deserialize a certified transfer transaction from CBOR bytes.
    *
    * @param bytes CBOR encoded certified transfer transaction
+   * @param token token providing the source state for the deserialized transfer
    *
    * @return certified transfer transaction
    */
-  public static CertifiedTransferTransaction fromCbor(byte[] bytes) {
-    List<byte[]> data = CborDeserializer.decodeArray(bytes);
+  public static CertifiedTransferTransaction fromCbor(byte[] bytes, Token token) {
+    List<byte[]> data = CborDeserializer.decodeArray(bytes, 2);
 
-    return new CertifiedTransferTransaction(TransferTransaction.fromCbor(data.get(0)),
-        InclusionProof.fromCbor(data.get(1)));
+    return new CertifiedTransferTransaction(
+            TransferTransaction.fromCbor(data.get(0), token),
+            InclusionProof.fromCbor(data.get(1))
+    );
   }
 
   /**
@@ -117,14 +98,22 @@ public class CertifiedTransferTransaction implements Transaction {
    *
    * @throws VerificationException if inclusion proof verification fails
    */
-  public static CertifiedTransferTransaction fromTransaction(RootTrustBase trustBase,
-      PredicateVerifierService predicateVerifier, TransferTransaction transaction,
-      InclusionProof inclusionProof) {
+  public static CertifiedTransferTransaction fromTransaction(
+          RootTrustBase trustBase,
+          PredicateVerifierService predicateVerifier,
+          TransferTransaction transaction,
+          InclusionProof inclusionProof
+  ) {
+    Objects.requireNonNull(trustBase, "trustBase cannot be null");
+    Objects.requireNonNull(predicateVerifier, "predicateVerifier cannot be null");
+    Objects.requireNonNull(transaction, "transaction cannot be null");
+    Objects.requireNonNull(inclusionProof, "inclusionProof cannot be null");
+
     VerificationResult<InclusionProofVerificationStatus> result = InclusionProofVerificationRule.verify(
-        trustBase,
-        predicateVerifier,
-        inclusionProof,
-        transaction
+            trustBase,
+            predicateVerifier,
+            inclusionProof,
+            transaction
     );
     if (result.getStatus() != InclusionProofVerificationStatus.OK) {
       throw new VerificationException("Inclusion proof verification failed", result);
@@ -166,6 +155,6 @@ public class CertifiedTransferTransaction implements Transaction {
   @Override
   public String toString() {
     return String.format("CertifiedTransferTransaction{transaction=%s, inclusionProof=%s}",
-        this.transaction, this.inclusionProof);
+            this.transaction, this.inclusionProof);
   }
 }

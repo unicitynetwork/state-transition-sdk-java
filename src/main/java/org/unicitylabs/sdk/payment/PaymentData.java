@@ -1,7 +1,8 @@
 package org.unicitylabs.sdk.payment;
 
-import java.util.Set;
 import org.unicitylabs.sdk.payment.asset.Asset;
+
+import java.util.Set;
 
 /**
  * Represents payment payload data.

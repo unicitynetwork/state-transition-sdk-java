@@ -1,31 +1,31 @@
 package org.unicitylabs.sdk.api.bft;
 
+import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
+import org.unicitylabs.sdk.serializer.cbor.CborSerializationException;
+import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
+import org.unicitylabs.sdk.util.HexConverter;
+
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
-import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
-import org.unicitylabs.sdk.serializer.cbor.CborDeserializer.CborTag;
-import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
-import org.unicitylabs.sdk.util.HexConverter;
 
 /**
  * Unicity tree certificate.
  */
 public class UnicityTreeCertificate {
+  public static final long CBOR_TAG = 39004;
+  private static final int VERSION = 1;
 
-  private final int version;
   private final int partitionIdentifier;
   private final List<HashStep> steps;
 
   UnicityTreeCertificate(
-      int version,
-      int partitionIdentifier,
-      List<HashStep> steps
+          int partitionIdentifier,
+          List<HashStep> steps
   ) {
     Objects.requireNonNull(steps, "Steps cannot be null");
 
-    this.version = version;
     this.partitionIdentifier = partitionIdentifier;
     this.steps = List.copyOf(steps);
   }
@@ -36,7 +36,7 @@ public class UnicityTreeCertificate {
    * @return version
    */
   public int getVersion() {
-    return this.version;
+    return UnicityTreeCertificate.VERSION;
   }
 
   /**
@@ -64,15 +64,22 @@ public class UnicityTreeCertificate {
    * @return certificate
    */
   public static UnicityTreeCertificate fromCbor(byte[] bytes) {
-    CborTag tag = CborDeserializer.decodeTag(bytes);
-    List<byte[]> data = CborDeserializer.decodeArray(tag.getData());
+    CborDeserializer.CborTag tag = CborDeserializer.decodeTag(bytes);
+    if (tag.getTag() != UnicityTreeCertificate.CBOR_TAG) {
+      throw new CborSerializationException(String.format("Invalid CBOR tag: %s", tag.getTag()));
+    }
+    List<byte[]> data = CborDeserializer.decodeArray(tag.getData(), 3);
+
+    int version = CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt();
+    if (version != UnicityTreeCertificate.VERSION) {
+      throw new CborSerializationException(String.format("Unsupported version: %s", version));
+    }
 
     return new UnicityTreeCertificate(
-        CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt(),
-        CborDeserializer.decodeUnsignedInteger(data.get(1)).asInt(),
-        CborDeserializer.decodeArray(data.get(2)).stream()
-            .map(HashStep::fromCbor)
-            .collect(Collectors.toList())
+            CborDeserializer.decodeUnsignedInteger(data.get(1)).asInt(),
+            CborDeserializer.decodeArray(data.get(2)).stream()
+                    .map(HashStep::fromCbor)
+                    .collect(Collectors.toList())
     );
   }
 
@@ -83,14 +90,14 @@ public class UnicityTreeCertificate {
    */
   public byte[] toCbor() {
     return CborSerializer.encodeTag(
-        1014,
-        CborSerializer.encodeArray(
-            CborSerializer.encodeUnsignedInteger(this.version),
-            CborSerializer.encodeUnsignedInteger(this.partitionIdentifier),
-            CborSerializer.encodeArray(this.steps.stream()
-                .map(HashStep::toCbor)
-                .toArray(byte[][]::new))
-        ));
+            UnicityTreeCertificate.CBOR_TAG,
+            CborSerializer.encodeArray(
+                    CborSerializer.encodeUnsignedInteger(UnicityTreeCertificate.VERSION),
+                    CborSerializer.encodeUnsignedInteger(this.partitionIdentifier),
+                    CborSerializer.encodeArray(this.steps.stream()
+                            .map(HashStep::toCbor)
+                            .toArray(byte[][]::new))
+            ));
   }
 
   @Override
@@ -99,20 +106,18 @@ public class UnicityTreeCertificate {
       return false;
     }
     UnicityTreeCertificate that = (UnicityTreeCertificate) o;
-    return Objects.equals(this.version, that.version) && Objects.equals(
-        this.partitionIdentifier, that.partitionIdentifier) && Objects.equals(this.steps,
-        that.steps);
+    return Objects.equals(this.partitionIdentifier, that.partitionIdentifier)
+            && Objects.equals(this.steps, that.steps);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(this.version, this.partitionIdentifier, this.steps);
+    return Objects.hash(this.partitionIdentifier, this.steps);
   }
 
   @Override
   public String toString() {
-    return String.format("UnicityTreeCertificate{version=%s, partitionIdentifier=%s, steps=%s",
-        this.version, this.partitionIdentifier, this.steps);
+    return String.format("UnicityTreeCertificate{partitionIdentifier=%s, steps=%s", this.partitionIdentifier, this.steps);
   }
 
   /**
@@ -155,11 +160,11 @@ public class UnicityTreeCertificate {
      * @return hash step
      */
     public static HashStep fromCbor(byte[] bytes) {
-      List<byte[]> data = CborDeserializer.decodeArray(bytes);
+      List<byte[]> data = CborDeserializer.decodeArray(bytes, 2);
 
       return new HashStep(
-          CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt(),
-          CborDeserializer.decodeByteString(data.get(1))
+              CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt(),
+              CborDeserializer.decodeByteString(data.get(1))
       );
     }
 
@@ -170,8 +175,8 @@ public class UnicityTreeCertificate {
      */
     public byte[] toCbor() {
       return CborSerializer.encodeArray(
-          CborSerializer.encodeUnsignedInteger(this.key),
-          CborSerializer.encodeByteString(this.hash)
+              CborSerializer.encodeUnsignedInteger(this.key),
+              CborSerializer.encodeByteString(this.hash)
       );
     }
 
@@ -181,8 +186,8 @@ public class UnicityTreeCertificate {
         return false;
       }
       HashStep hashStep = (HashStep) o;
-      return Objects.equals(this.key, hashStep.key) && Objects.deepEquals(this.hash,
-          hashStep.hash);
+      return Objects.equals(this.key, hashStep.key)
+              && Objects.deepEquals(this.hash, hashStep.hash);
     }
 
     @Override
@@ -193,7 +198,7 @@ public class UnicityTreeCertificate {
     @Override
     public String toString() {
       return String.format("UnicityTreeCertificate.HashStep{key=%s, hash=%s",
-          this.key, HexConverter.encode(this.hash));
+              this.key, HexConverter.encode(this.hash));
     }
   }
 }
