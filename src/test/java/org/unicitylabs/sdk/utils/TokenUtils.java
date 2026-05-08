@@ -1,188 +1,202 @@
 package org.unicitylabs.sdk.utils;
 
-import static org.unicitylabs.sdk.utils.TestUtils.randomBytes;
-import static org.unicitylabs.sdk.utils.TestUtils.randomCoinData;
-
+import org.junit.jupiter.api.Assertions;
 import org.unicitylabs.sdk.StateTransitionClient;
-import org.unicitylabs.sdk.address.Address;
-import org.unicitylabs.sdk.api.SubmitCommitmentResponse;
-import org.unicitylabs.sdk.api.SubmitCommitmentStatus;
-import org.unicitylabs.sdk.bft.RootTrustBase;
-import org.unicitylabs.sdk.hash.DataHash;
-import org.unicitylabs.sdk.hash.HashAlgorithm;
-import org.unicitylabs.sdk.predicate.embedded.MaskedPredicate;
-import org.unicitylabs.sdk.predicate.embedded.MaskedPredicateReference;
-import org.unicitylabs.sdk.signing.SigningService;
-import org.unicitylabs.sdk.token.Token;
-import org.unicitylabs.sdk.token.TokenId;
-import org.unicitylabs.sdk.token.TokenState;
-import org.unicitylabs.sdk.token.TokenType;
-import org.unicitylabs.sdk.token.fungible.TokenCoinData;
-import org.unicitylabs.sdk.transaction.InclusionProof;
-import org.unicitylabs.sdk.transaction.MintCommitment;
-import org.unicitylabs.sdk.transaction.MintTransaction;
+import org.unicitylabs.sdk.api.CertificationData;
+import org.unicitylabs.sdk.api.CertificationResponse;
+import org.unicitylabs.sdk.api.CertificationStatus;
+import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
+import org.unicitylabs.sdk.predicate.Predicate;
+import org.unicitylabs.sdk.predicate.UnlockScript;
+import org.unicitylabs.sdk.predicate.builtin.SignaturePredicateUnlockScript;
+import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
+import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
+import org.unicitylabs.sdk.transaction.*;
+import org.unicitylabs.sdk.transaction.verification.MintJustificationVerifierService;
 import org.unicitylabs.sdk.util.InclusionProofUtils;
+import org.unicitylabs.sdk.util.verification.VerificationStatus;
 
+import java.security.SecureRandom;
+
+/**
+ * Test helpers for minting and transferring certified tokens.
+ */
 public class TokenUtils {
 
-  public static Token<?> mintToken(
-      StateTransitionClient client,
-      RootTrustBase trustBase,
-      byte[] secret
+  public static Token mintToken(
+          StateTransitionClient client,
+          RootTrustBase trustBase,
+          PredicateVerifierService predicateVerifier,
+          MintJustificationVerifierService mintJustificationVerifier,
+          Predicate recipient
   ) throws Exception {
     return TokenUtils.mintToken(
-        client,
-        trustBase,
-        secret,
-        new TokenId(randomBytes(32)),
-        new TokenType(randomBytes(32)),
-        randomBytes(32),
-        randomCoinData(2),
-        randomBytes(32),
-        randomBytes(32),
-        null
+            client,
+            trustBase,
+            predicateVerifier,
+            mintJustificationVerifier,
+            TokenId.generate(),
+            TokenType.generate(),
+            recipient,
+            null,
+            null
     );
   }
 
-  public static Token<?> mintToken(
-      StateTransitionClient client,
-      RootTrustBase trustBase,
-      byte[] secret,
-      TokenId tokenId,
-      TokenType tokenType,
-      byte[] tokenData,
-      TokenCoinData coinData,
-      byte[] nonce,
-      byte[] salt,
-      DataHash dataHash
+  public static Token mintToken(
+          StateTransitionClient client,
+          RootTrustBase trustBase,
+          PredicateVerifierService predicateVerifier,
+          MintJustificationVerifierService mintJustificationVerifier,
+          Predicate recipient,
+          byte[] justification,
+          byte[] data
   ) throws Exception {
-    SigningService signingService = SigningService.createFromMaskedSecret(secret, nonce);
-
-    MaskedPredicate predicate = MaskedPredicate.create(
-        tokenId,
-        tokenType,
-        signingService,
-        HashAlgorithm.SHA256,
-        nonce
+    return TokenUtils.mintToken(
+            client,
+            trustBase,
+            predicateVerifier,
+            mintJustificationVerifier,
+            TokenId.generate(),
+            TokenType.generate(),
+            recipient,
+            justification,
+            data
     );
+  }
 
-    Address address = predicate.getReference().toAddress();
-    TokenState tokenState = new TokenState(predicate, null);
-
-    MintCommitment<?> commitment = MintCommitment.create(
-        new MintTransaction.Data<>(
+  public static Token mintToken(
+          StateTransitionClient client,
+          RootTrustBase trustBase,
+          PredicateVerifierService predicateVerifier,
+          MintJustificationVerifierService mintJustificationVerifier,
+          TokenId tokenId,
+          TokenType tokenType,
+          Predicate recipient,
+          byte[] justification,
+          byte[] data
+  ) throws Exception {
+    MintTransaction transaction = MintTransaction.create(
+            recipient,
             tokenId,
             tokenType,
-            tokenData,
-            coinData,
-            address,
-            salt,
-            dataHash,
-            null
-        )
+            justification,
+            data
     );
 
-    // Submit mint transaction using StateTransitionClient
-    SubmitCommitmentResponse response = client
-        .submitCommitment(commitment)
-        .get();
-    if (response.getStatus() != SubmitCommitmentStatus.SUCCESS) {
-      throw new Exception(String.format("Failed to submit mint commitment: %s",
-          response.getStatus()));
+    CertificationData certificationData = CertificationData.fromMintTransaction(transaction);
+
+    CertificationResponse response = client.submitCertificationRequest(certificationData).get();
+    if (response.getStatus() != CertificationStatus.SUCCESS) {
+      throw new RuntimeException(
+              String.format("Certification Request failed with status '%s'", response.getStatus()));
     }
 
-    // Wait for inclusion proof
-    InclusionProof inclusionProof = InclusionProofUtils.waitInclusionProof(
-        client,
-        trustBase,
-        commitment
+    return Token.mint(
+            trustBase,
+            predicateVerifier,
+            mintJustificationVerifier,
+            transaction.toCertifiedTransaction(
+                    trustBase,
+                    predicateVerifier,
+                    InclusionProofUtils.waitInclusionProof(client, trustBase, predicateVerifier, transaction).get()
+            )
+    );
+  }
+
+
+  /**
+   * Deserialize token, build transfer transaction and submit certified transfer.
+   *
+   * @param client state transition client
+   * @param trustBase trust base
+   * @param predicateVerifier predicate verifier
+   * @param tokenBytes serialized token bytes
+   * @param recipient recipient address
+   * @param signingService sender signing service
+   *
+   * @return transferred token
+   *
+   * @throws Exception when request or verification fails
+   */
+  public static Token transferToken(
+          StateTransitionClient client,
+          RootTrustBase trustBase,
+          PredicateVerifierService predicateVerifier,
+          MintJustificationVerifierService mintJustificationVerifier,
+          byte[] tokenBytes,
+          Predicate recipient,
+          SigningService signingService
+  ) throws Exception {
+    Token token = Token.fromCbor(tokenBytes);
+    Assertions.assertEquals(VerificationStatus.OK, token.verify(trustBase, predicateVerifier, mintJustificationVerifier).getStatus());
+
+    byte[] x = new byte[32];
+    new SecureRandom().nextBytes(x);
+
+    TransferTransaction transaction = TransferTransaction.create(
+            token,
+            recipient,
+            x,
+            CborSerializer.encodeArray()
+    );
+
+    return TokenUtils.transferToken(
+            client,
+            trustBase,
+            predicateVerifier,
+            token,
+            transaction,
+            SignaturePredicateUnlockScript.create(transaction, signingService)
+    );
+  }
+
+  /**
+   * Submit a prepared transfer transaction and return resulting transferred token.
+   *
+   * @param client state transition client
+   * @param trustBase trust base
+   * @param predicateVerifier predicate verifier
+   * @param token source token
+   * @param transaction transfer transaction
+   * @param unlockScript unlock script for transaction
+   *
+   * @return transferred token
+   *
+   * @throws Exception when request or verification fails
+   */
+  public static Token transferToken(
+          StateTransitionClient client,
+          RootTrustBase trustBase,
+          PredicateVerifierService predicateVerifier,
+          Token token,
+          TransferTransaction transaction,
+          UnlockScript unlockScript
+  ) throws Exception {
+    CertificationResponse response = client.submitCertificationRequest(
+            CertificationData.fromTransaction(transaction, unlockScript)
     ).get();
 
-    // Create mint transaction
-    return Token.create(
-        trustBase,
-        tokenState,
-        commitment.toTransaction(inclusionProof)
-    );
-  }
-
-  public static Token<?> mintNametagToken(
-      StateTransitionClient client,
-      RootTrustBase trustBase,
-      byte[] secret,
-      String nametag,
-      Address targetAddress
-  ) throws Exception {
-    return mintNametagToken(
-        client,
-        trustBase,
-        secret,
-        new TokenType(randomBytes(32)),
-        nametag,
-        targetAddress,
-        randomBytes(32),
-        randomBytes(32)
-    );
-  }
-
-  public static Token<?> mintNametagToken(
-      StateTransitionClient client,
-      RootTrustBase trustBase,
-      byte[] secret,
-      TokenType tokenType,
-      String nametag,
-      Address targetAddress,
-      byte[] nonce,
-      byte[] salt
-  ) throws Exception {
-    SigningService signingService = SigningService.createFromMaskedSecret(secret, nonce);
-
-    Address address = MaskedPredicateReference.create(
-        tokenType,
-        signingService,
-        HashAlgorithm.SHA256,
-        nonce).toAddress();
-
-    MintCommitment<?> commitment = MintCommitment.create(
-        new MintTransaction.NametagData(
-            nametag,
-            tokenType,
-            address,
-            salt,
-            targetAddress
-        )
-    );
-
-    // Submit mint transaction using StateTransitionClient
-    SubmitCommitmentResponse response = client
-        .submitCommitment(commitment)
-        .get();
-    if (response.getStatus() != SubmitCommitmentStatus.SUCCESS) {
-      throw new Exception(String.format("Failed to submit mint commitment: %s",
-          response.getStatus()));
+    if (response.getStatus() != CertificationStatus.SUCCESS) {
+      throw new RuntimeException(
+              String.format("Certification Request failed with status '%s'", response.getStatus()));
     }
 
-    // Wait for inclusion proof
-    InclusionProof inclusionProof = InclusionProofUtils.waitInclusionProof(
-        client,
-        trustBase,
-        commitment
-    ).get();
-
-    // Create mint transaction
-    return Token.create(
-        trustBase,
-        new TokenState(
-            MaskedPredicate.create(
-                commitment.getTransactionData().getTokenId(),
-                commitment.getTransactionData().getTokenType(),
-                signingService,
-                HashAlgorithm.SHA256,
-                nonce
-            ),
-            null
-        ),
-        commitment.toTransaction(inclusionProof)
+    return token.transfer(
+            trustBase,
+            predicateVerifier,
+            transaction.toCertifiedTransaction(
+                    trustBase,
+                    predicateVerifier,
+                    InclusionProofUtils.waitInclusionProof(
+                            client,
+                            trustBase,
+                            predicateVerifier,
+                            transaction
+                    ).get()
+            )
     );
   }
+
 }

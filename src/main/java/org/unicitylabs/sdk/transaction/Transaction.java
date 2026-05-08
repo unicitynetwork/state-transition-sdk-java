@@ -1,119 +1,68 @@
-
 package org.unicitylabs.sdk.transaction;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import java.util.Objects;
-import org.unicitylabs.sdk.hash.DataHasher;
-import org.unicitylabs.sdk.hash.HashAlgorithm;
-import org.unicitylabs.sdk.serializer.UnicityObjectMapper;
-import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
-import org.unicitylabs.sdk.serializer.json.JsonSerializationException;
+import org.unicitylabs.sdk.crypto.hash.DataHash;
+import org.unicitylabs.sdk.predicate.EncodedPredicate;
 
+import java.util.Optional;
 
 /**
- * Token transaction.
- *
- * @param <T> transaction data
+ * Common interface for token transactions.
  */
-public abstract class Transaction<T extends TransactionData<?>> {
-
-  private final T data;
-  private final InclusionProof inclusionProof;
-
-  @JsonCreator
-  Transaction(
-      @JsonProperty("data") T data,
-      @JsonProperty("inclusionProof") InclusionProof inclusionProof
-  ) {
-    Objects.requireNonNull(data, "Transaction data cannot be null");
-    Objects.requireNonNull(inclusionProof, "Inclusion proof cannot be null");
-
-    this.data = data;
-    this.inclusionProof = inclusionProof;
-  }
+public interface Transaction {
 
   /**
-   * Get transaction data.
+   * Get transaction payload bytes.
    *
-   * @return transaction data
+   * @return payload bytes
    */
-  public T getData() {
-    return this.data;
-  }
+  Optional<byte[]> getData();
 
   /**
-   * Get transaction inclusion proof.
+   * Gets the predicate that locks this transaction.
    *
-   * @return inclusion proof
+   * @return lock script predicate
    */
-  public InclusionProof getInclusionProof() {
-    return this.inclusionProof;
-  }
+  EncodedPredicate getLockScript();
 
   /**
-   * Verify if recipient data is added to transaction.
+   * Gets the transaction recipient.
    *
-   * @param stateData recipient data
-   * @return true if contains given data hash
+   * @return recipient predicate
    */
-  public boolean containsRecipientData(byte[] stateData) {
-    if (this.data.getRecipientDataHash().isPresent() == (stateData == null)) {
-      return false;
-    }
-
-    if (!this.data.getRecipientDataHash().isPresent()) {
-      return true;
-    }
-
-    DataHasher hasher = new DataHasher(HashAlgorithm.SHA256);
-    hasher.update(stateData);
-    return hasher.digest().equals(this.data.getRecipientDataHash().orElse(null));
-  }
+  EncodedPredicate getRecipient();
 
   /**
-   * Convert transaction to JSON string.
+   * Gets the source state hash.
    *
-   * @return JSON string
+   * @return source state hash
    */
-  public String toJson() {
-    try {
-      return UnicityObjectMapper.JSON.writeValueAsString(this);
-    } catch (JsonProcessingException e) {
-      throw new JsonSerializationException(Transaction.class, e);
-    }
-  }
+  DataHash getSourceStateHash();
 
   /**
-   * Convert transaction to CBOR bytes.
+   * Get transaction randomness component.
+   *
+   * @return randomness bytes
+   */
+  byte[] getStateMask();
+
+  /**
+   * Calculates the resulting state hash.
+   *
+   * @return state hash
+   */
+  DataHash calculateStateHash();
+
+  /**
+   * Calculates the transaction hash.
+   *
+   * @return transaction hash
+   */
+  DataHash calculateTransactionHash();
+
+  /**
+   * Serializes this transaction as CBOR.
    *
    * @return CBOR bytes
    */
-  public byte[] toCbor() {
-    return CborSerializer.encodeArray(
-        this.data.toCbor(),
-        this.inclusionProof.toCbor()
-    );
-  }
-
-  @Override
-  public boolean equals(Object o) {
-    if (!(o instanceof Transaction)) {
-      return false;
-    }
-    Transaction<?> that = (Transaction<?>) o;
-    return Objects.equals(this.data, that.data) && Objects.equals(this.inclusionProof,
-        that.inclusionProof);
-  }
-
-  @Override
-  public int hashCode() {
-    return Objects.hash(this.data, this.inclusionProof);
-  }
-
-  @Override
-  public String toString() {
-    return String.format("Transaction{data=%s, inclusionProof=%s}", this.data, this.inclusionProof);
-  }
+  byte[] toCbor();
 }

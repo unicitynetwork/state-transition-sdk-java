@@ -1,17 +1,16 @@
 package org.unicitylabs.sdk.api;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import org.unicitylabs.sdk.serializer.UnicityObjectMapper;
-import org.unicitylabs.sdk.serializer.json.JsonSerializationException;
-import org.unicitylabs.sdk.transaction.InclusionProof;
+import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
+import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
+
+import java.util.List;
 
 /**
  * Inclusion proof response.
  */
 public class InclusionProofResponse {
 
+  private final long blockNumber;
   private final InclusionProof inclusionProof;
 
   /**
@@ -19,11 +18,11 @@ public class InclusionProofResponse {
    *
    * @param inclusionProof inclusion proof
    */
-  @JsonCreator
-  public InclusionProofResponse(
-      @JsonProperty("inclusionProof")
-      InclusionProof inclusionProof
+  InclusionProofResponse(
+          long blockNumber,
+          InclusionProof inclusionProof
   ) {
+    this.blockNumber = blockNumber;
     this.inclusionProof = inclusionProof;
   }
 
@@ -37,29 +36,29 @@ public class InclusionProofResponse {
   }
 
   /**
-   * Create response from JSON string.
+   * Deserialize response from CBOR bytes.
    *
-   * @param input JSON string
+   * @param bytes CBOR bytes
    * @return inclusion proof response
    */
-  public static InclusionProofResponse fromJson(String input) {
-    try {
-      return UnicityObjectMapper.JSON.readValue(input, InclusionProofResponse.class);
-    } catch (JsonProcessingException e) {
-      throw new JsonSerializationException(InclusionProofResponse.class, e);
-    }
+  public static InclusionProofResponse fromCbor(byte[] bytes) {
+    List<byte[]> data = CborDeserializer.decodeArray(bytes, 2);
+    return new InclusionProofResponse(
+            CborDeserializer.decodeUnsignedInteger(data.get(0)).asLong(),
+            InclusionProof.fromCbor(data.get(1))
+    );
   }
 
   /**
-   * Convert response to JSON string.
+   * Serialize inclusion proof response to CBOR bytes.
    *
-   * @return JSON string
+   * @return CBOR bytes
    */
-  public String toJson() {
-    try {
-      return UnicityObjectMapper.JSON.writeValueAsString(this);
-    } catch (JsonProcessingException e) {
-      throw new JsonSerializationException(InclusionProofResponse.class, e);
-    }
+  public byte[] toCbor() {
+    return CborSerializer.encodeArray(
+            CborSerializer.encodeUnsignedInteger(this.blockNumber),
+            this.inclusionProof.toCbor()
+    );
   }
+
 }

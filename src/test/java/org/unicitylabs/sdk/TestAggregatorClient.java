@@ -1,73 +1,104 @@
 package org.unicitylabs.sdk;
 
-import java.util.AbstractMap;
+import org.unicitylabs.sdk.api.*;
+import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.RootTrustBaseUtils;
+import org.unicitylabs.sdk.crypto.hash.DataHash;
+import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
+import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
+import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
+import org.unicitylabs.sdk.smt.radix.FinalizedNodeBranch;
+import org.unicitylabs.sdk.smt.radix.SparseMerkleTree;
+import org.unicitylabs.sdk.util.verification.VerificationResult;
+import org.unicitylabs.sdk.util.verification.VerificationStatus;
+
 import java.util.HashMap;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import org.unicitylabs.sdk.api.Authenticator;
-import org.unicitylabs.sdk.api.AggregatorClient;
-import org.unicitylabs.sdk.api.InclusionProofResponse;
-import org.unicitylabs.sdk.api.LeafValue;
-import org.unicitylabs.sdk.api.RequestId;
-import org.unicitylabs.sdk.api.SubmitCommitmentResponse;
-import org.unicitylabs.sdk.api.SubmitCommitmentStatus;
-import org.unicitylabs.sdk.bft.UnicityCertificateUtils;
-import org.unicitylabs.sdk.hash.DataHash;
-import org.unicitylabs.sdk.hash.HashAlgorithm;
-import org.unicitylabs.sdk.mtree.plain.SparseMerkleTree;
-import org.unicitylabs.sdk.mtree.plain.SparseMerkleTreeRootNode;
-import org.unicitylabs.sdk.signing.SigningService;
-import org.unicitylabs.sdk.transaction.InclusionProofFixture;
 
 public class TestAggregatorClient implements AggregatorClient {
-
-  private final SparseMerkleTree tree = new SparseMerkleTree(HashAlgorithm.SHA256);
-  private final HashMap<RequestId, Map.Entry<Authenticator, DataHash>> requests = new HashMap<>();
+  private final RootTrustBase trustBase;
+  private final PredicateVerifierService predicateVerifier;
+  private final SparseMerkleTree sparseMerkleTree;
+  private final HashMap<StateId, CertificationData> requests = new HashMap<>();
   private final SigningService signingService;
 
-  public TestAggregatorClient(SigningService signingService) {
-    Objects.requireNonNull(signingService, "Signing service cannot be null");
+  private TestAggregatorClient(SparseMerkleTree smt, SigningService signingService) {
+    this.sparseMerkleTree = smt;
     this.signingService = signingService;
+    this.trustBase = RootTrustBaseUtils.generateRootTrustBase(this.signingService.getPublicKey());
+    this.predicateVerifier = PredicateVerifierService.create();
+  }
+
+  public RootTrustBase getTrustBase() {
+    return this.trustBase;
+  }
+
+  /**
+   * Creates a new TestAggregatorClient instance with generated private key. If no private key is provided, a new one is
+   * generated.
+   */
+  public static TestAggregatorClient create() {
+    return TestAggregatorClient.create(SigningService.generatePrivateKey());
+  }
+
+
+  /**
+   * Creates a new TestAggregatorClient instance with private key. If no private key is provided, a new one is
+   * generated.
+   */
+  public static TestAggregatorClient create(byte[] privateKey) {
+    return new TestAggregatorClient(
+            new SparseMerkleTree(HashAlgorithm.SHA256),
+            new SigningService(privateKey)
+    );
   }
 
 
   @Override
-  public CompletableFuture<SubmitCommitmentResponse> submitCommitment(
-      RequestId requestId,
-      DataHash transactionHash,
-      Authenticator authenticator
-  ) {
+  public CompletableFuture<CertificationResponse> submitCertificationRequest(CertificationData certificationData) {
     try {
-      tree.addLeaf(
-          requestId.toBitString().toBigInteger(),
-          LeafValue.create(authenticator, transactionHash).getBytes()
+      StateId stateId = StateId.fromCertificationData(certificationData);
+
+      VerificationResult<VerificationStatus> result = this.predicateVerifier.verify(
+              certificationData.getLockScript(),
+              certificationData.getSourceStateHash(),
+              certificationData.getTransactionHash(),
+              certificationData.getUnlockScript()
       );
 
-      requests.put(requestId, new AbstractMap.SimpleEntry<>(authenticator, transactionHash));
+      if (result.getStatus() != VerificationStatus.OK) {
+        return CompletableFuture.completedFuture(CertificationResponse.create(CertificationStatus.SIGNATURE_VERIFICATION_FAILED));
+      }
 
-      return CompletableFuture.completedFuture(
-          new SubmitCommitmentResponse(SubmitCommitmentStatus.SUCCESS)
-      );
+      if (!this.requests.containsKey(stateId)) {
+        DataHash leafValue = certificationData.getTransactionHash();
+        this.sparseMerkleTree.addLeaf(stateId.getData(), leafValue.getData());
+        this.requests.put(stateId, certificationData);
+      }
+
+      return CompletableFuture.completedFuture(CertificationResponse.create(CertificationStatus.SUCCESS));
     } catch (Exception e) {
       throw new RuntimeException("Aggregator commitment failed", e);
     }
   }
 
   @Override
-  public CompletableFuture<InclusionProofResponse> getInclusionProof(RequestId requestId) {
-    Entry<Authenticator, DataHash> entry = requests.get(requestId);
-    SparseMerkleTreeRootNode root = tree.calculateRoot();
+  public CompletableFuture<InclusionProofResponse> getInclusionProof(StateId stateId) {
+    FinalizedNodeBranch root = this.sparseMerkleTree.calculateRoot();
+
+    if (!requests.containsKey(stateId)) {
+      return CompletableFuture.completedFuture(InclusionProofFixture.createResponse(null, null, root.getHash(), this.signingService));
+    }
+
+    CertificationData certificationData = requests.get(stateId);
+
     return CompletableFuture.completedFuture(
-        new InclusionProofResponse(
-            InclusionProofFixture.create(
-                root.getPath(requestId.toBitString().toBigInteger()),
-                entry != null ? entry.getKey() : null,
-                entry != null ? entry.getValue() : null,
-                UnicityCertificateUtils.generateCertificate(signingService, root.getRootHash())
+            InclusionProofFixture.createResponse(
+                    certificationData,
+                    InclusionCertificate.create(root, stateId.getData()),
+                    root.getHash(),
+                    this.signingService
             )
-        )
     );
   }
 

@@ -1,45 +1,28 @@
 package org.unicitylabs.sdk.predicate;
 
-import org.unicitylabs.sdk.bft.RootTrustBase;
-import org.unicitylabs.sdk.hash.DataHash;
-import org.unicitylabs.sdk.token.Token;
-import org.unicitylabs.sdk.transaction.TransferTransaction;
-
 /**
- * Predicate structure.
+ * Base contract for all predicate implementations.
  */
-public interface Predicate extends SerializablePredicate {
+public interface Predicate {
 
   /**
-   * Calculate predicate hash representation.
+   * Returns the predicate engine used by this predicate.
    *
-   * @return predicate hash
+   * @return the predicate engine
    */
-  DataHash calculateHash();
+  PredicateEngine getEngine();
 
   /**
-   * Get predicate as reference.
+   * Encodes the predicate type/code portion.
    *
-   * @return predicate reference
+   * @return encoded predicate code bytes
    */
-  PredicateReference getReference();
+  byte[] encodeCode();
 
   /**
-   * Is given public key owner of current predicate.
+   * Encodes the predicate parameter payload.
    *
-   * @param publicKey public key of potential owner
-   * @return true if is owner
+   * @return encoded predicate parameter bytes
    */
-  boolean isOwner(byte[] publicKey);
-
-  /**
-   * Verify if predicate is valid for given token state.
-   *
-   * @param token       current token state
-   * @param transaction current transaction
-   * @param trustBase   trust base to verify against.
-   * @return true if successful
-   */
-  boolean verify(Token<?> token, TransferTransaction transaction, RootTrustBase trustBase);
+  byte[] encodeParameters();
 }
-

@@ -1,434 +1,252 @@
-
 package org.unicitylabs.sdk.transaction;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import java.nio.charset.StandardCharsets;
+import org.unicitylabs.sdk.api.InclusionProof;
+import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.crypto.MintSigningService;
+import org.unicitylabs.sdk.crypto.hash.DataHash;
+import org.unicitylabs.sdk.crypto.hash.DataHasher;
+import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
+import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
+import org.unicitylabs.sdk.predicate.EncodedPredicate;
+import org.unicitylabs.sdk.predicate.Predicate;
+import org.unicitylabs.sdk.predicate.builtin.SignaturePredicate;
+import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
+import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
+import org.unicitylabs.sdk.serializer.cbor.CborSerializationException;
+import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
+import org.unicitylabs.sdk.util.HexConverter;
+
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import org.unicitylabs.sdk.address.Address;
-import org.unicitylabs.sdk.address.AddressFactory;
-import org.unicitylabs.sdk.api.RequestId;
-import org.unicitylabs.sdk.bft.RootTrustBase;
-import org.unicitylabs.sdk.hash.DataHash;
-import org.unicitylabs.sdk.hash.DataHasher;
-import org.unicitylabs.sdk.hash.HashAlgorithm;
-import org.unicitylabs.sdk.serializer.UnicityObjectMapper;
-import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
-import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
-import org.unicitylabs.sdk.serializer.json.JsonSerializationException;
-import org.unicitylabs.sdk.signing.MintSigningService;
-import org.unicitylabs.sdk.signing.SigningService;
-import org.unicitylabs.sdk.token.TokenId;
-import org.unicitylabs.sdk.token.TokenType;
-import org.unicitylabs.sdk.token.fungible.TokenCoinData;
-import org.unicitylabs.sdk.transaction.split.SplitMintReason;
-import org.unicitylabs.sdk.util.HexConverter;
-import org.unicitylabs.sdk.verification.VerificationResult;
 
 
 /**
- * Mint transaction.
+ * Represents a Mint Transaction.
  *
- * @param <R> mint reason
+ * <p>This transaction is responsible for minting new tokens with specific attributes and assigns
+ * it to an initial owner.
  */
-public class MintTransaction<R extends MintTransactionReason> extends
-    Transaction<MintTransaction.Data<R>> {
+public class MintTransaction implements Transaction {
+  public static final long CBOR_TAG = 39041;
+  private static final int VERSION = 1;
 
-  @JsonCreator
-  MintTransaction(
-      @JsonProperty("data")
-      Data<R> data,
-      @JsonProperty("inclusionProof")
-      InclusionProof inclusionProof) {
-    super(data, inclusionProof);
+  private final MintTransactionState sourceStateHash;
+  private final EncodedPredicate lockScript;
+  private final EncodedPredicate recipient;
+  private final TokenId tokenId;
+  private final TokenType tokenType;
+  private final byte[] justification;
+  private final byte[] data;
+
+  private MintTransaction(
+          MintTransactionState sourceStateHash,
+          EncodedPredicate lockScript,
+          EncodedPredicate recipient,
+          TokenId tokenId,
+          TokenType tokenType,
+          byte[] justification,
+          byte[] data
+  ) {
+    this.sourceStateHash = sourceStateHash;
+    this.lockScript = lockScript;
+    this.recipient = recipient;
+    this.tokenId = tokenId;
+    this.tokenType = tokenType;
+    this.justification = justification;
+    this.data = data;
+  }
+
+  public int getVersion() {
+    return MintTransaction.VERSION;
+  }
+
+
+  @Override
+  public MintTransactionState getSourceStateHash() {
+    return this.sourceStateHash;
+  }
+
+  @Override
+  public EncodedPredicate getLockScript() {
+    return this.lockScript;
+  }
+
+  @Override
+  public EncodedPredicate getRecipient() {
+    return this.recipient;
   }
 
   /**
-   * Create mint transaction from CBOR bytes.
+   * Retrieves the unique token identifier.
+   *
+   * @return the token identifier as a {@code TokenId}.
+   */
+  public TokenId getTokenId() {
+    return this.tokenId;
+  }
+
+  /**
+   * Retrieves the type identifier of the token.
+   *
+   * @return the token type as a {@code TokenType}.
+   */
+  public TokenType getTokenType() {
+    return this.tokenType;
+  }
+
+  /**
+   * Retrieves the justification for the mint transaction, if any.
+   *
+   * @return optional justification bytes
+   */
+  public Optional<byte[]> getJustification() {
+    return Optional.ofNullable(this.justification != null ? Arrays.copyOf(this.justification, this.justification.length) : null);
+  }
+
+  @Override
+  public Optional<byte[]> getData() {
+    return Optional.ofNullable(this.data != null ? Arrays.copyOf(this.data, this.data.length) : null);
+  }
+
+  @Override
+  public byte[] getStateMask() {
+    return this.tokenId.getBytes();
+  }
+
+  /**
+   * Create a mint transaction.
+   *
+   * @param recipient recipient predicate
+   * @param tokenId token identifier
+   * @param tokenType token type identifier
+   * @param justification mint justification bytes, may be null
+   * @param data payload bytes, may be null
+   *
+   * @return mint transaction
+   */
+  public static MintTransaction create(
+          Predicate recipient,
+          TokenId tokenId,
+          TokenType tokenType,
+          byte[] justification,
+          byte[] data
+  ) {
+    Objects.requireNonNull(recipient, "Recipient cannot be null");
+    Objects.requireNonNull(tokenId, "Token ID cannot be null");
+    Objects.requireNonNull(tokenType, "Token type cannot be null");
+
+    SigningService signingService = MintSigningService.create(tokenId);
+    return new MintTransaction(
+            MintTransactionState.create(tokenId),
+            EncodedPredicate.fromPredicate(SignaturePredicate.fromSigningService(signingService)),
+            EncodedPredicate.fromPredicate(recipient),
+            tokenId,
+            tokenType,
+            justification != null ? Arrays.copyOf(justification, justification.length) : null,
+            data != null ? Arrays.copyOf(data, data.length) : null
+    );
+  }
+
+  /**
+   * Deserialize mint transaction from CBOR bytes.
    *
    * @param bytes CBOR bytes
+   *
    * @return mint transaction
    */
-  public static MintTransaction<?> fromCbor(byte[] bytes) {
-    List<byte[]> data = CborDeserializer.readArray(bytes);
+  public static MintTransaction fromCbor(byte[] bytes) {
+    CborDeserializer.CborTag tag = CborDeserializer.decodeTag(bytes);
+    if (tag.getTag() != MintTransaction.CBOR_TAG) {
+      throw new CborSerializationException(String.format("Invalid CBOR tag: %s", tag.getTag()));
+    }
+    List<byte[]> data = CborDeserializer.decodeArray(tag.getData(), 6);
 
-    return new MintTransaction<>(
-        Data.fromCbor(data.get(0)),
-        InclusionProof.fromCbor(data.get(1))
+    int version = CborDeserializer.decodeUnsignedInteger(data.get(0)).asInt();
+    if (version != MintTransaction.VERSION) {
+      throw new CborSerializationException(String.format("Unsupported version: %s", version));
+    }
+
+    return MintTransaction.create(
+            EncodedPredicate.fromCbor(data.get(1)),
+            TokenId.fromCbor(data.get(2)),
+            TokenType.fromCbor(data.get(3)),
+            CborDeserializer.decodeNullable(data.get(4), CborDeserializer::decodeByteString),
+            CborDeserializer.decodeNullable(data.get(5), CborDeserializer::decodeByteString)
     );
   }
 
   /**
-   * Create mint transaction from JSON string.
+   * Calculate mint transaction state hash.
    *
-   * @param input JSON string
-   * @return mint transaction
+   * @return state hash
    */
-  public static MintTransaction<?> fromJson(String input) {
-    try {
-      return UnicityObjectMapper.JSON.readValue(input, MintTransaction.class);
-    } catch (JsonProcessingException e) {
-      throw new JsonSerializationException(MintTransaction.class, e);
-    }
+  @Override
+  public DataHash calculateStateHash() {
+    return new DataHasher(HashAlgorithm.SHA256)
+            .update(
+                    CborSerializer.encodeArray(
+                            CborSerializer.encodeByteString(this.sourceStateHash.getImprint()),
+                            CborSerializer.encodeByteString(this.getStateMask())
+                    )
+            )
+            .digest();
   }
 
   /**
-   * Verify mint transaction.
+   * Calculate hash of serialized mint transaction.
+   *
+   * @return transaction hash
+   */
+  @Override
+  public DataHash calculateTransactionHash() {
+    return new DataHasher(HashAlgorithm.SHA256).update(this.toCbor()).digest();
+  }
+
+  /**
+   * Serialize mint transaction to CBOR bytes.
+   *
+   * @return CBOR bytes
+   */
+  @Override
+  public byte[] toCbor() {
+    return CborSerializer.encodeTag(
+            MintTransaction.CBOR_TAG,
+            CborSerializer.encodeArray(
+                    CborSerializer.encodeUnsignedInteger(MintTransaction.VERSION),
+                    this.recipient.toCbor(),
+                    this.tokenId.toCbor(),
+                    this.tokenType.toCbor(),
+                    CborSerializer.encodeNullable(this.justification, CborSerializer::encodeByteString),
+                    CborSerializer.encodeNullable(this.data, CborSerializer::encodeByteString)
+            )
+    );
+  }
+
+  /**
+   * Build certified mint transaction by attaching and verifying inclusion proof.
    *
    * @param trustBase root trust base
-   * @return verification result
-   */
-  public VerificationResult verify(RootTrustBase trustBase) {
-    if (!this.getInclusionProof().getAuthenticator().isPresent()) {
-      return VerificationResult.fail("Missing authenticator");
-    }
-
-    if (!this.getInclusionProof().getTransactionHash().isPresent()) {
-      return VerificationResult.fail("Missing transaction hash");
-    }
-
-    if (!this.getData().getSourceState()
-        .equals(MintTransactionState.create(this.getData().getTokenId()))) {
-      return VerificationResult.fail("Invalid source state");
-    }
-
-    SigningService signingService = MintSigningService.create(this.getData().getTokenId());
-    if (!Arrays.equals(signingService.getPublicKey(),
-        this.getInclusionProof().getAuthenticator().get().getPublicKey())) {
-      return VerificationResult.fail("Authenticator public key mismatch");
-    }
-
-    if (!this.getInclusionProof().getAuthenticator().get()
-        .verify(this.getInclusionProof().getTransactionHash().get())) {
-      return VerificationResult.fail("Authenticator verification failed");
-    }
-
-    VerificationResult reasonResult = this.getData().getReason()
-        .map(reason -> reason.verify(this))
-        .orElse(VerificationResult.success());
-
-    if (!reasonResult.isSuccessful()) {
-      return VerificationResult.fail("Mint reason verification failed", List.of(reasonResult));
-    }
-
-    InclusionProofVerificationStatus inclusionProofStatus = this.getInclusionProof().verify(
-        RequestId.create(
-            MintSigningService.create(this.getData().getTokenId()).getPublicKey(),
-            this.getData().getSourceState()
-        ),
-        trustBase
-    );
-
-    if (inclusionProofStatus != InclusionProofVerificationStatus.OK) {
-      return VerificationResult.fail(
-          String.format("Inclusion proof verification failed with status %s", inclusionProofStatus)
-      );
-    }
-
-    return VerificationResult.success();
-  }
-
-  /**
-   * Mint transaction data.
+   * @param predicateVerifier predicate verifier
+   * @param inclusionProof inclusion proof
    *
-   * @param <R> mint reason
+   * @return certified mint transaction
    */
-  public static class Data<R extends MintTransactionReason> implements
-      TransactionData<MintTransactionState> {
-
-    private final TokenId tokenId;
-    private final TokenType tokenType;
-    private final byte[] tokenData;
-    private final TokenCoinData coinData;
-    private final MintTransactionState sourceState;
-    private final Address recipient;
-    private final byte[] salt;
-    private final DataHash recipientDataHash;
-    private final R reason;
-
-    /**
-     * Create mint transaction data.
-     *
-     * @param tokenId           token id
-     * @param tokenType         token type
-     * @param tokenData         token immutable data
-     * @param coinData          token coin data
-     * @param recipient         token recipient address
-     * @param salt              mint transaction salt
-     * @param recipientDataHash recipient data hash
-     * @param reason            mint reason
-     */
-    @JsonCreator
-    public Data(
-        @JsonProperty("tokenId") TokenId tokenId,
-        @JsonProperty("tokenType") TokenType tokenType,
-        @JsonProperty("tokenData") byte[] tokenData,
-        @JsonProperty("coinData") TokenCoinData coinData,
-        @JsonProperty("recipient") Address recipient,
-        @JsonProperty("salt") byte[] salt,
-        @JsonProperty("recipientDataHash") DataHash recipientDataHash,
-        @JsonProperty("reason")
-        @JsonDeserialize(using = MintTransactionReasonJson.Deserializer.class)
-        R reason
-    ) {
-      Objects.requireNonNull(tokenId, "Token ID cannot be null");
-      Objects.requireNonNull(tokenType, "Token type cannot be null");
-      Objects.requireNonNull(recipient, "Recipient cannot be null");
-      Objects.requireNonNull(salt, "Salt cannot be null");
-
-      this.tokenId = tokenId;
-      this.tokenType = tokenType;
-      this.tokenData = tokenData == null ? null : Arrays.copyOf(tokenData, tokenData.length);
-      this.coinData = coinData;
-      this.sourceState = MintTransactionState.create(tokenId);
-      this.recipient = recipient;
-      this.salt = Arrays.copyOf(salt, salt.length);
-      this.recipientDataHash = recipientDataHash;
-      this.reason = reason;
-    }
-
-    /**
-     * Get token id.
-     *
-     * @return token id
-     */
-    public TokenId getTokenId() {
-      return this.tokenId;
-    }
-
-    /**
-     * Get token type.
-     *
-     * @return token type
-     */
-    public TokenType getTokenType() {
-      return this.tokenType;
-    }
-
-    /**
-     * Get immutable token data.
-     *
-     * @return token data
-     */
-    public Optional<byte[]> getTokenData() {
-      return Optional.ofNullable(this.tokenData);
-    }
-
-    /**
-     * Get token coin data.
-     *
-     * @return token coin data
-     */
-    public Optional<TokenCoinData> getCoinData() {
-      return Optional.ofNullable(this.coinData);
-    }
-
-    /**
-     * Get recipient data hash.
-     *
-     * @return recipient data hash
-     */
-    public Optional<DataHash> getRecipientDataHash() {
-      return Optional.ofNullable(this.recipientDataHash);
-    }
-
-    /**
-     * Get mint transaction salt.
-     *
-     * @return transaction salt
-     */
-    public byte[] getSalt() {
-      return Arrays.copyOf(this.salt, this.salt.length);
-    }
-
-    /**
-     * Get token recipient address.
-     *
-     * @return recipient address
-     */
-    public Address getRecipient() {
-      return this.recipient;
-    }
-
-    /**
-     * Get mint reason.
-     *
-     * @return mint reason
-     */
-    public Optional<R> getReason() {
-      return Optional.ofNullable(this.reason);
-    }
-
-    /**
-     * Get mint transaction source state.
-     *
-     * @return source state
-     */
-    @JsonIgnore
-    public MintTransactionState getSourceState() {
-      return this.sourceState;
-    }
-
-    /**
-     * Calculate mint transaction hash.
-     *
-     * @return transaction hash.
-     */
-    public DataHash calculateHash() {
-      return new DataHasher(HashAlgorithm.SHA256)
-          .update(this.toCbor())
-          .digest();
-    }
-
-    /**
-     * Create mint transaction data from CBOR bytes.
-     *
-     * @param bytes CBOR bytes
-     * @return mint transaction data
-     */
-    public static Data<?> fromCbor(byte[] bytes) {
-      List<byte[]> data = CborDeserializer.readArray(bytes);
-
-      return new Data<>(
-          TokenId.fromCbor(data.get(0)),
-          TokenType.fromCbor(data.get(1)),
-          CborDeserializer.readOptional(data.get(2), CborDeserializer::readByteString),
-          CborDeserializer.readOptional(data.get(3), TokenCoinData::fromCbor),
-          AddressFactory.createAddress(CborDeserializer.readTextString(data.get(4))),
-          CborDeserializer.readByteString(data.get(5)),
-          CborDeserializer.readOptional(data.get(6), DataHash::fromCbor),
-          CborDeserializer.readOptional(data.get(7), SplitMintReason::fromCbor)
-      );
-    }
-
-    /**
-     * Convert mint transaction data to CBOR bytes.
-     *
-     * @return CBOR bytes
-     */
-    public byte[] toCbor() {
-      return CborSerializer.encodeArray(
-          this.tokenId.toCbor(),
-          this.tokenType.toCbor(),
-          CborSerializer.encodeOptional(this.tokenData, CborSerializer::encodeByteString),
-          CborSerializer.encodeOptional(this.coinData, TokenCoinData::toCbor),
-          CborSerializer.encodeTextString(this.recipient.getAddress()),
-          CborSerializer.encodeByteString(this.salt),
-          CborSerializer.encodeOptional(this.recipientDataHash, DataHash::toCbor),
-          CborSerializer.encodeOptional(this.reason, MintTransactionReason::toCbor)
-      );
-    }
-
-    /**
-     * Create mint transaction data from JSON string.
-     *
-     * @param input JSON string
-     * @return mint transaction data
-     */
-    public static Data<?> fromJson(String input) {
-      try {
-        return UnicityObjectMapper.JSON.readValue(input, Data.class);
-      } catch (JsonProcessingException e) {
-        throw new JsonSerializationException(Data.class, e);
-      }
-    }
-
-    /**
-     * Convert mint transaction data to JSON string.
-     *
-     * @return JSON string
-     */
-    public String toJson() {
-      try {
-        return UnicityObjectMapper.JSON.writeValueAsString(this);
-      } catch (JsonProcessingException e) {
-        throw new JsonSerializationException(Data.class, e);
-      }
-    }
-
-    @Override
-    public boolean equals(Object o) {
-      if (!(o instanceof Data)) {
-        return false;
-      }
-      Data<?> that = (Data<?>) o;
-
-      return Objects.equals(this.tokenId, that.tokenId)
-          && Objects.equals(this.tokenType, that.tokenType)
-          && Objects.deepEquals(this.tokenData, that.tokenData)
-          && Objects.equals(this.coinData, that.coinData)
-          && Objects.equals(this.sourceState, that.sourceState)
-          && Objects.equals(this.recipient, that.recipient)
-          && Objects.deepEquals(this.salt, that.salt)
-          && Objects.equals(this.recipientDataHash, that.recipientDataHash)
-          && Objects.equals(this.reason, that.reason);
-    }
-
-    @Override
-    public int hashCode() {
-      return Objects.hash(this.tokenId, this.tokenType, Arrays.hashCode(tokenData), this.coinData,
-          this.sourceState,
-          this.recipient, Arrays.hashCode(this.salt), this.recipientDataHash, this.reason);
-    }
-
-    @Override
-    public String toString() {
-      return String.format(
-          "Data{"
-              + "tokenId=%s, "
-              + "tokenType=%s, "
-              + "tokenData=%s, "
-              + "coinData=%s, "
-              + "sourceState=%s, "
-              + "recipient=%s, "
-              + "salt=%s, "
-              + "dataHash=%s, "
-              + "reason=%s"
-              + "}",
-          this.tokenId, this.tokenType,
-          this.tokenData != null ? HexConverter.encode(this.tokenData) : null, this.coinData,
-          this.sourceState, this.recipient, HexConverter.encode(this.salt), this.recipientDataHash,
-          this.reason);
-    }
+  public CertifiedMintTransaction toCertifiedTransaction(
+          RootTrustBase trustBase,
+          PredicateVerifierService predicateVerifier,
+          InclusionProof inclusionProof
+  ) {
+    return CertifiedMintTransaction.fromTransaction(trustBase, predicateVerifier, this,
+            inclusionProof);
   }
 
-  /**
-   * Nametag mint data.
-   */
-  public static class NametagData extends Data<MintTransactionReason> {
-
-    /**
-     * Create nametag mint data.
-     *
-     * @param name          nametag
-     * @param tokenType     token type
-     * @param recipient     recipient address
-     * @param salt          mint salt
-     * @param targetAddress target address
-     */
-    public NametagData(
-        String name,
-        TokenType tokenType,
-        Address recipient,
-        byte[] salt,
-        Address targetAddress
-    ) {
-      super(
-          TokenId.fromNameTag(name),
-          tokenType,
-          targetAddress.getAddress().getBytes(StandardCharsets.UTF_8),
-          null,
-          recipient,
-          salt,
-          null,
-          null
-      );
-    }
+  @Override
+  public String toString() {
+    return String.format(
+            "MintTransaction{sourceStateHash=%s, lockScript=%s, recipient=%s, tokenId=%s, tokenType=%s, data=%s}",
+            this.sourceStateHash, this.lockScript, this.recipient, this.tokenId, this.tokenType,
+            HexConverter.encode(this.data));
   }
 }

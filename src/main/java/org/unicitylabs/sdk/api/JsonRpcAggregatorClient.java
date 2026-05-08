@@ -1,17 +1,21 @@
 package org.unicitylabs.sdk.api;
 
-import static com.google.common.net.HttpHeaders.AUTHORIZATION;
+import org.unicitylabs.sdk.api.jsonrpc.JsonRpcHttpTransport;
+import org.unicitylabs.sdk.util.HexConverter;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import org.unicitylabs.sdk.hash.DataHash;
-import org.unicitylabs.sdk.jsonrpc.JsonRpcHttpTransport;
+
+import static com.google.common.net.HttpHeaders.AUTHORIZATION;
 
 /**
  * Default aggregator client.
  */
 public class JsonRpcAggregatorClient implements AggregatorClient {
+  private static final String STATE_ID_HEADER = "X-State-ID";
 
   private final JsonRpcHttpTransport transport;
   private final String apiKey;
@@ -34,52 +38,52 @@ public class JsonRpcAggregatorClient implements AggregatorClient {
    *
    */
   public JsonRpcAggregatorClient(String url, String apiKey) {
-    this.transport = new JsonRpcHttpTransport(url);
+    this.transport = new JsonRpcHttpTransport(Objects.requireNonNull(url, "url cannot be null"));
     this.apiKey = apiKey;
   }
 
   /**
-   * Submit commitment.
+   * Submit a certification request for a transaction state transition.
    *
-   * @param requestId       request id
-   * @param transactionHash transaction hash
-   * @param authenticator   authenticator
-   * @return submit commitment response
+   * @param certificationData certification payload
+   *
+   * @return asynchronous certification response
    */
-  public CompletableFuture<SubmitCommitmentResponse> submitCommitment(
-      RequestId requestId,
-      DataHash transactionHash,
-      Authenticator authenticator
+  @Override
+  public CompletableFuture<CertificationResponse> submitCertificationRequest(
+          CertificationData certificationData
   ) {
-    SubmitCommitmentRequest request = new SubmitCommitmentRequest(
-        requestId,
-        transactionHash,
-        authenticator,
-        false
-    );
+    CertificationRequest request = CertificationRequest.create(
+            Objects.requireNonNull(certificationData, "certificationData cannot be null"));
 
-    Map<String, List<String>> headers = this.apiKey == null
-        ? Map.of()
-        : Map.of(AUTHORIZATION, List.of(String.format("Bearer %s", this.apiKey)));
+    Map<String, List<String>> headers = new HashMap<>();
+    headers.put(STATE_ID_HEADER, List.of(HexConverter.encode(request.getStateId().getData())));
+    if (this.apiKey != null) {
+      headers.put(AUTHORIZATION, List.of(String.format("Bearer %s", this.apiKey)));
+    }
 
     return this.transport.request(
-        "submit_commitment",
-        request,
-        SubmitCommitmentResponse.class,
-        headers
+            "certification_request",
+            HexConverter.encode(request.toCbor()),
+            CertificationResponse.class,
+            headers
     );
   }
 
   /**
-   * Get inclusion proof for request id.
+   * Get inclusion proof for state id.
    *
-   * @param requestId request id
+   * @param stateId state id
    * @return inclusion / non inclusion proof
    */
-  public CompletableFuture<InclusionProofResponse> getInclusionProof(RequestId requestId) {
-    InclusionProofRequest request = new InclusionProofRequest(requestId);
+  @Override
+  public CompletableFuture<InclusionProofResponse> getInclusionProof(StateId stateId) {
+    InclusionProofRequest request = new InclusionProofRequest(
+            Objects.requireNonNull(stateId, "stateId cannot be null"));
 
-    return this.transport.request("get_inclusion_proof", request, InclusionProofResponse.class);
+    return this.transport
+            .request("get_inclusion_proof.v2", request, String.class)
+            .thenApply(response -> InclusionProofResponse.fromCbor(HexConverter.decode(response)));
   }
 
   /**
@@ -87,8 +91,9 @@ public class JsonRpcAggregatorClient implements AggregatorClient {
    *
    * @return block height
    */
+  @Override
   public CompletableFuture<Long> getBlockHeight() {
     return this.transport.request("get_block_height", Map.of(), BlockHeightResponse.class)
-        .thenApply(BlockHeightResponse::getBlockNumber);
+            .thenApply(BlockHeightResponse::getBlockNumber);
   }
 }

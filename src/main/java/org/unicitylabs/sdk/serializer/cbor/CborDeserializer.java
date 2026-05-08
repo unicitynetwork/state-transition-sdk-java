@@ -1,14 +1,10 @@
 package org.unicitylabs.sdk.serializer.cbor;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
-import java.util.function.Function;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer.CborMap;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer.CborMap.Entry;
+
+import java.util.*;
+import java.util.function.Function;
 
 /**
  * CBOR deserialization utilities.
@@ -18,22 +14,27 @@ public class CborDeserializer {
   private static final byte MAJOR_TYPE_MASK = (byte) 0b11100000;
   private static final byte ADDITIONAL_INFORMATION_MASK = (byte) 0b00011111;
 
-  private CborDeserializer() {}
+  private CborDeserializer() {
+  }
 
   /**
    * Read optional value from CBOR bytes.
    *
    * @param data   bytes
-   * @param reader parse method
+   * @param decoder parse method
    * @param <T>    parsed value type
    * @return parsed value
    */
-  public static <T> T readOptional(byte[] data, Function<byte[], T> reader) {
-    if (Byte.compareUnsigned(new CborReader(data).readByte(), (byte) 0xf6) == 0) {
+  public static <T> T decodeNullable(byte[] data, Function<byte[], T> decoder) {
+    CborReader reader = new CborReader(data);
+    byte[] cbor = reader.readRawCbor();
+    reader.assertExhausted();
+
+    if (cbor.length == 1 && cbor[0] == (byte) 0xf6) {
       return null;
     }
 
-    return reader.apply(data);
+    return decoder.apply(cbor);
   }
 
   /**
@@ -42,9 +43,12 @@ public class CborDeserializer {
    * @param data bytes
    * @return unsigned number
    */
-  public static CborNumber readUnsignedInteger(byte[] data) {
+  public static CborNumber decodeUnsignedInteger(byte[] data) {
     CborReader reader = new CborReader(data);
-    return new CborNumber(reader.readLength(CborMajorType.UNSIGNED_INTEGER));
+    long value = reader.readLength(CborMajorType.UNSIGNED_INTEGER);
+    reader.assertExhausted();
+
+    return new CborNumber(value);
   }
 
   /**
@@ -53,9 +57,12 @@ public class CborDeserializer {
    * @param data bytes
    * @return bytes
    */
-  public static byte[] readByteString(byte[] data) {
+  public static byte[] decodeByteString(byte[] data) {
     CborReader reader = new CborReader(data);
-    return reader.read((int) reader.readLength(CborMajorType.BYTE_STRING));
+    byte[] result = reader.read((int) reader.readLength(CborMajorType.BYTE_STRING));
+    reader.assertExhausted();
+
+    return result;
   }
 
   /**
@@ -64,10 +71,12 @@ public class CborDeserializer {
    * @param data bytes
    * @return text
    */
-  public static String readTextString(byte[] data) {
+  public static String decodeTextString(byte[] data) {
     CborReader reader = new CborReader(data);
-    return new String(
-        reader.read((int) reader.readLength(CborMajorType.TEXT_STRING)));
+    byte[] bytes = reader.read((int) reader.readLength(CborMajorType.TEXT_STRING));
+    reader.assertExhausted();
+
+    return new String(bytes);
   }
 
   /**
@@ -76,7 +85,7 @@ public class CborDeserializer {
    * @param data bytes
    * @return CBOR element array
    */
-  public static List<byte[]> readArray(byte[] data) {
+  public static List<byte[]> decodeArray(byte[] data) {
     CborReader reader = new CborReader(data);
     long length = reader.readLength(CborMajorType.ARRAY);
 
@@ -84,7 +93,27 @@ public class CborDeserializer {
     for (int i = 0; i < length; i++) {
       result.add(reader.readRawCbor());
     }
+    reader.assertExhausted();
 
+    return result;
+  }
+
+  /**
+   * Read a fixed-size CBOR array from bytes. Throws when the encoded array length does not match
+   * the expected length.
+   *
+   * @param data bytes
+   * @param expectedLength expected number of array elements
+   * @return CBOR element array
+   *
+   * @throws CborSerializationException when the array length differs from {@code expectedLength}
+   */
+  public static List<byte[]> decodeArray(byte[] data, long expectedLength) {
+    List<byte[]> result = decodeArray(data);
+    if (result.size() != expectedLength) {
+      throw new CborSerializationException(
+              String.format("Expected array of %d elements, got %d", expectedLength, result.size()));
+    }
     return result;
   }
 
@@ -94,16 +123,28 @@ public class CborDeserializer {
    * @param data bytes
    * @return CBOR element map
    */
-  public static Set<CborMap.Entry> readMap(byte[] data) {
+  public static Set<CborMap.Entry> decodeMap(byte[] data) {
     CborReader reader = new CborReader(data);
     long length = (int) reader.readLength(CborMajorType.MAP);
 
     Set<Entry> result = new LinkedHashSet<>();
+    Entry previous = null;
     for (int i = 0; i < length; i++) {
-      byte[] key = reader.readRawCbor();
-      byte[] value = reader.readRawCbor();
-      result.add(new CborMap.Entry(key, value));
+      Entry entry = new CborMap.Entry(reader.readRawCbor(), reader.readRawCbor());
+
+      if (previous != null) {
+        int comparison = CborMap.compareEntries(previous, entry);
+        if (comparison == 0) {
+          throw new CborSerializationException("Duplicate map key found.");
+        }
+        if (comparison > 0) {
+          throw new CborSerializationException("Map keys are not in canonical order.");
+        }
+      }
+      result.add(entry);
+      previous = entry;
     }
+    reader.assertExhausted();
 
     return result;
   }
@@ -114,10 +155,13 @@ public class CborDeserializer {
    * @param data bytes
    * @return CBOR tag
    */
-  public static CborTag readTag(byte[] data) {
+  public static CborTag decodeTag(byte[] data) {
     CborReader reader = new CborReader(data);
     long tag = (int) reader.readLength(CborMajorType.TAG);
-    return new CborTag(tag, reader.readRawCbor());
+    byte[] inner = reader.readRawCbor();
+    reader.assertExhausted();
+
+    return new CborTag(tag, inner);
   }
 
   /**
@@ -126,12 +170,15 @@ public class CborDeserializer {
    * @param data bytes
    * @return boolean
    */
-  public static boolean readBoolean(byte[] data) {
-    byte byteValue = new CborReader(data).readByte();
-    if (byteValue == (byte) 0xf5) {
+  public static boolean decodeBoolean(byte[] data) {
+    CborReader reader = new CborReader(data);
+    byte[] cbor = reader.readRawCbor();
+    reader.assertExhausted();
+
+    if (cbor.length == 1 && cbor[0] == (byte) 0xf5) {
       return true;
     }
-    if (byteValue == (byte) 0xf4) {
+    if (cbor.length == 1 && cbor[0] == (byte) 0xf4) {
       return false;
     }
     throw new CborSerializationException("Type mismatch, expected boolean.");
@@ -146,6 +193,14 @@ public class CborDeserializer {
       Objects.requireNonNull(data, "Input byte array cannot be null.");
 
       this.data = data;
+    }
+
+    public void assertExhausted() {
+      if (this.position != this.data.length) {
+        throw new CborSerializationException(String.format(
+                "Expected end of data: %d byte(s) remaining at position %d.",
+                this.data.length - this.position, this.position));
+      }
     }
 
     public byte readByte() {
@@ -171,35 +226,50 @@ public class CborDeserializer {
     public long readLength(CborMajorType majorType) {
       byte initialByte = this.readByte();
 
-      if (CborMajorType.fromType(initialByte & CborDeserializer.MAJOR_TYPE_MASK) != majorType) {
-        throw new CborSerializationException("Major type mismatch.");
+      CborMajorType parsedMajorType = CborMajorType.fromType(
+              initialByte & CborDeserializer.MAJOR_TYPE_MASK);
+      if (parsedMajorType != majorType) {
+        throw new CborSerializationException(String.format(
+                "Major type mismatch: expected %s, got %s.", majorType, parsedMajorType));
       }
 
       byte additionalInformation = (byte) (initialByte
-          & CborDeserializer.ADDITIONAL_INFORMATION_MASK);
+              & CborDeserializer.ADDITIONAL_INFORMATION_MASK);
       if (Byte.compareUnsigned(additionalInformation, (byte) 24) < 0) {
         return additionalInformation;
       }
 
       switch (majorType) {
+        case MAP:
         case ARRAY:
         case BYTE_STRING:
         case TEXT_STRING:
           if (Byte.compareUnsigned(additionalInformation, (byte) 31) == 0) {
-            throw new CborSerializationException("Indefinite length array not supported.");
+            throw new CborSerializationException(String.format(
+                    "Indefinite-length encoding not allowed in canonical CBOR (major type %s).",
+                    majorType));
           }
           break;
         default:
       }
 
       if (Byte.compareUnsigned(additionalInformation, (byte) 27) > 0) {
-        throw new CborSerializationException("Encoded item is not well-formed.");
+        throw new CborSerializationException(String.format(
+                "Reserved additional information %d for major type %s.",
+                additionalInformation, majorType));
       }
 
       long t = 0;
       int length = (int) Math.pow(2, additionalInformation - 24);
       for (int i = 0; i < length; ++i) {
         t = (t << 8) | this.readByte() & 0xFF;
+      }
+
+      long threshold = length == 1 ? 24L : 1L << (length * 4);
+      if (Long.compareUnsigned(t, threshold) < 0) {
+        throw new CborSerializationException(String.format(
+                "Byte length %d is not canonical for value %s.",
+                length, Long.toUnsignedString(t)));
       }
 
       return t;
@@ -211,7 +281,7 @@ public class CborDeserializer {
       }
 
       CborMajorType majorType = CborMajorType.fromType(
-          this.data[this.position] & CborDeserializer.MAJOR_TYPE_MASK);
+              this.data[this.position] & CborDeserializer.MAJOR_TYPE_MASK);
       int position = this.position;
       int length = (int) this.readLength(majorType);
       switch (majorType) {

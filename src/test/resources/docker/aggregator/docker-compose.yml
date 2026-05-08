@@ -51,9 +51,9 @@ services:
     entrypoint: [ "mongosh", "--host", "mongo1:27017", "--file", "/mongo-init.js" ] # mongo default port 27017
 
   aggregator-test:
-#    build:
-#      context: ${AGGREGATOR_HOME:-../../../../../aggregators_net} # path to aggregator dockerfile directory
-#      dockerfile: Dockerfile
+    #    build:
+    #      context: ${AGGREGATOR_HOME:-../../../../../aggregators_net} # path to aggregator dockerfile directory
+    #      dockerfile: Dockerfile
     image: ghcr.io/unicitynetwork/aggregators_net:bbabb5f093e829fa789ed6e83f57af98df3f1752
     container_name: aggregator-test # must be specified for Testcontainers docker compose API
     depends_on:

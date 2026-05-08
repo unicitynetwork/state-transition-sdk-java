@@ -2,7 +2,6 @@
 package org.unicitylabs.sdk.api;
 
 import java.util.concurrent.CompletableFuture;
-import org.unicitylabs.sdk.hash.DataHash;
 
 /**
  * Aggregator client structure.
@@ -10,25 +9,20 @@ import org.unicitylabs.sdk.hash.DataHash;
 public interface AggregatorClient {
 
   /**
-   * Submit commitment.
+   * Submit certification request.
    *
-   * @param requestId       request id
-   * @param transactionHash transaction hash
-   * @param authenticator   authenticator
-   * @return submit commitment response
+   * @param certificationData certification data
+   * @return certification response
    */
-  CompletableFuture<SubmitCommitmentResponse> submitCommitment(
-      RequestId requestId,
-      DataHash transactionHash,
-      Authenticator authenticator);
+  CompletableFuture<CertificationResponse> submitCertificationRequest(CertificationData certificationData);
 
   /**
-   * Get inclusion proof for request id.
+   * Get inclusion proof for state id.
    *
-   * @param requestId request id
+   * @param stateId state id
    * @return inclusion / non inclusion proof
    */
-  CompletableFuture<InclusionProofResponse> getInclusionProof(RequestId requestId);
+  CompletableFuture<InclusionProofResponse> getInclusionProof(StateId stateId);
 
   /**
    * Get block height.
