@@ -68,6 +68,7 @@ dependencies {
     // ✅ Cucumber for BDD
     testImplementation("io.cucumber:cucumber-java:7.27.2")
     testImplementation("io.cucumber:cucumber-junit-platform-engine:7.27.2")
+    testImplementation("io.cucumber:cucumber-picocontainer:7.27.2")
 
     // JUnit 5 Suite annotations
     testImplementation("org.junit.platform:junit-platform-suite:1.13.4")
@@ -170,6 +171,112 @@ tasks.register<Test>("advancedTokenTests") {
 tasks.register<Test>("allCucumberTests") {
     useJUnitPlatform()
     maxHeapSize = "1024m"
+    systemProperty("cucumber.junit-platform.naming-strategy", "long")
+    systemProperties = System.getProperties().toMap() as Map<String, Any>
+    systemProperty("cucumber.filter.tags", "not @ignore")
+
+    filter {
+        includeTestsMatching("*CucumberTestRunner*")
+    }
+    shouldRunAfter(tasks.test)
+}
+
+// ─── BDD tasks (Phase 0 of BDD migration plan) ───────────────────────────────
+// Default BDD run: defers to CucumberTestRunner's static-init default tag
+// filter, which is "not @nametag and not @slow and not @wip and not @ignore"
+// but yields to an explicit -Dcucumber.filter.tags=<expr> override.
+tasks.register<Test>("bddTest") {
+    useJUnitPlatform()
+    maxHeapSize = "1024m"
+    systemProperty("cucumber.junit-platform.naming-strategy", "long")
+    systemProperties = System.getProperties().toMap() as Map<String, Any>
+
+    // Make BDD env vars part of the task's up-to-date cache key so that
+    // switching AGGREGATOR_URL / TRUST_BASE_PATH / tag filter actually forces a
+    // re-run. Without this, Gradle sees unchanged source+classpath and serves
+    // a cached pass in ~3 seconds.
+    inputs.property("AGGREGATOR_URL", System.getenv("AGGREGATOR_URL") ?: "")
+    inputs.property("AGGREGATOR_API_KEY", System.getenv("AGGREGATOR_API_KEY") ?: "")
+    inputs.property("TRUST_BASE_PATH", System.getenv("TRUST_BASE_PATH") ?: "")
+    inputs.property(
+        "cucumber.filter.tags",
+        System.getProperty("cucumber.filter.tags") ?: ""
+    )
+
+    // Stream Cucumber's `pretty` formatter output live to the console.
+    // Without this, Gradle captures the test JVM's stdout and you only see a
+    // progress bar + pass/fail totals at the end.
+    testLogging {
+        showStandardStreams = true
+        events("passed", "skipped", "failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
+
+    filter {
+        includeTestsMatching("*CucumberTestRunner*")
+    }
+    shouldRunAfter(tasks.test)
+}
+
+// Nametag-gated scenarios: expected to be reported as SKIPPED until UnicityId
+// is ported to Java v2. See BDD_MIGRATION_PLAN.md Phase 8.
+tasks.register<Test>("bddNametag") {
+    useJUnitPlatform()
+    maxHeapSize = "1024m"
+    systemProperty("cucumber.junit-platform.naming-strategy", "long")
+    systemProperties = System.getProperties().toMap() as Map<String, Any>
+    systemProperty("cucumber.filter.tags", "@nametag")
+
+    filter {
+        includeTestsMatching("*CucumberTestRunner*")
+    }
+    shouldRunAfter(tasks.test)
+}
+
+// Performance / load scenarios — needs sharded aggregator topology.
+tasks.register<Test>("bddSlow") {
+    useJUnitPlatform()
+    maxHeapSize = "4096m"
+    systemProperty("cucumber.junit-platform.naming-strategy", "long")
+    systemProperties = System.getProperties().toMap() as Map<String, Any>
+    systemProperty("cucumber.filter.tags", "@slow or @shard-load")
+
+    filter {
+        includeTestsMatching("*CucumberTestRunner*")
+    }
+    shouldRunAfter(tasks.test)
+}
+
+// Fast subset — excludes @tree (the ~136-row 4-level-tree family that dominates
+// live-aggregator runtime) in addition to the default exclusions. Use this for
+// quick live-aggregator smoke runs. Full coverage: use bddTest (slow on live).
+tasks.register<Test>("bddTestFast") {
+    useJUnitPlatform()
+    maxHeapSize = "1024m"
+    systemProperty("cucumber.junit-platform.naming-strategy", "long")
+    systemProperties = System.getProperties().toMap() as Map<String, Any>
+    systemProperty(
+        "cucumber.filter.tags",
+        "not @nametag and not @slow and not @wip and not @ignore and not @tree"
+    )
+    inputs.property("AGGREGATOR_URL", System.getenv("AGGREGATOR_URL") ?: "")
+    inputs.property("TRUST_BASE_PATH", System.getenv("TRUST_BASE_PATH") ?: "")
+    testLogging {
+        showStandardStreams = true
+        events("passed", "skipped", "failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
+    filter {
+        includeTestsMatching("*CucumberTestRunner*")
+    }
+    shouldRunAfter(tasks.test)
+}
+
+// Everything — used for coverage sweeps. Expect nametag scenarios to skip until
+// UnicityId is ported.
+tasks.register<Test>("bddAll") {
+    useJUnitPlatform()
+    maxHeapSize = "2048m"
     systemProperty("cucumber.junit-platform.naming-strategy", "long")
     systemProperties = System.getProperties().toMap() as Map<String, Any>
     systemProperty("cucumber.filter.tags", "not @ignore")
