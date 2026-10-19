@@ -114,6 +114,8 @@ MintTransaction mint = MintTransaction.builder(context.getTrustBase().getNetwork
     .tokenType(new TokenType("my-token-type".getBytes(StandardCharsets.UTF_8)))
     .data(payload)
     .build();
+// persist the exact transaction before it is submitted
+journal.put("mint", mint.toCbor());
 
 CertificationData data = CertificationData.fromMintTransaction(mint);
 CertificationResponse response = client.submitCertificationRequest(data).get();
@@ -133,12 +135,32 @@ return Token.mint(genesis, context);
 | Builder method | Default | Meaning |
 | --- | --- | --- |
 | `tokenType(TokenType)` | random | Application-defined type, 1 to 64 bytes (`new TokenType(bytes)`; `TokenType.generate()`). Issuance policies are registered per type. |
-| `salt(TokenSalt)` | random, 32 bytes | 16 to 64 bytes. The token ID is derived from the network and the salt, so the same salt gives the same ID. Keep the salt to rebuild an identical mint after a crash. |
+| `salt(TokenSalt)` | random, 32 bytes | 16 to 64 bytes. The token ID is derived from the network and the salt, so the same salt gives the same ID. Part of what the mint commits to; see [Crash recovery](#crash-recovery). |
 | `data(byte[])` | none | Application payload, committed by the mint. |
 | `justification(byte[])` | none | Evidence for the mint, verified by a registered `MintJustificationVerifier` (used by splits). |
 | `expiresAt(Long)` | service assigned | Exclusive deadline of the request in Unix seconds. With none, the aggregator sets it from its consensus time and no local clock is needed. |
 
-The token ID is `mint.getTokenId()`. A mint request is deterministic: submitting the same transaction again is the same request, see [Resubmission](#resubmission).
+The token ID is `mint.getTokenId()`. The `journal` in the snippet stands for the application's durable storage; the line before the submission is explained next.
+
+### Crash recovery
+
+Persist the exact transaction before submitting it, and after a crash recover by deserializing it, never by rebuilding it. A certification request is deterministic only for exactly the same transaction. The token ID depends only on network and salt, but the transaction also commits to the token type, recipient, data, justification and deadline. Rebuilding with, say, a fresh random token type is a different request for the same token ID: it conflicts with the first one, and the token is lost. Persisting only the salt is not enough.
+
+```java
+// deserialize the persisted transaction; never rebuild it
+MintTransaction mint = MintTransaction.fromCbor(journal.get("mint"));
+return completeMint(client, context, mint);
+```
+
+```java
+CertificationData data = CertificationData.fromMintTransaction(mint);
+InclusionProof proof = client.submitAndWait(mint, data, 2, context.getTrustBase(),
+    context.getPredicateVerifier(), WaitOptions.defaults()).get();
+return Token.mint(mint.toCertifiedTransaction(
+    context.getTrustBase(), context.getPredicateVerifier(), proof), context);
+```
+
+Submitting the persisted transaction again is safe at any point: before the first submission reached the aggregator, while it is pending, or after it was certified (see [Resubmission](#resubmission)). The same rule applies to transfers ([section 4](#4-transfers)) and splits ([Payments and splits](#payments-and-splits)).
 
 `submitCertificationRequest` completes with a `CertificationResponse`; check its status. `SUCCESS` means the request is accepted and queued, not certified. Other statuses are listed in [section 8](#8-errors). Waiting for the proof is described in [section 7](#7-waiting-for-inclusion-proofs). `toCertifiedTransaction` and `Token.mint` verify what they receive and throw `VerificationException` if it is not valid.
 
@@ -160,30 +182,86 @@ An `AssetId` is 1 to 128 bytes, a value is a positive integer below 2^256, and a
 
 ```java
 byte[] payload = new Payment(assets).encode();
-return mint(client, context, owner, payload);
+return mint(client, context, owner, payload, journal);
 ```
 
-`TokenSplit.split(token, paymentDataDeserializer, requests)` divides a payment token into new tokens. For every asset, the outputs together must carry exactly the amount of the source. The result holds a burn transaction for the source token and, for each output, the data to mint it:
+`TokenSplit.split(token, paymentDataDeserializer, requests, burnStateMask, burnExpiresAt)` divides a payment token into new tokens. For every asset, the outputs together must carry exactly the amount of the source. The result holds a burn transaction for the source token and, for each output, the data to mint it. `split` throws the checked `org.unicitylabs.sdk.smt.LeafExistsException` when two outputs would get the same token ID, for example a reused salt. It is thrown by the call itself, not delivered through a future.
 
-1. Submit the burn transaction as an ordinary transfer and keep the burned token.
-2. For every `SplitToken`, mint it with the type, salt, network, recipient and payment data it names, and with the justification `SplitMintJustification.create(burnedToken, splitToken.getProofs()).toCbor()`.
+1. Persist every input of the split (below), then submit the burn transaction as an ordinary transfer and keep the burned token.
+2. For every `SplitToken`, mint it with the type, salt, network, recipient and payment data it names, and with the justification `SplitMintJustification.create(burnedToken, splitToken.getProofs()).toCbor()`. Persist each mint transaction before submitting it.
+
+The burn commits to the output token IDs, which come from the output salts. A split rebuilt with other salts, another state mask or another deadline is a different, conflicting burn of the source token, and its value is lost. So fix the salts when creating the requests, and persist all inputs before the burn is submitted:
 
 ```java
+var coins = new Asset(new AssetId("COIN".getBytes(StandardCharsets.UTF_8)),
+    BigInteger.valueOf(500));
+var points = new Asset(new AssetId("POINT".getBytes(StandardCharsets.UTF_8)),
+    BigInteger.valueOf(20));
+// fix the salts: they are part of what the burn commits to
 List<SplitTokenRequest> requests = List.of(
-    SplitTokenRequest.create(first, new Payment(PaymentAssetCollection.create(coins))),
-    SplitTokenRequest.create(second, new Payment(PaymentAssetCollection.create(points))));
+    SplitTokenRequest.create(first, new Payment(PaymentAssetCollection.create(coins)),
+        TokenSalt.generate()),
+    SplitTokenRequest.create(second, new Payment(PaymentAssetCollection.create(points)),
+        TokenSalt.generate()));
+return requests;
 ```
 
 ```java
-SplitResult split = TokenSplit.split(source, Payment::decode, requests);
+// persist every input of the split before anything is submitted
+for (int i = 0; i < requests.size(); i++) {
+  SplitTokenRequest request = requests.get(i);
+  journal.put("split.recipient." + i,
+      EncodedPredicate.fromPredicate(request.getRecipient()).toCbor());
+  journal.put("split.payment." + i, request.getPaymentData().encode());
+  journal.put("split.salt." + i, request.getSalt().getBytes());
+}
+journal.put("split.mask", burnMask.getBytes());
+journal.put("split.expiresAt", ByteBuffer.allocate(Long.BYTES).putLong(burnExpiresAt).array());
+return TokenSplit.split(source, Payment::decode, requests, burnMask, burnExpiresAt);
+```
 
-Token burned = submitTransfer(client, context, source, owner, split.getBurnTransaction());
+```java
+TransferTransaction burn = split.getBurnTransaction();
+CertificationData burnData = CertificationData.fromTransaction(
+    burn, SignaturePredicateUnlockScript.create(burn, owner));
+journal.put("split.burn", burn.toCbor());
+journal.put("split.burn.data", burnData.toCbor());
+Token burned = completeTransfer(client, context, source, burn, burnData);
+
 List<Token> outputs = new ArrayList<>();
-for (SplitToken output : split.getTokens()) {
+for (int i = 0; i < split.getTokens().size(); i++) {
+  SplitToken output = split.getTokens().get(i);
   byte[] justification = SplitMintJustification.create(burned, output.getProofs()).toCbor();
-  outputs.add(mintSplitOutput(client, context, output, justification));
+  MintTransaction mint = MintTransaction.builder(output.getNetworkId(), output.getRecipient())
+      .tokenType(output.getTokenType())
+      .salt(output.getSalt())
+      .data(output.getPaymentData().encode())
+      .justification(justification)
+      .build();
+  journal.put("split.mint." + i, mint.toCbor());
+  outputs.add(completeMint(client, context, mint));
 }
 return outputs;
+```
+
+Recovery. If the burn transaction was persisted, resubmit the persisted burn like any transfer ([section 4](#recovering-a-transfer)). The split outputs need the proofs of the `SplitResult`, which cannot be serialized: rebuild the result from the persisted inputs, and check that its burn is the persisted one before using it. Mints that were already persisted are recovered as in [Crash recovery](#crash-recovery).
+
+```java
+List<SplitTokenRequest> requests = new ArrayList<>();
+for (int i = 0; i < outputs; i++) {
+  requests.add(SplitTokenRequest.create(
+      EncodedPredicate.fromCbor(journal.get("split.recipient." + i)),
+      Payment.decode(journal.get("split.payment." + i)),
+      TokenSalt.fromBytes(journal.get("split.salt." + i))));
+}
+SplitResult split = TokenSplit.split(source, Payment::decode, requests,
+    StateMask.fromBytes(journal.get("split.mask")),
+    ByteBuffer.wrap(journal.get("split.expiresAt")).getLong());
+// the rebuilt burn must be the persisted one, byte for byte
+if (!Arrays.equals(split.getBurnTransaction().toCbor(), journal.get("split.burn"))) {
+  throw new IllegalStateException("the split inputs do not reproduce the persisted burn");
+}
+return split;
 ```
 
 Verifying a split output needs the context to know how to check the justification:
@@ -195,7 +273,7 @@ return new VerificationContext(trustBase, PredicateVerifierService.create(), jus
     new TokenIssuanceVerifierService(false));
 ```
 
-The complete helper code is in `ApiReferenceExamples`. The split must be completed in the order above; the burn is final once certified, so keep the burned token and the split result until all outputs are minted. For a split that can resume after a crash, use the overload with a fixed `StateMask` so the identical burn transaction can be rebuilt.
+The complete helper code is in `ApiReferenceExamples`. The burn is final once certified: keep the burned token and the persisted inputs until all outputs are minted.
 
 ## 4. Transfers
 
@@ -204,13 +282,15 @@ A transfer moves a token to a new owner in three steps: the current owner create
 ```java
 TransferTransaction transfer = TransferTransaction.create(
     token, recipient, StateMask.generate(), null);
-return submitTransfer(client, context, token, sender, transfer);
+CertificationData data = CertificationData.fromTransaction(
+    transfer, SignaturePredicateUnlockScript.create(transfer, sender));
+// persist the exact transaction and its certification data before submitting
+journal.put("transfer", transfer.toCbor());
+journal.put("transfer.data", data.toCbor());
+return completeTransfer(client, context, token, transfer, data);
 ```
 
 ```java
-CertificationData data = CertificationData.fromTransaction(
-    transfer, SignaturePredicateUnlockScript.create(transfer, sender));
-
 InclusionProof proof = client.submitAndWait(transfer, data, 2, context.getTrustBase(),
     context.getPredicateVerifier(), WaitOptions.defaults()).get();
 return token.transfer(transfer.toCertifiedTransaction(
@@ -232,6 +312,21 @@ return received.getLatestTransaction().getRecipient().equals(EncodedPredicate.fr
 The recipient later spends the token the same way, signing with their own `SigningService`. Each state can be spent once; a second spend of the same state is refused by the aggregator or conflicts with the first.
 
 **Certified transactions.** A `CertifiedMintTransaction` or `CertifiedTransferTransaction` is a transaction together with the inclusion proof that certifies it. They are what `toCertifiedTransaction` returns and what a `Token` holds: `token.getGenesis()`, `token.getTransactions()` and `token.getLatestTransaction()`. Their accessors expose recipient, lock script, payload, state mask and the proof (`getInclusionProof()`).
+
+### Recovering a transfer
+
+A transfer has a random state mask and a signature, so a rebuilt transfer is a different request that conflicts with the first one if that reached the aggregator. As for mints, persist the exact transaction and its certification data before submitting (the snippet above), and after a crash deserialize both. The transaction's source state and lock script are chain context: take them from the token as it was before the transfer.
+
+```java
+// `token` is the token as it was before the transfer
+Transaction latest = token.getLatestTransaction();
+TransferTransaction transfer = TransferTransaction.fromCbor(journal.get("transfer"),
+    latest.calculateStateHash(), latest.getRecipient());
+CertificationData data = CertificationData.fromCbor(journal.get("transfer.data"));
+return completeTransfer(client, context, token, transfer, data);
+```
+
+Keep the token as it was before the transfer until the transfer is certified and the new token is stored.
 
 ## 5. Verifying Tokens
 
@@ -268,6 +363,8 @@ return Token.fromCbor(HexConverter.decode(hex));
 | `InclusionProof`, `CertificationData`, `StateId`, `TokenId`, `TokenType`, `TokenSalt`, `StateMask` | `toCbor()` | `fromCbor(bytes)` |
 
 `Token.fromCbor` never trusts its input. Deserialize received bytes, then verify them with your context.
+
+**Pending operations.** Serialization is also how an application survives a crash. Before submitting a mint, a transfer or a split, persist the exact transaction (`toCbor()`), the `CertificationData` of a transfer, and for a split its inputs (recipients, payment data, output salts, state mask and deadline). After a crash, deserialize them and submit again; never rebuild. Examples: [Crash recovery](#crash-recovery), [Recovering a transfer](#recovering-a-transfer) and [Payments and splits](#payments-and-splits).
 
 JSON is used for the trust base: `RootTrustBase.fromJson(json)` and `trustBase.toJson()`.
 
@@ -353,7 +450,9 @@ return wait;
 
 A certification request is signed and deterministic, so sending it again is the same request; the aggregator never creates a second leaf for it.
 
-`StateTransitionClient.resubmitCertificationRequest(data, options)` is the idempotent form of submission. It returns `SubmitOutcome.Kind.ALREADY_SUBMITTED` instead of an error when the aggregator already holds a record for the state ID: either a still-pending copy (a MongoDB-backed queue reports it as an internal error `-32603` naming a duplicate key, which the client recognizes; a Redis-backed queue accepts and drops the copy) or `STATE_ID_EXISTS` when the state is already certified. Both reports are by state ID only, so a different request for the same state, such as a conflicting spend, is reported the same way. Every other rejection, such as `REQUEST_EXPIRED`, completes with `CertificationRejectedException`. The plain `submitCertificationRequest` reports both duplicate responses as they are.
+`StateTransitionClient.resubmitCertificationRequest(data, options)` is the idempotent form of submission. It returns `SubmitOutcome.Kind.ALREADY_SUBMITTED` instead of an error when the aggregator already holds a record for the state ID. That report is by state ID only: the aggregator may hold a different request for the same state, such as a conflicting spend. The proof tells which one was certified. Every other rejection, such as `REQUEST_EXPIRED`, completes with `CertificationRejectedException`. The plain `submitCertificationRequest` returns the aggregator's status as it is, including `STATE_ID_EXISTS`.
+
+Resubmit the persisted transaction, never a rebuilt one ([Crash recovery](#crash-recovery)).
 
 ```java
 return client.resubmitCertificationRequest(data, RequestOptions.none());
@@ -412,7 +511,7 @@ try {
 | --- | --- | --- |
 | `CertificationResponse` status other than `SUCCESS` | The aggregator refused a submission (not an exception). | `STATE_ID_EXISTS`, `ALREADY_SUBMITTED`, `STATE_ID_QUEUED`: the state ID is already known, not necessarily with your request; use `resubmitCertificationRequest` and the proof to find out. `REQUEST_EXPIRED`: the request deadline passed; create a new transaction. `SERVICE_NOT_READY`: retry later. Other statuses (`SIGNATURE_VERIFICATION_FAILED`, `INVALID_*`, `STATE_ID_MISMATCH`, `UNSUPPORTED_ALGORITHM`, `INVALID_SHARD`) are defects in the request; do not retry. |
 | `CertificationRejectedException` | `resubmitCertificationRequest` or `submitAndWait` got a refusal other than a duplicate. `getStatus()`. | As for the status above. |
-| `TimeoutException` | The total time of an operation is used up. | The transaction may still be certified later; look up the proof again before building a new one. |
+| `TimeoutException` | The total time of an operation is used up. | The transaction may still be certified later. Resume from the persisted transaction: deserialize it and call `submitAndWait` again ([Crash recovery](#crash-recovery)). Do not rebuild it. |
 | `InclusionProofWaitException.Expired` / `.Unknown` | An unauthenticated hint ended the wait. `isResubmittable()` is true. | Submit the same request again (`submitAndWait` does). |
 | `InclusionProofWaitException.Conflict` | Another request was certified for this state. Authenticated. | The state is spent by something else; do not resubmit. |
 | `VerificationException` | A proof, token or certified transaction did not verify. `getVerificationResult()`. | Do not accept the data. Never resubmitted for. |
@@ -421,10 +520,11 @@ try {
 | `BatchProofException` | A batch lookup failed. `getKind()`: `UNAVAILABLE`, `UNSUPPORTED`, `REJECTED`, `LIMIT_EXCEEDED`, `SERVER`, `TRANSPORT`, `INVALID_RESPONSE`. | `isRetryable()` tells whether a new attempt may succeed. |
 | `NonInclusionProofException` | A non-inclusion lookup failed. `getKind()`: `UNAVAILABLE`, `BUSY`, `REJECTED`, `SERVER`, `TRANSPORT`, `TIMEOUT`, `CANCELLED`, `INVALID_RESPONSE`. | `isRetryable()`. |
 | `ConsolidationException` | Consolidation failed. `getKind()`: `CANCELLED`, `INPUT`, `INTEGRITY`, `INVALID_RESPONSE`, `REJECTED`, `SERVER`, `TIMEOUT`, `TRANSPORT`. | `isRetryable()`; `INTEGRITY` means the material was refused. |
+| `LeafExistsException` | `TokenSplit.split` found two outputs with the same token ID (a reused salt). Checked; thrown by the call, not through a future. | Use a distinct salt for every output. |
 | `IllegalArgumentException`, `NullPointerException` | A builder or factory got invalid input (sizes, ranges, null). | Fix the call. |
 | `CancellationException` | The caller cancelled the future. | None. |
 
-Checked versus unchecked: the wire-level failures (`JsonRpcNetworkException` and its subclass `JsonRpcDataException`) are the SDK's long-standing checked exceptions. They never need a `throws` clause because the client API is asynchronous. Every newer domain error is unchecked and typed.
+Checked versus unchecked: `JsonRpcNetworkException` (and its subclass `JsonRpcDataException`) are checked, but only ever appear as the cause of a failed future, so they need no `throws` clause. `LeafExistsException` is the one checked exception that a call throws directly: `TokenSplit.split` declares it. Every other domain error is unchecked and typed.
 
 ## 9. Advanced
 
@@ -438,7 +538,7 @@ Every application verification path requires the authenticated unicity certifica
 
 A `PartitionView` is the complete shard-leaf vector of a partition under one unicity seal, decoded from untrusted bytes. `PartitionViewAuthenticator.authenticate` validates it, rebuilds the shard tree, follows the enclosing certificate to the seal hash and authenticates the seal under the caller's `RootTrustBase`. Only then does it return an immutable `AuthenticatedPartitionView`, from which ordinary unicity certificates are derived for every shard, all carrying the same seal. The seal commits to every leaf's configuration hash; independently pinned shard configurations (`PartitionViewPolicy`) are an optional stricter policy. The authority is never taken from a response.
 
-Verification authenticates each distinct seal once per operation (`SealVerificationSession`). A verdict is keyed by the full seal bytes and the authority, and is shared between the legacy and the strict verification paths; the policy checks (network, epoch, partition) run again on every call. Only the quorum signature check is reused; paths, reference times, predicates and application rules are checked for every proof. `OperationUnicityCertificateVerifier.getStats()` reports the work performed. Seal reuse does not change token size or format.
+Within one verification operation (for example one `token.verify(context)`), each distinct seal is authenticated once and then reused; the network, epoch and partition checks, paths, reference times, predicates and application rules still run for every proof. Seal reuse does not change token size or format. The details are in the Javadoc of `SealVerificationSession` and `OperationUnicityCertificateVerifier`.
 
 ### 9.3 Proof Consolidation
 
