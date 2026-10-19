@@ -61,6 +61,16 @@ public class InclusionProofResponse {
   }
 
   /**
+   * Get the block number the answer was served at, as unsigned 64-bit bits. Unauthenticated
+   * transport metadata, never evidence.
+   *
+   * @return block number
+   */
+  public long getBlockNumber() {
+    return this.blockNumber;
+  }
+
+  /**
    * Get the certificate of the round this answer was served against. Present either way.
    *
    * @return unicity certificate

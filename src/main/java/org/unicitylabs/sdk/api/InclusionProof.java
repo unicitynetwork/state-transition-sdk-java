@@ -65,6 +65,21 @@ public class InclusionProof {
   }
 
   /**
+   * The same certified leaf under another unicity certificate: certification data, reference time
+   * and inclusion path are kept byte for byte, only the certificate that commits to the root is
+   * replaced. This is how a proof is re-anchored under a later seal; the result is not verified
+   * here and must be verified like any other proof.
+   *
+   * @param replacement the certificate the proof is re-anchored under
+   * @return a new proof
+   */
+  public InclusionProof withUnicityCertificate(UnicityCertificate replacement) {
+    return new InclusionProof(this.certificationData, this.referenceTime,
+            this.inclusionCertificate, Objects.requireNonNull(replacement,
+            "replacement cannot be null"));
+  }
+
+  /**
    * Get certification data of the certified leaf.
    *
    * @return certification data

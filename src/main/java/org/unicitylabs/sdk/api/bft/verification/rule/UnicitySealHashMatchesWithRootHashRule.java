@@ -19,17 +19,26 @@ import java.util.Arrays;
  */
 public class UnicitySealHashMatchesWithRootHashRule {
 
+  private static final String RULE = "UnicitySealHashMatchesWithRootHashRule";
+
   private UnicitySealHashMatchesWithRootHashRule() {
   }
 
   /**
    * Verifies that the unicity seal hash matches the recomputed root hash of the unicity tree.
+   * A shard path of the wrong length is a failed result, never an exception.
    *
    * @param unicityCertificate unicity certificate containing tree and seal data
    * @return verification result with {@link VerificationStatus#OK} on match, otherwise fail
    */
   public static VerificationResult<VerificationStatus> verify(
           UnicityCertificate unicityCertificate) {
+    if (unicityCertificate.getShardTreeCertificate().getSiblingHashCount()
+            != unicityCertificate.getShardTreeCertificate().getShard().getLength()) {
+      return new VerificationResult<>(RULE, VerificationStatus.FAIL,
+              "The shard path does not have one sibling per bit of the shard id.");
+    }
+
     DataHash shardTreeCertificateRootHash = UnicityCertificate
             .calculateShardTreeCertificateRootHash(
                     unicityCertificate.getInputRecord(),
@@ -85,11 +94,9 @@ public class UnicitySealHashMatchesWithRootHashRule {
     byte[] unicitySealHash = unicityCertificate.getUnicitySeal().getHash();
 
     if (!Arrays.equals(unicitySealHash, result.getData())) {
-      return new VerificationResult<>("UnicitySealHashMatchesWithRootHashRule",
-              VerificationStatus.FAIL);
+      return new VerificationResult<>(RULE, VerificationStatus.FAIL);
     }
 
-    return new VerificationResult<>("UnicitySealHashMatchesWithRootHashRule",
-            VerificationStatus.OK);
+    return new VerificationResult<>(RULE, VerificationStatus.OK);
   }
 }
