@@ -106,6 +106,8 @@ The SDK handles cryptography and token encoding. Your application manages keys, 
 
 For minting and transfers, create the transaction, submit its `CertificationData` with `client.submitCertificationRequest()`, and check the response status. Use `InclusionProofUtils.waitInclusionProof()` to obtain the verified unicity proof, then `transaction.toCertifiedTransaction()` and `Token.mint()` or `token.transfer()` to produce the updated token. The proof type is named `InclusionProof` in the API.
 
+`waitInclusionProof()` sends its first request immediately and, by default, asks the aggregator to hold each request while the state is pending (long polling). The proof then arrives soon after certification, usually within a single request. Aggregators without long polling are polled at the interval. The default budget is 30 seconds; adjust it, the interval, and the long-poll window with `WaitOptions`. A wait fails with a typed exception when the aggregator reports that it dropped the request or does not know it, and the same signed request can then be submitted again. Cancelling the returned future cancels the request in flight. See the [API reference](./docs/api-reference.md#1-waiting-for-inclusion-proofs).
+
 These examples are test code with local network configuration. When adapting them to a public network, use the matching gateway, key, and trust base, and pass `trustBase.getNetworkId()` when minting.
 
 ### Store, send, and receive
@@ -123,6 +125,14 @@ if (result.getStatus() != VerificationStatus.OK) {
     throw new IllegalArgumentException("Token verification failed: " + result.getStatus());
 }
 ```
+
+### Proof consolidation
+
+Each transaction in a token's history has its own unicity proof, usually certified in a different round. Verifying the history in a constrained environment, such as a smart contract (EVM) or a zkVM guest, means authenticating every one of those certificates. Proof consolidation fetches new proofs for the token's history so that they share one unicity certificate, which then has to be authenticated only once. It is optional, runs only when you call it, and never signs or submits anything. See the [API reference](./docs/api-reference.md#4-proof-consolidation).
+
+### Non-inclusion proofs
+
+A non-inclusion proof shows that a state ID was absent from the aggregator's state tree at one certified snapshot. It does not show that the state is absent now or that a token can be spent. `StateTransitionClient.getNonInclusionProof()` fetches the proof and `NonInclusionVerifier.verify()` verifies it and returns the authenticated snapshot. Before relying on the result, compare the snapshot's network and round with a checkpoint your application trusts independently. See the [API reference](./docs/api-reference.md#5-non-inclusion-proofs).
 
 ## Security
 
@@ -150,6 +160,7 @@ The [deployed-network test](./src/test/java/org/unicitylabs/sdk/e2e/TokenE2ETest
 
 ## Resources
 
+- [API reference](./docs/api-reference.md)
 - [Unicity Network](https://github.com/unicitynetwork/)
 - [Token examples](./src/test/java/org/unicitylabs/sdk/utils/TokenUtils.java)
 - [Report an issue](https://github.com/unicitynetwork/state-transition-sdk-java/issues)
