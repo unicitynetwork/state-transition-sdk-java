@@ -188,7 +188,8 @@ public final class Token {
    * verified iteratively with a worklist instead of recursion, so arbitrarily long provenance
    * chains do not grow the call stack.
    *
-   * @param context shared verification context (trust base + registries)
+   * @param verificationContext shared verification context (trust base + registries); one
+   *     certificate verification operation spans the token and every nested token
    * @return verification result with a child result per verified token
    */
   public VerificationResult<VerificationStatus> verify(VerificationContext verificationContext) {

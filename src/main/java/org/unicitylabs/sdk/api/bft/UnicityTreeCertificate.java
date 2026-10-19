@@ -104,7 +104,7 @@ public class UnicityTreeCertificate {
             UnicityTreeCertificate.CBOR_TAG,
             CborSerializer.encodeArray(
                     CborSerializer.encodeUnsignedInteger(UnicityTreeCertificate.VERSION),
-                    CborSerializer.encodeUnsignedInteger(this.partitionIdentifier),
+                    CborSerializer.encodeUnsignedInteger(this.getPartitionIdentifierUnsigned()),
                     CborSerializer.encodeArray(this.steps.stream()
                             .map(HashStep::toCbor)
                             .toArray(byte[][]::new))
@@ -197,7 +197,7 @@ public class UnicityTreeCertificate {
      */
     public byte[] toCbor() {
       return CborSerializer.encodeArray(
-              CborSerializer.encodeUnsignedInteger(this.key),
+              CborSerializer.encodeUnsignedInteger(this.getKeyUnsigned()),
               CborSerializer.encodeByteString(this.hash)
       );
     }

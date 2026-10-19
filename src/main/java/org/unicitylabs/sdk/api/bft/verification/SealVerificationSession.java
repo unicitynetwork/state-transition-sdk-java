@@ -152,7 +152,8 @@ public final class SealVerificationSession implements SealAuthenticator {
    * Strict authentication: structure, network, epoch, epoch start round and quorum. The only
    * authentication this session offers, whatever policy an operation applies to token proofs. The
    * checks other than the quorum signatures run on every call; a quorum verdict memoized by the
-   * legacy path is reused, a legacy success never stands for the checks. The authority must weigh every node equally (stake 1), as the quorum rule counts signers;
+   * legacy path is reused, a legacy success never stands for the checks. The authority must weigh
+   * every node equally (stake 1), as the quorum rule counts signers;
    * another authority is refused rather than judged by the wrong rule.
    *
    * @param seal the seal

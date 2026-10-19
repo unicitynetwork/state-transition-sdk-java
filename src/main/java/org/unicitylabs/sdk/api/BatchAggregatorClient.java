@@ -20,8 +20,9 @@ public interface BatchAggregatorClient extends AggregatorClient {
    * Gets the proofs of 1..{@link #BATCH_MAX_STATE_IDS} distinct state ids, all routed to this shard,
    * answered atomically from one finalized view or not at all, in request order.
    *
-   * <p>The future completes exceptionally with a typed unchecked error for service, transport and
-   * response failures, deadline expiry and cancellation. Cancelling the returned future cancels the
+   * <p>The future completes exceptionally with a typed unchecked error: a {@link BatchProofException}
+   * for service, transport and response failures, and the deadline expiry and cancellation of the
+   * operation. Cancelling the returned future cancels the
    * in-flight call.
    *
    * @param stateIds state ids to prove

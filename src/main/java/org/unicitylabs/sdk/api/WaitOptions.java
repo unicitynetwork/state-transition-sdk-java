@@ -14,8 +14,11 @@ import java.util.Objects;
  */
 public final class WaitOptions {
 
-  /** Default total time of a wait. */
-  public static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(30);
+  /**
+   * Default total time of a wait: 15 s in every Unicity SDK. The wait polls at a fixed interval with
+   * no backoff and fails relatively fast; raise it where the network is saturated.
+   */
+  public static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(15);
   /** Default interval of the interval polling fallback. */
   public static final Duration DEFAULT_INTERVAL = Duration.ofSeconds(1);
   /** Default preferred window of one long poll. */
@@ -41,7 +44,7 @@ public final class WaitOptions {
   }
 
   /**
-   * Creates the default options: long poll, 30 s total, 1 s fallback interval.
+   * Creates the default options: long poll, 15 s total, 1 s fallback interval.
    *
    * @return default options
    */
