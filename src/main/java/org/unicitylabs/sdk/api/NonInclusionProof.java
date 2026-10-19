@@ -41,22 +41,6 @@ public final class NonInclusionProof {
   public static final long CBOR_TAG = 39034;
   private static final int VERSION = 1;
 
-  /**
-   * Builds the proof from the result of {@code get_non_inclusion_proof.v1}, the CBOR
-   * {@code [blockNumber, proof]}.
-   *
-   * @param stateId the state the proof was requested for
-   * @param result the decoded (from hex) RPC result bytes
-   * @return the unverified proof
-   * @throws CborSerializationException if the result is not exactly that array
-   */
-  public static NonInclusionProof fromRpcResult(StateId stateId, byte[] result) {
-    Objects.requireNonNull(result, "result cannot be null");
-    List<byte[]> items = CborDeserializer.decodeArray(result, 2);
-    CborDeserializer.decodeUnsignedInteger(items.get(0));
-    return new NonInclusionProof(stateId, items.get(1));
-  }
-
   /** The decoded content of a proof, still unverified. */
   static final class Decoded {
     final NonInclusionCertificate certificate;
@@ -75,7 +59,9 @@ public final class NonInclusionProof {
    * @throws CborSerializationException if the bytes deviate from the profile
    */
   Decoded decode() {
-    CborDeserializer.CborTag tag = CborDeserializer.decodeTag(encoded);
+    List<byte[]> wrapper = CborDeserializer.decodeArray(encoded, 2);
+    CborDeserializer.decodeUnsignedInteger(wrapper.get(0)); // block number: unauthenticated
+    CborDeserializer.CborTag tag = CborDeserializer.decodeTag(wrapper.get(1));
     if (tag.getTag() != CBOR_TAG) {
       throw new CborSerializationException("Invalid non-inclusion proof tag.");
     }

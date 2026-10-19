@@ -139,7 +139,7 @@ class NonInclusionCorpusTest {
       throws IOException {
     Setup setup = new Setup(read("contexts.json").get(vector.get("context").asText()));
     StateId query = stateId(vector.get("query").asText());
-    NonInclusionProof proof = NonInclusionProof.fromRpcResult(query,
+    NonInclusionProof proof = new NonInclusionProof(query,
         HexConverter.decode(vector.get("wrapper").asText()));
     expect(vector.get("expected"), label, () ->
         NonInclusionVerifier.verify(verifier, setup.trustBase, proof, setup.context));
@@ -208,17 +208,30 @@ class NonInclusionCorpusTest {
   void everyPositiveCase() throws Exception {
     List<Path> cases = files("cases");
     assertTrue(cases.size() > 20);
+    List<String> failures = new ArrayList<>();
     for (Path file : cases) {
-      check(JSON.readTree(file.toFile()), new StrictTestVerifier(), "cases/" + file.getFileName());
+      try {
+        check(JSON.readTree(file.toFile()), new StrictTestVerifier(),
+            "cases/" + file.getFileName());
+      } catch (AssertionError | RuntimeException e) {
+        failures.add(String.valueOf(e.getMessage()));
+      }
     }
+    assertTrue(failures.isEmpty(), String.join("\n", failures));
   }
 
   @Test
   void everyNegativeIsRejectedWithoutSnapshotInAnAcceptedClass() throws Exception {
+    List<String> failures = new ArrayList<>();
     for (Path file : files("negative")) {
-      JsonNode vector = JSON.readTree(file.toFile());
-      check(vector, new StrictTestVerifier(), "negative/" + file.getFileName());
+      try {
+        check(JSON.readTree(file.toFile()), new StrictTestVerifier(),
+            "negative/" + file.getFileName());
+      } catch (AssertionError | RuntimeException e) {
+        failures.add(String.valueOf(e.getMessage()));
+      }
     }
+    assertTrue(failures.isEmpty(), String.join("\n", failures));
   }
 
   @Test
@@ -232,7 +245,7 @@ class NonInclusionCorpusTest {
         JsonNode vector = read(vectorName + ".json");
         Setup setup = new Setup(read("contexts.json").get(sequence.get("context").asText()));
         StateId query = stateId(vector.get("query").asText());
-        NonInclusionProof proof = NonInclusionProof.fromRpcResult(query,
+        NonInclusionProof proof = new NonInclusionProof(query,
             HexConverter.decode(vector.get("wrapper").asText()));
         expect(step.get("expected"), sequence.get("name").asText() + ":" + vectorName, () ->
             NonInclusionVerifier.verify(verifier, setup.trustBase, proof, setup.context));
@@ -244,7 +257,7 @@ class NonInclusionCorpusTest {
   void aProofBoundToAnotherStateIsRejectedBeforeAnyWork() throws Exception {
     JsonNode vector = read("cases/singleton.json");
     Setup setup = new Setup(read("contexts.json").get(vector.get("context").asText()));
-    NonInclusionProof proof = NonInclusionProof.fromRpcResult(stateId(vector.get("query").asText()),
+    NonInclusionProof proof = new NonInclusionProof(stateId(vector.get("query").asText()),
         HexConverter.decode(vector.get("wrapper").asText()));
     byte[] other = stateId(vector.get("query").asText()).getData();
     other[31] ^= 1;
@@ -262,7 +275,7 @@ class NonInclusionCorpusTest {
   void thePlainLegacyVerifierIsRefused() throws Exception {
     JsonNode vector = read("cases/singleton.json");
     Setup setup = new Setup(read("contexts.json").get(vector.get("context").asText()));
-    NonInclusionProof proof = NonInclusionProof.fromRpcResult(stateId(vector.get("query").asText()),
+    NonInclusionProof proof = new NonInclusionProof(stateId(vector.get("query").asText()),
         HexConverter.decode(vector.get("wrapper").asText()));
     org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () ->
         NonInclusionVerifier.verify(new UnicityCertificateVerifier(), setup.trustBase, proof,
