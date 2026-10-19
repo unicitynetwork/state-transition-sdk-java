@@ -15,7 +15,6 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -45,6 +44,7 @@ import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateFailure;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerificationResult;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
+import org.unicitylabs.sdk.internal.Deadlines;
 import org.unicitylabs.sdk.internal.OperationContext;
 import org.unicitylabs.sdk.util.UnsignedLongs;
 import org.unicitylabs.sdk.util.verification.VerificationStatus;
@@ -211,8 +211,7 @@ public final class ProofConsolidator {
 
     void start() {
       long nanos = attempt.remaining().toNanos();
-      CompletableFuture.delayedExecutor(nanos, TimeUnit.NANOSECONDS, executor)
-          .execute(this::deadline);
+      Deadlines.scheduleFor(this::deadline, nanos, result);
       try {
         stage1();
       } catch (Throwable t) {

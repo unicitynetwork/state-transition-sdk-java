@@ -64,12 +64,16 @@ class TokenProofClientTest {
     final AtomicInteger singleCalls = new AtomicInteger();
     final AtomicInteger submits = new AtomicInteger();
     CompletableFuture<InclusionProofBatch> hang;
+    Runnable onCall;
 
     @Override
     public CompletableFuture<InclusionProofBatch> getInclusionProofs(List<StateId> stateIds,
         BatchRequestOptions requestOptions) {
       sizes.add(stateIds.size());
       options.add(requestOptions);
+      if (onCall != null) {
+        onCall.run();
+      }
       if (hang != null) {
         return hang;
       }
@@ -96,6 +100,33 @@ class TokenProofClientTest {
     @Override
     public CompletableFuture<Long> getLatestBlockNumber() {
       throw new AssertionError("not needed");
+    }
+  }
+
+  /** Runs work at once until it is held, then queues it until released: a saturated CPU executor. */
+  private static final class GateExecutor implements java.util.concurrent.Executor {
+    private final java.util.Queue<Runnable> queue = new java.util.concurrent.ConcurrentLinkedQueue<>();
+    volatile boolean hold;
+
+    @Override
+    public void execute(Runnable task) {
+      if (hold) {
+        queue.add(task);
+      } else {
+        task.run();
+      }
+    }
+
+    int queued() {
+      return queue.size();
+    }
+
+    void release() {
+      hold = false;
+      Runnable task;
+      while ((task = queue.poll()) != null) {
+        task.run();
+      }
     }
   }
 
@@ -376,5 +407,80 @@ class TokenProofClientTest {
       Thread.sleep(20);
     }
     return future.isCancelled();
+  }
+
+  @Test
+  void theDeadlineIsNotQueuedBehindCpuWork() throws Exception {
+    Token token = threeProofToken();
+    Batch batch = new Batch();
+    GateExecutor gate = new GateExecutor();
+    // the answer is ready at once, but the work that verifies it waits in a saturated executor
+    batch.onCall = () -> gate.hold = true;
+    CompletableFuture<ConsolidationResult> future = new TokenProofClient(
+        ShardRouting.single(batch), context).consolidate(token, ConsolidationOptions.defaults()
+        .withTimeout(Duration.ofMillis(150)).withExecutor(gate));
+
+    CompletionException error = assertThrows(CompletionException.class,
+        () -> future.orTimeout(5, TimeUnit.SECONDS).join());
+    ConsolidationException failure = (ConsolidationException) error.getCause();
+    assertEquals(ConsolidationException.Kind.TIMEOUT, failure.getKind());
+    assertTrue(gate.queued() > 0, "the verification work is still queued when the deadline hits");
+
+    // releasing the work later restarts nothing and publishes nothing
+    gate.release();
+    assertEquals(1, batch.sizes.size());
+    assertTrue(future.isCompletedExceptionally());
+    assertEquals(ConsolidationException.Kind.TIMEOUT,
+        ((ConsolidationException) assertThrows(CompletionException.class, future::join)
+            .getCause()).getKind());
+  }
+
+  @Test
+  void theDeadlineCancelsActiveCallsWhileTheCpuExecutorIsSaturated() throws Exception {
+    Token token = threeProofToken();
+    Batch batch = new Batch();
+    batch.hang = new CompletableFuture<>();
+    GateExecutor gate = new GateExecutor();
+    batch.onCall = () -> gate.hold = true;
+    CompletableFuture<ConsolidationResult> future = new TokenProofClient(
+        ShardRouting.single(batch), context).consolidate(token, ConsolidationOptions.defaults()
+        .withTimeout(Duration.ofMillis(150)).withExecutor(gate));
+
+    CompletionException error = assertThrows(CompletionException.class,
+        () -> future.orTimeout(5, TimeUnit.SECONDS).join());
+    assertEquals(ConsolidationException.Kind.TIMEOUT,
+        ((ConsolidationException) error.getCause()).getKind());
+    assertTrue(awaitCancelled(batch.hang), "the outstanding call was cancelled by the timer");
+    gate.release();
+    assertEquals(1, batch.sizes.size());
+  }
+
+  @Test
+  void aFinishedOperationReleasesItsTimers() throws Exception {
+    Token token = threeProofToken();
+    int baseline = org.unicitylabs.sdk.internal.Deadlines.pending();
+
+    // success
+    ConsolidationResult result = consolidate(token, new Batch(), ConsolidationOptions.defaults());
+    assertEquals(ConsolidationResult.Status.CONSOLIDATED, result.getStatus());
+    assertEquals(baseline, org.unicitylabs.sdk.internal.Deadlines.pending());
+
+    // cancellation
+    Batch hanging = new Batch();
+    hanging.hang = new CompletableFuture<>();
+    CompletableFuture<ConsolidationResult> cancelled = new TokenProofClient(
+        ShardRouting.single(hanging), context).consolidate(token, ConsolidationOptions.defaults());
+    for (int i = 0; i < 100 && hanging.sizes.isEmpty(); i++) {
+      Thread.sleep(20);
+    }
+    assertTrue(org.unicitylabs.sdk.internal.Deadlines.pending() > baseline);
+    cancelled.cancel(true);
+    assertEquals(baseline, org.unicitylabs.sdk.internal.Deadlines.pending());
+
+    // failure before any request, and a result that was complete before the timer was registered
+    CompletableFuture<Object> done = new CompletableFuture<>();
+    done.complete(null);
+    org.unicitylabs.sdk.internal.Deadlines.scheduleFor(() -> { }, 60_000_000_000L, done);
+    assertEquals(baseline, org.unicitylabs.sdk.internal.Deadlines.pending());
   }
 }

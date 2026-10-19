@@ -11,7 +11,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.unicitylabs.sdk.api.InclusionProof;
 import org.unicitylabs.sdk.api.InclusionProofResponse;
@@ -20,6 +19,7 @@ import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.api.bft.verification.OperationUnicityCertificateVerifier;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerifier;
 import org.unicitylabs.sdk.api.bft.verification.VerificationPolicy;
+import org.unicitylabs.sdk.internal.Deadlines;
 import org.unicitylabs.sdk.internal.OperationContext;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
@@ -134,8 +134,7 @@ public final class TokenProofClient {
     }
 
     void start() {
-      CompletableFuture.delayedExecutor(outer.remaining().toNanos(), TimeUnit.NANOSECONDS, executor)
-          .execute(this::deadline);
+      Deadlines.scheduleFor(this::deadline, outer.remaining().toNanos(), result);
       executor.execute(() -> {
         try {
           verifyAndPlan();
