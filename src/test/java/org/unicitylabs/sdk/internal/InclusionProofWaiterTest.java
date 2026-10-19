@@ -213,6 +213,72 @@ class InclusionProofWaiterTest {
   }
 
   @Test
+  void reviewDeadlineFinishesWhileVerificationIsQueued() {
+    answer(certified, 0);
+    nextIsDeadline = true;
+    List<Runnable> cpu = new ArrayList<>();
+    AtomicLong checks = new AtomicLong();
+    CompletableFuture<InclusionProof> result = InclusionProofWaiter.await(client(), stateId,
+        proof -> checks.incrementAndGet(), WaitOptions.defaults(), scheduler(), cpu::add, nanos::get);
+    assertEquals(1, cpu.size());
+    assertFalse(result.isDone());
+    nanos.addAndGet(TimeUnit.SECONDS.toNanos(15));
+    deadlines.get(0).run();
+    assertInstanceOf(TimeoutException.class, failure(result));
+    assertTrue(deadlinesCancelled.get(0).get());
+    cpu.get(0).run();
+    assertEquals(0, checks.get(), "late CPU work cannot verify or publish");
+    assertEquals(1, seen.size(), "late CPU work cannot restart requests");
+  }
+
+  @Test
+  void reviewRealTimerFinishesWhileVerificationIsRunning() throws Exception {
+    answer(certified, 0);
+    java.util.concurrent.CountDownLatch entered = new java.util.concurrent.CountDownLatch(1);
+    java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+    java.util.concurrent.CountDownLatch exited = new java.util.concurrent.CountDownLatch(1);
+    CompletableFuture<InclusionProof> result = InclusionProofWaiter.await(client(), stateId,
+        proof -> {
+          entered.countDown();
+          try { release.await(); }
+          catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+          finally { exited.countDown(); }
+        }, WaitOptions.defaults().timeout(Duration.ofMillis(200)));
+    try {
+      assertTrue(entered.await(2, TimeUnit.SECONDS));
+      assertInstanceOf(TimeoutException.class, failure(result));
+    } finally {
+      release.countDown();
+      assertTrue(exited.await(2, TimeUnit.SECONDS));
+      result.cancel(true);
+    }
+    assertInstanceOf(TimeoutException.class, failure(result));
+  }
+
+  @Test
+  void reviewProofAfterDeadlineMustNotSucceed() {
+    answer(certified, 16000);
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
+    assertTrue(result.isCompletedExceptionally(), "A proof received after the 15 s budget must time out");
+  }
+
+  @Test
+  void reviewVerificationCannotOutliveBudget() {
+    answer(certified, 0);
+    CompletableFuture<InclusionProof> result = await(client(), WaitOptions.defaults(),
+        proof -> nanos.addAndGet(TimeUnit.SECONDS.toNanos(16)));
+    assertTrue(result.isCompletedExceptionally(), "Verification used up the total budget");
+  }
+
+  @Test
+  void reviewHungCallMustHaveDeadlineTask() {
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
+    assertEquals(1, held.size());
+    assertFalse(deadlines.isEmpty(), "No deadline task exists to end a call that never responds");
+    result.cancel(true);
+  }
+
+  @Test
   void aProofThatArrivesAfterTheBudgetIsDiscarded() {
     answer(certified, 16_000);
     CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());

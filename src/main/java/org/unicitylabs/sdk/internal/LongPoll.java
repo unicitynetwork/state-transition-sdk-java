@@ -109,6 +109,22 @@ public final class LongPoll {
    */
   public static <T, R> CompletableFuture<R> map(CompletableFuture<T> source,
       Function<T, R> mapper) {
+    return map(source, mapper, null);
+  }
+
+  /**
+   * Maps the result of a future like {@link #map(CompletableFuture, Function)}; a mapped result
+   * that is ready after the budget of the operation ended is discarded as a timeout.
+   *
+   * @param source future of the underlying call
+   * @param mapper result mapping (decoding)
+   * @param operation operation whose budget governs the publication, may be null
+   * @param <T> source type
+   * @param <R> result type
+   * @return mapped future whose cancellation cancels {@code source}
+   */
+  public static <T, R> CompletableFuture<R> map(CompletableFuture<T> source,
+      Function<T, R> mapper, OperationContext operation) {
     CompletableFuture<R> result = new CompletableFuture<>();
     source.whenComplete((value, error) -> {
       if (error != null) {
@@ -116,7 +132,13 @@ public final class LongPoll {
         return;
       }
       try {
-        result.complete(mapper.apply(value));
+        R mapped = mapper.apply(value);
+        if (operation != null && operation.isExpired()) {
+          result.completeExceptionally(
+              new java.util.concurrent.TimeoutException("Operation deadline expired."));
+        } else {
+          result.complete(mapped);
+        }
       } catch (RuntimeException e) {
         result.completeExceptionally(e);
       }

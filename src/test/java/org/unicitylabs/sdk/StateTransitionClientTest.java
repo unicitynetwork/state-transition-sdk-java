@@ -137,6 +137,28 @@ class StateTransitionClientTest {
   // ---- the default wait ----------------------------------------------------------------------
 
   @Test
+  void reviewHungSubmissionHasIndependentDeadline() {
+    CompletableFuture<CertificationResponse> submission = new CompletableFuture<>();
+    java.util.concurrent.atomic.AtomicInteger lookups = new java.util.concurrent.atomic.AtomicInteger();
+    AggregatorClient raw = new AggregatorClient() {
+      public CompletableFuture<CertificationResponse> submitCertificationRequest(CertificationData d) {
+        return submission;
+      }
+      public CompletableFuture<InclusionProofResponse> getInclusionProof(StateId id) {
+        lookups.incrementAndGet();
+        return new CompletableFuture<>();
+      }
+      public CompletableFuture<Long> getLatestBlockNumber() { return CompletableFuture.completedFuture(1L); }
+    };
+    CompletableFuture<InclusionProof> result = new StateTransitionClient(raw).submitAndWait(
+        transaction, data, 2, aggregator.inner.getTrustBase(), PredicateVerifierService.create(),
+        WaitOptions.defaults().timeout(Duration.ofMillis(100)));
+    assertInstanceOf(java.util.concurrent.TimeoutException.class, failure(result));
+    org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(2)).until(submission::isCancelled);
+    assertEquals(0, lookups.get());
+  }
+
+  @Test
   void reviewNullSubmissionMustTerminate() {
     AggregatorClient raw = new AggregatorClient() {
       public CompletableFuture<CertificationResponse> submitCertificationRequest(CertificationData d) {

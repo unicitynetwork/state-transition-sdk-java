@@ -173,7 +173,7 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
                 throw new JsonRpcResponseException(
                         "Malformed result of certification_request: " + e.getOriginalMessage(), e);
               }
-            });
+            }, options.getOperation());
   }
 
   /**
@@ -205,7 +205,8 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
 
     return LongPoll.map(
             this.transport.call("get_inclusion_proof.v2", params, Map.of(), options),
-            result -> decodeInclusionProofResult(result, waitMillis != null));
+            result -> decodeInclusionProofResult(result, waitMillis != null),
+            options.getOperation());
   }
 
   /** The result of {@code get_inclusion_proof.v2} checked by shape, before the proof is decoded. */
@@ -372,7 +373,13 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
         }
         if (error == null) {
           try {
-            result.complete(decodeBatch(value, this.ids.size(), this.exact, requests, wait));
+            InclusionProofBatch decoded =
+                decodeBatch(value, this.ids.size(), this.exact, requests, wait);
+            if (this.options.getOperation() != null && this.options.getOperation().isExpired()) {
+              result.completeExceptionally(new TimeoutException("Operation deadline expired."));
+            } else {
+              result.complete(decoded);
+            }
           } catch (RuntimeException e) {
             result.completeExceptionally(e);
           }
@@ -620,8 +627,15 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
         return;
       }
       try {
-        result.complete(NonInclusionProofResponse.absence(
-                new NonInclusionProof(stateId, HexConverter.decode(value.textValue()))));
+        NonInclusionProofResponse decoded = NonInclusionProofResponse.absence(
+                new NonInclusionProof(stateId, HexConverter.decode(value.textValue())));
+        if (options.getOperation() != null && options.getOperation().isExpired()) {
+          result.completeExceptionally(new NonInclusionProofException(
+                  NonInclusionProofException.Kind.TIMEOUT, "The deadline of the request expired.",
+                  null, null, true));
+        } else {
+          result.complete(decoded);
+        }
       } catch (RuntimeException e) {
         result.completeExceptionally(new NonInclusionProofException(
                 NonInclusionProofException.Kind.INVALID_RESPONSE,

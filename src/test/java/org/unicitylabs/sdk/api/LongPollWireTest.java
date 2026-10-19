@@ -30,6 +30,7 @@ import org.unicitylabs.sdk.api.jsonrpc.JsonRpcResponseException;
 import org.unicitylabs.sdk.api.jsonrpc.TestTransports;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
+import org.unicitylabs.sdk.serializer.cbor.CborSerializationException;
 import org.unicitylabs.sdk.shared.LongPollCorpus;
 import org.unicitylabs.sdk.util.HexConverter;
 
@@ -272,17 +273,53 @@ class LongPollWireTest {
   }
 
   @Test
-  void theCorpusProofsDecodeWhenTheCertificateCodecsAreComplete() {
+  void theFrozenEchoProofsAreIncompleteAndTheDecoderRejectsThem() {
+    // The frozen echo examples carry a certificate with a null shard configuration hash: an
+    // incomplete fixture for the wire shape, kept byte for byte. The decoder must reject it; it is
+    // neither loosened nor is the failure turned into a skipped test.
     JsonNode proof = LongPollCorpus.json("echo.json").get("cases").get(0).get("response").get("result");
-    try {
-      InclusionProofResponse.fromCbor(HexConverter.decode(proof.asText()));
-    } catch (RuntimeException e) {
-      // The Go wire certificates carry the native IR/UC fields that package A's codecs add. Until
-      // that lands the corpus is read by shape only (see the answers above); this runs afterwards.
-      org.junit.jupiter.api.Assumptions.assumeTrue(false,
-          "Go wire certificates are not decodable before package A: " + e.getMessage());
+    CborSerializationException e = assertThrows(CborSerializationException.class,
+        () -> InclusionProofResponse.fromCbor(HexConverter.decode(proof.asText())));
+    assertTrue(e.getMessage().contains("BYTE_STRING"), e.getMessage());
+  }
+
+  private static JsonNode consolidationMaster() throws Exception {
+    return WireTestSupport.MAPPER.readTree(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(
+        "src/test/resources/shared/uc-consolidation/v1/shards-1/responses.json"))).get("master");
+  }
+
+  @Test
+  void aCompleteGoProducedProofDecodesThroughTheSingleLookupAdapter() throws Exception {
+    // the pinned consolidation corpus holds complete proofs, produced by the Go aggregator code
+    String hex = consolidationMaster().get("result").get("proofs").get(0).asText();
+    server.enqueue(new MockResponse().setBody("{\"jsonrpc\":\"2.0\",\"result\":\"" + hex + "\",\"id\":1}"));
+    InclusionProofResponse response = WireTestSupport.get(WireTestSupport.client(server, http, 1)
+        .getInclusionProof(WireTestSupport.stateId("ab".repeat(32))));
+    assertNotNull(response.getUnicityCertificate());
+    assertNotNull(response.getInclusionProof(), "the proof is certified");
+    assertNull(response.getStatusHint());
+    assertNull(response.getWaitedMillis());
+  }
+
+  @Test
+  void aCompleteGoProducedBatchDecodesThroughTheBatchAdapterWithItsView() throws Exception {
+    JsonNode master = consolidationMaster();
+    JsonNode result = master.get("result");
+    int count = result.get("proofs").size();
+    List<StateId> ids = new ArrayList<>();
+    for (int i = 0; i < count; i++) {
+      ids.add(WireTestSupport.stateId(String.format("%064x", i + 1)));
     }
-    assertNotNull(InclusionProofResponse.fromCbor(HexConverter.decode(proof.asText())).getInclusionProof());
+    server.enqueue(new MockResponse().setBody(WireTestSupport.MAPPER.writeValueAsString(master)));
+    InclusionProofBatch batch = WireTestSupport.get(
+        WireTestSupport.client(server, http, master.get("id").intValue())
+            .getInclusionProofs(ids, BatchRequestOptions.latest()));
+    assertEquals(count, batch.getProofs().size());
+    for (InclusionProofResponse proof : batch.getProofs()) {
+      assertNotNull(proof.getUnicityCertificate());
+    }
+    assertEquals(result.has("partitionView"), batch.getPartitionViewBytes() != null);
+    assertEquals(1, batch.getRequests());
   }
 
   // ---- capability.json: the parser negotiation -----------------------------------------------

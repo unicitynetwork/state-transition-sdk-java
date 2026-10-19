@@ -15,6 +15,7 @@ import okhttp3.Response;
 import okhttp3.ResponseBody;
 import org.unicitylabs.sdk.api.RequestOptions;
 import org.unicitylabs.sdk.api.WaitOptions;
+import org.unicitylabs.sdk.internal.InclusionProofWaiter;
 import org.unicitylabs.sdk.internal.OperationContext;
 import org.unicitylabs.sdk.serializer.UnicityObjectMapper;
 
@@ -227,12 +228,27 @@ public class JsonRpcHttpTransport {
       OperationContext.Registration registration =
               operation == null ? null : operation.onCancel(cancelCall);
 
+      // The budget governs the exposed request to its completion, not only the HTTP exchange:
+      // OkHttp's own timeout ends with the response body, an independent timer does not.
+      Runnable cancelTimer = null;
+      if (operation != null) {
+        Duration left = operation.remaining();
+        if (left.compareTo(Duration.ofDays(1)) < 0) {
+          cancelTimer = InclusionProofWaiter.scheduleOnSharedTimer(() ->
+              future.completeExceptionally(new TimeoutException("Operation deadline expired.")),
+              Math.max(0, left.toMillis()));
+        }
+      }
+      Runnable releaseTimer = cancelTimer;
       future.whenComplete((result, error) -> {
-        if (future.isCancelled()) {
+        if (future.isCancelled() || error instanceof TimeoutException) {
           cancelCall.run();
         }
         if (registration != null) {
           registration.remove();
+        }
+        if (releaseTimer != null) {
+          releaseTimer.run();
         }
       });
 
@@ -258,6 +274,11 @@ public class JsonRpcHttpTransport {
         @Override
         public void onResponse(Call call, Response response) {
           try (ResponseBody body = response.body()) {
+            if (operation != null && operation.isExpired()) {
+              // late: the budget ended while the response was in flight
+              future.completeExceptionally(new TimeoutException("Operation deadline expired."));
+              return;
+            }
             String bodyString = JsonRpcHttpTransport.this.readBounded(body);
             JsonNode envelope = JsonRpcHttpTransport.parseEnvelope(bodyString);
 
@@ -274,7 +295,12 @@ public class JsonRpcHttpTransport {
                       new JsonRpcNetworkException(response.code(), bodyString, rpcError));
               return;
             }
-            future.complete(JsonRpcHttpTransport.result(envelope, requestId));
+            JsonNode result = JsonRpcHttpTransport.result(envelope, requestId);
+            if (operation != null && operation.isExpired()) {
+              future.completeExceptionally(new TimeoutException("Operation deadline expired."));
+              return;
+            }
+            future.complete(result);
           } catch (Exception e) {
             future.completeExceptionally(e);
           }
