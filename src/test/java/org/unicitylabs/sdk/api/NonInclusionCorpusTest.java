@@ -14,7 +14,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.stream.Collectors;
@@ -23,17 +22,13 @@ import org.junit.jupiter.api.Test;
 import org.unicitylabs.sdk.api.bft.PartitionViewPolicy;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.api.bft.ShardId;
-import org.unicitylabs.sdk.api.bft.UnicityCertificate;
-import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerificationResult;
+import org.unicitylabs.sdk.api.bft.PartitionViewPolicy;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerifier;
 import org.unicitylabs.sdk.api.bft.verification.VerificationPolicy;
-import org.unicitylabs.sdk.api.bft.verification.rule.UnicitySealHashMatchesWithRootHashRule;
-import org.unicitylabs.sdk.api.bft.verification.rule.UnicitySealQuorumSignaturesVerificationRule;
+import org.unicitylabs.sdk.api.bft.verification.VerificationPolicy;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.util.HexConverter;
 import org.unicitylabs.sdk.util.UnsignedLongs;
-import org.unicitylabs.sdk.util.verification.VerificationResult;
-import org.unicitylabs.sdk.util.verification.VerificationStatus;
 
 /**
  * Runs the shared non-inclusion v2 corpus: every positive case, every negative (rejection class,
@@ -44,45 +39,10 @@ class NonInclusionCorpusTest {
   private static final Path ROOT = Paths.get("src/test/resources/shared/non-inclusion/v2");
   private static final ObjectMapper JSON = new ObjectMapper();
 
-  /**
-   * Strict certificate verification of the corpus authority: network, path to the seal hash, exact
-   * epoch, not before the epoch start, quorum. A stand-in for the operation verifier of the
-   * shared verification package, so the corpus pins the NI logic by itself.
-   */
-  private static final class StrictTestVerifier extends UnicityCertificateVerifier {
-    @Override
-    public UnicityCertificateVerificationResult verifyCertificate(RootTrustBase trustBase,
-        UnicityCertificate uc) {
-      List<VerificationResult<?>> results = new ArrayList<>();
-      if (!uc.getUnicitySeal().getNetworkId().equals(trustBase.getNetworkId())) {
-        results.add(new VerificationResult<>("Network", VerificationStatus.FAIL));
-        return UnicityCertificateVerificationResult.fail(results);
-      }
-      VerificationResult<VerificationStatus> hash =
-          UnicitySealHashMatchesWithRootHashRule.verify(uc);
-      results.add(hash);
-      if (hash.getStatus() != VerificationStatus.OK) {
-        return UnicityCertificateVerificationResult.fail(results);
-      }
-      if (uc.getUnicitySeal().getEpoch() != trustBase.getEpoch()
-          || UnsignedLongs.lessThan(uc.getUnicitySeal().getRootChainRoundNumber(),
-              trustBase.getEpochStartRound())) {
-        results.add(new VerificationResult<>("Epoch", VerificationStatus.FAIL));
-        return UnicityCertificateVerificationResult.fail(results);
-      }
-      VerificationResult<VerificationStatus> quorum =
-          UnicitySealQuorumSignaturesVerificationRule.verify(trustBase, uc.getUnicitySeal());
-      results.add(quorum);
-      return quorum.getStatus() == VerificationStatus.OK
-          ? UnicityCertificateVerificationResult.ok(results)
-          : UnicityCertificateVerificationResult.fail(results);
-    }
-
-    @Override
-    public UnicityCertificateVerifier beginOperation(VerificationPolicy policy,
-        PartitionViewPolicy pins) {
-      return this;
-    }
+  /** The strict operation verifier of the shared verification package, no pins. */
+  private static UnicityCertificateVerifier strict() {
+    return new UnicityCertificateVerifier()
+        .beginOperation(VerificationPolicy.STRICT, PartitionViewPolicy.none());
   }
 
   private static JsonNode read(String relative) throws IOException {
@@ -211,7 +171,7 @@ class NonInclusionCorpusTest {
     List<String> failures = new ArrayList<>();
     for (Path file : cases) {
       try {
-        check(JSON.readTree(file.toFile()), new StrictTestVerifier(),
+        check(JSON.readTree(file.toFile()), strict(),
             "cases/" + file.getFileName());
       } catch (AssertionError | RuntimeException e) {
         failures.add(String.valueOf(e.getMessage()));
@@ -225,7 +185,7 @@ class NonInclusionCorpusTest {
     List<String> failures = new ArrayList<>();
     for (Path file : files("negative")) {
       try {
-        check(JSON.readTree(file.toFile()), new StrictTestVerifier(),
+        check(JSON.readTree(file.toFile()), strict(),
             "negative/" + file.getFileName());
       } catch (AssertionError | RuntimeException e) {
         failures.add(String.valueOf(e.getMessage()));
@@ -239,7 +199,7 @@ class NonInclusionCorpusTest {
     JsonNode sequences = read("sequences.json").get("sequences");
     assertTrue(sequences.size() > 0);
     for (JsonNode sequence : sequences) {
-      UnicityCertificateVerifier verifier = new StrictTestVerifier();
+      UnicityCertificateVerifier verifier = strict();
       for (JsonNode step : sequence.get("steps")) {
         String vectorName = step.get("vector").asText();
         JsonNode vector = read(vectorName + ".json");
@@ -262,7 +222,7 @@ class NonInclusionCorpusTest {
     byte[] other = stateId(vector.get("query").asText()).getData();
     other[31] ^= 1;
     try {
-      NonInclusionVerifier.verify(new StrictTestVerifier(), setup.trustBase, proof,
+      NonInclusionVerifier.verify(strict(), setup.trustBase, proof,
           StateId.fromCbor(CborSerializer.encodeByteString(other)), setup.context);
       fail("expected a mismatch");
     } catch (NonInclusionVerificationException e) {

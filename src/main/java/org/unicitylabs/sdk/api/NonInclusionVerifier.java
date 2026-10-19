@@ -1,10 +1,8 @@
 package org.unicitylabs.sdk.api;
 
 import java.util.Arrays;
-import java.util.List;
 import java.util.Objects;
 import org.unicitylabs.sdk.api.NonInclusionVerificationException.Reason;
-import org.unicitylabs.sdk.api.bft.AggregationPartition;
 import org.unicitylabs.sdk.api.bft.InputRecord;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.api.bft.ShardId;
@@ -12,11 +10,11 @@ import org.unicitylabs.sdk.api.bft.UnicityCertificate;
 import org.unicitylabs.sdk.api.bft.UnicitySeal;
 import org.unicitylabs.sdk.api.bft.PartitionViewPolicy;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerificationResult;
+import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateFailure;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerifier;
 import org.unicitylabs.sdk.api.bft.verification.VerificationPolicy;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializationException;
 import org.unicitylabs.sdk.util.UnsignedLongs;
-import org.unicitylabs.sdk.util.verification.VerificationResult;
 import org.unicitylabs.sdk.util.verification.VerificationStatus;
 
 /**
@@ -191,20 +189,7 @@ public final class NonInclusionVerifier {
    */
   private static void authenticateCertificate(UnicityCertificateVerifier verifier,
       RootTrustBase trustBase, UnicityCertificate uc, NonInclusionContext context) {
-    // the fixed partition first: no memo, pin or signature can make another partition valid
-    long partition = Integer.toUnsignedLong(uc.getUnicityTreeCertificate().getPartitionIdentifier());
-    if (partition != AggregationPartition.AGGREGATION_PARTITION_ID) {
-      throw invalid("the partition is not the aggregation partition");
-    }
-    String bodyFault = checkBody(uc);
-    if (bodyFault != null) {
-      throw invalid(bodyFault);
-    }
     ShardId shard = uc.getShardTreeCertificate().getShard();
-    List<byte[]> path = uc.getShardTreeCertificate().getSiblingHashList();
-    if (path.size() != shard.getLength()) {
-      throw invalid("the shard path has not one sibling per shard bit");
-    }
     if (!shard.equals(context.getShard())) {
       throw invalid("the certificate is not of the context's shard");
     }
@@ -223,10 +208,11 @@ public final class NonInclusionVerifier {
           "the certificate could not be evaluated", e);
     }
     if (result.getStatus() != VerificationStatus.OK) {
-      // a failing path to the seal hash is a fault of the certificate, anything else (network,
-      // epoch, quorum) is the authority's refusal
+      UnicityCertificateFailure failure = result.getFailure();
+      // a fault of the certificate (partition, body, paths, seal hash, pins) is uc_invalid; the
+      // refusal of the authority (network, epoch, quorum) is authority_rejected
       throw new NonInclusionVerificationException(
-          failed(result, "UnicitySealHashMatchesWithRootHashRule") ? Reason.UC_INVALID
+          failure != null && !failure.isAuthorityRejection() ? Reason.UC_INVALID
               : Reason.AUTHORITY_REJECTED,
           "the certificate is not authenticated by the trusted authority", null);
     }
@@ -237,57 +223,6 @@ public final class NonInclusionVerifier {
       throw new NonInclusionVerificationException(Reason.AUTHORITY_REJECTED,
           "the seal is not before the end of the authority", null);
     }
-  }
-
-  private static boolean failed(VerificationResult<?> result, String rule) {
-    if (rule.equals(result.getRule()) && result.getStatus() == VerificationStatus.FAIL) {
-      return true;
-    }
-    for (VerificationResult<?> child : result.getResults()) {
-      if (failed(child, rule)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  /**
-   * Structural rules of the input record and technical record hash, as the reference
-   * implementation requires of an ordinary certificate. Null and empty byte strings are equal where
-   * the reference compares lengths.
-   *
-   * @return the violated rule, null if the body is valid
-   */
-  private static String checkBody(UnicityCertificate uc) {
-    InputRecord ir = uc.getInputRecord();
-    if (ir.getRoundNumber() != 0) {
-      if (ir.getSummaryValue() == null) {
-        return "the summary value is missing";
-      }
-      if (ir.getTimestamp() == 0) {
-        return "the timestamp is unassigned";
-      }
-    }
-    byte[] root = ir.getHash();
-    if (root != null && root.length != 32) {
-      return "the state root is neither null nor 32 bytes";
-    }
-    byte[] previous = ir.getPreviousHash();
-    boolean sameState = Arrays.equals(previous == null ? new byte[0] : previous,
-        root == null ? new byte[0] : root);
-    byte[] block = ir.getBlockHash();
-    boolean blockEmpty = block == null || block.length == 0;
-    if (sameState && !blockEmpty) {
-      return "the state did not change but a block hash is present";
-    }
-    if (!sameState && blockEmpty) {
-      return "the state changed but the block hash is missing";
-    }
-    byte[] technical = uc.getTechnicalRecordHash();
-    if (technical == null || technical.length != 32) {
-      return "the technical record hash is not 32 bytes";
-    }
-    return null;
   }
 
   private static NonInclusionVerificationException invalid(String message) {
