@@ -115,6 +115,12 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
     this.apiKey = apiKey;
   }
 
+  /** Constructor for tests that script the request ids of the transport. */
+  JsonRpcAggregatorClient(JsonRpcHttpTransport transport, String apiKey) {
+    this.transport = Objects.requireNonNull(transport, "transport cannot be null");
+    this.apiKey = apiKey;
+  }
+
   private static boolean isHttps(String url) {
     String scheme = URI.create(url).getScheme();
     return scheme != null && scheme.toLowerCase(Locale.ROOT).equals("https");
@@ -201,12 +207,31 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
             result -> decodeInclusionProofResult(result, waitMillis != null));
   }
 
+  /** The result of {@code get_inclusion_proof.v2} checked by shape, before the proof is decoded. */
+  static final class ProofResult {
+    final String proofHex;
+    final ProofStatusHint statusHint;
+    final Long waitedMillis;
+
+    ProofResult(String proofHex, ProofStatusHint statusHint, Long waitedMillis) {
+      this.proofHex = proofHex;
+      this.statusHint = statusHint;
+      this.waitedMillis = waitedMillis;
+    }
+  }
+
   private static InclusionProofResponse decodeInclusionProofResult(JsonNode result,
       boolean waitAsked) {
+    ProofResult parsed = parseInclusionProofResult(result, waitAsked);
+    return decodeProof(parsed.proofHex).withStatusHint(parsed.statusHint)
+            .withWaitedMillis(parsed.waitedMillis);
+  }
+
+  static ProofResult parseInclusionProofResult(JsonNode result, boolean waitAsked) {
     // a plain string is the legacy result (and the answer of a server that ignores the flags): no
     // status, no echo
     if (result.isTextual()) {
-      return decodeProof(result.textValue());
+      return new ProofResult(result.textValue(), null, null);
     }
     if (!result.isObject() || !result.path("proof").isTextual()) {
       throw new JsonRpcResponseException("Unexpected result of get_inclusion_proof.v2.");
@@ -219,10 +244,10 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
     }
     // an unrecognized status value is treated like no status at all
     JsonNode status = result.get("status");
-    return decodeProof(result.get("proof").textValue())
-            .withStatusHint(status != null && status.isTextual()
-                    ? ProofStatusHint.fromWire(status.textValue()) : null)
-            .withWaitedMillis(echo == null ? null : echo.longValue());
+    return new ProofResult(result.get("proof").textValue(),
+            status != null && status.isTextual()
+                    ? ProofStatusHint.fromWire(status.textValue()) : null,
+            echo == null ? null : echo.longValue());
   }
 
   /**
@@ -380,8 +405,36 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
             ? error.getCause() : error;
   }
 
+  /** A batch result checked by shape, before the proofs are decoded. */
+  static final class BatchResult {
+    final List<String> proofHex;
+    final String viewHex;
+    final Long waitedMillis;
+
+    BatchResult(List<String> proofHex, String viewHex, Long waitedMillis) {
+      this.proofHex = proofHex;
+      this.viewHex = viewHex;
+      this.waitedMillis = waitedMillis;
+    }
+  }
+
   private static InclusionProofBatch decodeBatch(JsonNode body, int count, boolean exact,
       int requests, Long waitAsked) {
+    BatchResult parsed = parseBatch(body, count, exact, requests, waitAsked);
+    try {
+      List<InclusionProofResponse> decoded = new ArrayList<>(count);
+      for (String hex : parsed.proofHex) {
+        decoded.add(InclusionProofResponse.fromCbor(HexConverter.decode(hex)));
+      }
+      byte[] viewBytes = parsed.viewHex == null ? null : HexConverter.decode(parsed.viewHex);
+      return new InclusionProofBatch(decoded, viewBytes, requests, parsed.waitedMillis);
+    } catch (RuntimeException e) {
+      throw invalid("Malformed batch result: " + e.getMessage(), e, requests);
+    }
+  }
+
+  static BatchResult parseBatch(JsonNode body, int count, boolean exact, int requests,
+      Long waitAsked) {
     if (body == null || !body.isObject()) {
       throw invalid("Batch result must be an object.", null, requests);
     }
@@ -403,20 +456,15 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
     if (view != null && (exact || !view.isTextual())) {
       throw invalid("Unexpected partition view.", null, requests);
     }
-    try {
-      List<InclusionProofResponse> decoded = new ArrayList<>(count);
-      for (JsonNode proof : proofs) {
-        if (!proof.isTextual()) {
-          throw new IllegalArgumentException("Proof must be a hex string.");
-        }
-        decoded.add(InclusionProofResponse.fromCbor(HexConverter.decode(proof.textValue())));
+    List<String> hex = new ArrayList<>(count);
+    for (JsonNode proof : proofs) {
+      if (!proof.isTextual()) {
+        throw invalid("Malformed batch result: proof must be a hex string.", null, requests);
       }
-      byte[] viewBytes = view == null ? null : HexConverter.decode(view.textValue());
-      return new InclusionProofBatch(decoded, viewBytes, requests,
-              echo == null ? null : echo.longValue());
-    } catch (RuntimeException e) {
-      throw invalid("Malformed batch result: " + e.getMessage(), e, requests);
+      hex.add(proof.textValue());
     }
+    return new BatchResult(hex, view == null ? null : view.textValue(),
+            echo == null ? null : echo.longValue());
   }
 
   private static BatchProofException invalid(String message, Throwable cause, int requests) {
@@ -424,7 +472,7 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
             null, null, requests, false, null);
   }
 
-  private static Throwable batchFailure(Throwable e, int requests, Long waitAsked) {
+  static Throwable batchFailure(Throwable e, int requests, Long waitAsked) {
     if (e instanceof BatchProofException || e instanceof CancellationException
             || e instanceof TimeoutException) {
       return e;
