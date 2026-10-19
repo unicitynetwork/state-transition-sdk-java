@@ -68,4 +68,10 @@ class RequestOptionsTest {
     assertThrows(IllegalArgumentException.class,
         () -> new InclusionProofBatch(java.util.Collections.emptyList(), null, 3, null));
   }
+
+  @Test
+  void theDefaultWaitBudgetIsFifteenSecondsEverywhere() {
+    assertEquals(Duration.ofSeconds(15), WaitOptions.DEFAULT_TIMEOUT);
+    assertEquals(Duration.ofSeconds(15), WaitOptions.defaults().getTimeout());
+  }
 }
