@@ -12,6 +12,13 @@ import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
  * Unverified material that claims the absence of a state at a snapshot. It is not evidence until a
  * non-inclusion verification accepts it.
  *
+ * <p>Non-inclusion proves absence only at the authenticated snapshot returned by verification. It
+ * does not prove absence now, continuous absence, or that a token can be spent. Compare the
+ * snapshot&rsquo;s network and root round (or its certified seal timestamp under your
+ * application&rsquo;s time policy) with an independently trusted requirement. The seal timestamp is
+ * a consensus-certified time, not proof of real-time freshness. Do not use unverified response
+ * metadata for this check.
+ *
  * <p>This is the transport-level holder of the shared interfaces. {@link #getEncoded()} is the
  * <em>complete</em> {@code get_non_inclusion_proof.v1} result exactly as the service sent it
  * (hex-decoded), the wrapper {@code [blockNumber, 39034([1, certificate, unicityCertificate])]}

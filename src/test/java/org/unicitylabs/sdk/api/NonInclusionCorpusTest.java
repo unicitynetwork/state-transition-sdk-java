@@ -20,6 +20,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.unicitylabs.sdk.api.bft.PartitionViewPolicy;
+import org.unicitylabs.sdk.api.bft.verification.OperationUnicityCertificateVerifier;
+import org.unicitylabs.sdk.api.bft.verification.OperationVerificationStats;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.api.bft.ShardId;
 import org.unicitylabs.sdk.api.bft.PartitionViewPolicy;
@@ -200,15 +202,32 @@ class NonInclusionCorpusTest {
     assertTrue(sequences.size() > 0);
     for (JsonNode sequence : sequences) {
       UnicityCertificateVerifier verifier = strict();
+      // one authority object for the whole sequence: the seal session is per trust base
+      Setup setup = new Setup(read("contexts.json").get(sequence.get("context").asText()));
+      List<Long> quorum = new ArrayList<>();
+      List<Long> bodyHits = new ArrayList<>();
       for (JsonNode step : sequence.get("steps")) {
         String vectorName = step.get("vector").asText();
         JsonNode vector = read(vectorName + ".json");
-        Setup setup = new Setup(read("contexts.json").get(sequence.get("context").asText()));
         StateId query = stateId(vector.get("query").asText());
         NonInclusionProof proof = new NonInclusionProof(query,
             HexConverter.decode(vector.get("wrapper").asText()));
         expect(step.get("expected"), sequence.get("name").asText() + ":" + vectorName, () ->
             NonInclusionVerifier.verify(verifier, setup.trustBase, proof, setup.context));
+        OperationVerificationStats stats =
+            ((OperationUnicityCertificateVerifier) verifier).getStats();
+        quorum.add(stats.getQuorumChecks());
+        bodyHits.add(stats.getBodyHits());
+      }
+      String name = sequence.get("name").asText();
+      if (name.equals("cache-hit-keeps-the-snapshot")) {
+        // the repeat (step 2) is a memo hit: still the one quorum check, the body from the memo
+        assertEquals(1L, (long) quorum.get(0));
+        assertEquals(quorum.get(0), quorum.get(1));
+        assertTrue(bodyHits.get(1) > bodyHits.get(0));
+      } else if (name.equals("rejection-between-successes")) {
+        // the rejection adds no quorum check, and the later success reuses the first one
+        assertEquals(quorum.get(0), quorum.get(quorum.size() - 1));
       }
     }
   }
@@ -240,5 +259,24 @@ class NonInclusionCorpusTest {
     org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () ->
         NonInclusionVerifier.verify(new UnicityCertificateVerifier(), setup.trustBase, proof,
             setup.context));
+  }
+
+  @Test
+  void aLegacyOperationVerifierIsRefusedAndWouldHaveAcceptedTheWrongEpoch() throws Exception {
+    JsonNode vector = read("negative/ctx-wrong-epoch.json");
+    Setup setup = new Setup(read("contexts.json").get(vector.get("context").asText()));
+    NonInclusionProof proof = new NonInclusionProof(stateId(vector.get("query").asText()),
+        HexConverter.decode(vector.get("wrapper").asText()));
+    UnicityCertificateVerifier legacy = new UnicityCertificateVerifier()
+        .beginOperation(VerificationPolicy.LEGACY_QUORUM, PartitionViewPolicy.none());
+    org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () ->
+        NonInclusionVerifier.verify(legacy, setup.trustBase, proof, setup.context));
+    // the strict one rejects it as the authority's refusal
+    try {
+      NonInclusionVerifier.verify(strict(), setup.trustBase, proof, setup.context);
+      fail("expected a rejection");
+    } catch (NonInclusionVerificationException e) {
+      assertEquals(NonInclusionVerificationException.Reason.AUTHORITY_REJECTED, e.getReason());
+    }
   }
 }

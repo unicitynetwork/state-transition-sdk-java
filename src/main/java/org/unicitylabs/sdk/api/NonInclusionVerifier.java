@@ -10,6 +10,7 @@ import org.unicitylabs.sdk.api.bft.UnicityCertificate;
 import org.unicitylabs.sdk.api.bft.UnicitySeal;
 import org.unicitylabs.sdk.api.bft.PartitionViewPolicy;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerificationResult;
+import org.unicitylabs.sdk.api.bft.verification.OperationUnicityCertificateVerifier;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateFailure;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerifier;
 import org.unicitylabs.sdk.api.bft.verification.VerificationPolicy;
@@ -115,7 +116,8 @@ public final class NonInclusionVerifier {
    *
    * @param verifier the verifier of the operation, obtained from
    *     {@link UnicityCertificateVerifier#beginOperation} with {@link VerificationPolicy#STRICT};
-   *     the plain verifier applies the legacy quorum policy and is refused
+   *     the plain verifier and any operation verifier of the legacy quorum policy apply no
+   *     epoch check and are refused
    * @param trustBase the authority
    * @param proof the unverified proof, bound to the queried state
    * @param context what the caller trusts about the shard
@@ -132,6 +134,11 @@ public final class NonInclusionVerifier {
     if (verifier.getClass() == UnicityCertificateVerifier.class) {
       throw new IllegalArgumentException(
           "The plain verifier applies the legacy quorum policy; use beginOperation(STRICT, ...).");
+    }
+    if (verifier instanceof OperationUnicityCertificateVerifier
+        && ((OperationUnicityCertificateVerifier) verifier).getPolicy() != VerificationPolicy.STRICT) {
+      throw new IllegalArgumentException(
+          "The operation verifier applies the legacy quorum policy; use beginOperation(STRICT, ...).");
     }
 
     NonInclusionProof.Decoded decoded;
