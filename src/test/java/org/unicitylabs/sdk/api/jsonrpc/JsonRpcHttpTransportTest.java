@@ -17,6 +17,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicLong;
 import okhttp3.OkHttpClient;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
@@ -73,6 +74,18 @@ class JsonRpcHttpTransportTest {
 
   private CompletableFuture<JsonNode> call() {
     return transport.call("m", Map.of("a", 1), Map.of(), RequestOptions.none());
+  }
+
+  @Test
+  void reviewExplicitNullErrorCannotCoexistWithResult() {
+    server.enqueue(new MockResponse().setBody("{\"jsonrpc\":\"2.0\",\"result\":1,\"error\":null,\"id\":7}"));
+    assertInstanceOf(JsonRpcResponseException.class, failure(call()));
+  }
+
+  @Test
+  void reviewTrailingJsonMustBeRejected() {
+    server.enqueue(new MockResponse().setBody("{\"jsonrpc\":\"2.0\",\"result\":1,\"id\":7} {}"));
+    assertInstanceOf(JsonRpcResponseException.class, failure(call()));
   }
 
   @Test
@@ -209,10 +222,15 @@ class JsonRpcHttpTransportTest {
         RequestOptions.none().withOperation(expired))));
     assertEquals(0, server.getRequestCount());
 
+    // the budget is spent in fake time while the request is held; the call's own timer then ends it
+    AtomicLong nanos = new AtomicLong(1_000_000_000L);
+    OperationContext budget = OperationContext.withBudget(Duration.ofSeconds(1), nanos::get);
     server.enqueue(new MockResponse().setHeadersDelay(10, TimeUnit.SECONDS).setBody("{}"));
-    OperationContext budget = OperationContext.withBudget(Duration.ofMillis(300));
-    assertInstanceOf(TimeoutException.class, failure(transport.call("m", Map.of(), Map.of(),
-        RequestOptions.none().withOperation(budget))));
+    CompletableFuture<JsonNode> held = transport.call("m", Map.of(), Map.of(),
+        RequestOptions.none().withOperation(budget));
+    server.takeRequest(5, TimeUnit.SECONDS);
+    nanos.addAndGet(TimeUnit.SECONDS.toNanos(2));
+    assertInstanceOf(TimeoutException.class, failure(held));
   }
 
   @Test

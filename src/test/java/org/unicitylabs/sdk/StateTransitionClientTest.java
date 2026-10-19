@@ -137,6 +137,65 @@ class StateTransitionClientTest {
   // ---- the default wait ----------------------------------------------------------------------
 
   @Test
+  void reviewNullSubmissionMustTerminate() {
+    AggregatorClient raw = new AggregatorClient() {
+      public CompletableFuture<CertificationResponse> submitCertificationRequest(CertificationData d) {
+        return CompletableFuture.completedFuture(null);
+      }
+      public CompletableFuture<InclusionProofResponse> getInclusionProof(StateId id) { return new CompletableFuture<>(); }
+      public CompletableFuture<Long> getLatestBlockNumber() { return CompletableFuture.completedFuture(1L); }
+    };
+    CompletableFuture<SubmitOutcome> result = new StateTransitionClient(raw)
+        .resubmitCertificationRequest(data, RequestOptions.none());
+    assertTrue(result.isCompletedExceptionally(), "Null peer result must reject, not strand the caller");
+  }
+
+  @Test
+  void reviewUnmatchedDuplicateCannotBecomeSuccess() {
+    AggregatorClient raw = new AggregatorClient() {
+      public CompletableFuture<CertificationResponse> submitCertificationRequest(CertificationData d) {
+        return CompletableFuture.failedFuture(new JsonRpcDataException(-32603,
+            "E11000 duplicate key index: stateId_1", null, false));
+      }
+      public CompletableFuture<InclusionProofResponse> getInclusionProof(StateId id) { return new CompletableFuture<>(); }
+      public CompletableFuture<Long> getLatestBlockNumber() { return CompletableFuture.completedFuture(1L); }
+    };
+    CompletableFuture<SubmitOutcome> result = new StateTransitionClient(raw)
+        .resubmitCertificationRequest(data, RequestOptions.none());
+    assertTrue(result.isCompletedExceptionally(), "An error without our ID is not a duplicate acknowledgement");
+  }
+
+  @Test
+  void reviewCancelDuringSubmitToWaitHandoffCancelsNewCall() throws Exception {
+    CompletableFuture<CertificationResponse> submit = new CompletableFuture<>();
+    CompletableFuture<InclusionProofResponse> proofCall = new CompletableFuture<>();
+    java.util.concurrent.CountDownLatch entered = new java.util.concurrent.CountDownLatch(1);
+    java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+    AggregatorClient raw = new AggregatorClient() {
+      public CompletableFuture<CertificationResponse> submitCertificationRequest(CertificationData d) { return submit; }
+      public CompletableFuture<InclusionProofResponse> getInclusionProof(StateId id) {
+        entered.countDown();
+        try { release.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        return proofCall;
+      }
+      public CompletableFuture<Long> getLatestBlockNumber() { return CompletableFuture.completedFuture(1L); }
+    };
+    CompletableFuture<InclusionProof> result = new StateTransitionClient(raw).submitAndWait(
+        transaction, data, 0, aggregator.inner.getTrustBase(), PredicateVerifierService.create(),
+        WaitOptions.defaults());
+    Thread complete = new Thread(() -> submit.complete(CertificationResponse.create(CertificationStatus.SUCCESS)));
+    complete.start();
+    try {
+      assertTrue(entered.await(3, TimeUnit.SECONDS));
+      result.cancel(true);
+    } finally {
+      release.countDown();
+      complete.join(3000);
+    }
+    assertTrue(proofCall.isCancelled(), "Cancellation raced with handoff and leaked the new call");
+  }
+
+  @Test
   void theDefaultWaitAsksForTheLongPollAndTheHintFromTheFirstProbe() throws Exception {
     aggregator.submitCertificationRequest(data).get();
     InclusionProof proof = InclusionProofUtils.waitInclusionProof(client, aggregator.inner.getTrustBase(),

@@ -269,11 +269,16 @@ class JsonRpcAggregatorClientWireTest {
   }
 
   @Test
-  void aBatchDeadlineAndCancellationKeepTheirPlatformIdentity() {
+  void aBatchDeadlineAndCancellationKeepTheirPlatformIdentity() throws Exception {
+    // the budget is spent in fake time while the request is held
+    java.util.concurrent.atomic.AtomicLong nanos = new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);
+    OperationContext budget = OperationContext.withBudget(Duration.ofSeconds(1), nanos::get);
     server.enqueue(new MockResponse().setHeadersDelay(5, TimeUnit.SECONDS).setBody("{}"));
-    OperationContext budget = OperationContext.withBudget(Duration.ofMillis(300));
-    assertInstanceOf(java.util.concurrent.TimeoutException.class, WireTestSupport.failure(
-        client.getInclusionProofs(List.of(stateId), BatchRequestOptions.latest().withOperation(budget))));
+    CompletableFuture<InclusionProofBatch> spent = client.getInclusionProofs(List.of(stateId),
+        BatchRequestOptions.latest().withOperation(budget));
+    server.takeRequest(5, TimeUnit.SECONDS);
+    nanos.addAndGet(TimeUnit.SECONDS.toNanos(2));
+    assertInstanceOf(java.util.concurrent.TimeoutException.class, WireTestSupport.failure(spent));
 
     server.enqueue(new MockResponse().setHeadersDelay(5, TimeUnit.SECONDS).setBody("{}"));
     OperationContext operation = OperationContext.unbounded();
@@ -360,13 +365,18 @@ class JsonRpcAggregatorClientWireTest {
   }
 
   @Test
-  void nonInclusionTakesNoWaitAndCancellationAndDeadlineAreTyped() {
+  void nonInclusionTakesNoWaitAndCancellationAndDeadlineAreTyped() throws Exception {
     assertThrows(IllegalArgumentException.class,
         () -> client.getNonInclusionProof(stateId, RequestOptions.none().withWaitMillis(0)));
+    java.util.concurrent.atomic.AtomicLong nanos = new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);
+    OperationContext budget = OperationContext.withBudget(Duration.ofSeconds(1), nanos::get);
     server.enqueue(new MockResponse().setHeadersDelay(5, TimeUnit.SECONDS).setBody("{}"));
-    OperationContext budget = OperationContext.withBudget(Duration.ofMillis(300));
+    CompletableFuture<NonInclusionProofResponse> spent =
+        client.getNonInclusionProof(stateId, RequestOptions.none().withOperation(budget));
+    server.takeRequest(5, TimeUnit.SECONDS);
+    nanos.addAndGet(TimeUnit.SECONDS.toNanos(2));
     NonInclusionProofException timeout = assertInstanceOf(NonInclusionProofException.class,
-        WireTestSupport.failure(client.getNonInclusionProof(stateId, RequestOptions.none().withOperation(budget))));
+        WireTestSupport.failure(spent));
     assertEquals(NonInclusionProofException.Kind.TIMEOUT, timeout.getKind());
     OperationContext cancelled = OperationContext.unbounded();
     cancelled.cancel();
@@ -382,6 +392,29 @@ class JsonRpcAggregatorClientWireTest {
         "\"E11000 duplicate key error collection: x index: stateId_1 dup key\"")));
     assertInstanceOf(org.unicitylabs.sdk.api.jsonrpc.JsonRpcDataException.class,
         WireTestSupport.failure(client.submitCertificationRequest(data)));
+  }
+
+  @Test
+  void aSubmissionResultWithoutAStatusIsAnInvalidResponseNeverANullOrAStrandedFuture() {
+    String[] results = {"null", "{}", "{\"status\":5}", "\"SUCCESS\"", "[]"};
+    for (String result : results) {
+      server.enqueue(new MockResponse().setBody(result(result)));
+      assertInstanceOf(JsonRpcResponseException.class, WireTestSupport.failure(client.submitCertificationRequest(data)),
+          result);
+    }
+    // and through the facade the exposed future ends too
+    server.enqueue(new MockResponse().setBody(result("null")));
+    assertInstanceOf(JsonRpcResponseException.class, WireTestSupport.failure(
+        new org.unicitylabs.sdk.StateTransitionClient(client).resubmitCertificationRequest(data, RequestOptions.none())));
+  }
+
+  @Test
+  void anUnmatchedDuplicateReportIsNotAnAcknowledgement() {
+    server.enqueue(new MockResponse().setBody(
+        "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"m\",\"data\":"
+            + "\"E11000 duplicate key index: stateId_1\"},\"id\":null}"));
+    assertInstanceOf(org.unicitylabs.sdk.api.jsonrpc.JsonRpcDataException.class, WireTestSupport.failure(
+        new org.unicitylabs.sdk.StateTransitionClient(client).resubmitCertificationRequest(data, RequestOptions.none())));
   }
 
   @Test

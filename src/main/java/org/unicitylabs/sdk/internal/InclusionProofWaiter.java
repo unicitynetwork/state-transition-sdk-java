@@ -134,11 +134,20 @@ public final class InclusionProofWaiter {
    */
   public static CompletableFuture<InclusionProof> await(AggregatorClient client, StateId stateId,
       ProofCheck check, WaitOptions options) {
-    return await(client, stateId, check, options,
-        (task, delay) -> {
-          ScheduledFuture<?> handle = Shared.TIMER.schedule(task, delay, TimeUnit.MILLISECONDS);
-          return () -> handle.cancel(false);
-        }, Shared.VERIFIER, System::nanoTime);
+    return await(client, stateId, check, options, InclusionProofWaiter::scheduleOnSharedTimer,
+        Shared.VERIFIER, System::nanoTime);
+  }
+
+  /**
+   * Runs a task on the shared timer thread after a delay (a deadline, a pause).
+   *
+   * @param task task; keep it short, it runs on the timer thread
+   * @param delayMillis delay in milliseconds
+   * @return handle that cancels a task that did not run yet
+   */
+  public static Runnable scheduleOnSharedTimer(Runnable task, long delayMillis) {
+    ScheduledFuture<?> handle = Shared.TIMER.schedule(task, delayMillis, TimeUnit.MILLISECONDS);
+    return () -> handle.cancel(false);
   }
 
   /**
@@ -169,6 +178,12 @@ public final class InclusionProofWaiter {
         waiter.operation.cancel();
       }
     });
+    // one deadline for the whole operation: it ends a call that never completes, a verification
+    // that runs late and a pause, and cancels what is active
+    long budgetMillis = Math.max(0, options.getTimeout().toMillis());
+    Runnable cancelDeadline = scheduler.schedule(() -> waiter.fail(
+        new TimeoutException("Timeout waiting for inclusion proof")), budgetMillis);
+    waiter.operation.onCancel(cancelDeadline);
     waiter.poll();
     return waiter.result;
   }
@@ -259,6 +274,11 @@ public final class InclusionProofWaiter {
     if (finished.get()) {
       return;
     }
+    if (operation.isExpired()) {
+      // an answer after the deadline is discarded
+      fail(new TimeoutException("Timeout waiting for inclusion proof"));
+      return;
+    }
     if (response == null) {
       fail(new IllegalStateException("The aggregator client returned no response."));
       return;
@@ -301,6 +321,10 @@ public final class InclusionProofWaiter {
       fail(cause);
       return;
     }
+    if (operation.isExpired()) {
+      fail(new TimeoutException("Timeout waiting for inclusion proof"));
+      return;
+    }
     // A request that outlived its own timeout, with the budget not spent, is an inconclusive
     // answer. The endpoint does not honor the wait then: poll the normal way.
     if (asked > 0 && !operation.isDone() && cause instanceof InterruptedIOException) {
@@ -322,6 +346,11 @@ public final class InclusionProofWaiter {
       notFound = rpc == null && network.getStatus() == 404;
     }
     if (rpc != null) {
+      if (!rpc.isIdMatched()) {
+        // an error that carries no id of this request is no "pending" or "unknown" answer of ours
+        fail(cause);
+        return;
+      }
       code = rpc.getCode();
     }
     boolean pending = code == -32021;
@@ -347,14 +376,23 @@ public final class InclusionProofWaiter {
       fail(new CancellationException("The wait was cancelled."));
       return;
     }
+    if (operation.isExpired()) {
+      fail(new TimeoutException("Timeout waiting for inclusion proof"));
+      return;
+    }
     try {
       check.check(proof);
     } catch (RuntimeException e) {
-      fail(e);
+      fail(operation.isExpired() ? new TimeoutException("Timeout waiting for inclusion proof") : e);
       return;
     }
     if (operation.isCancelled()) {
       fail(new CancellationException("The wait was cancelled."));
+      return;
+    }
+    if (operation.isExpired()) {
+      // running crypto is not interrupted, but a late success is discarded
+      fail(new TimeoutException("Timeout waiting for inclusion proof"));
       return;
     }
     succeed(proof);

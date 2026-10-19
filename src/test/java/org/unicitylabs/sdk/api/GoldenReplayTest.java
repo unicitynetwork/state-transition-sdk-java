@@ -131,6 +131,11 @@ class GoldenReplayTest {
       assertEquals(recorded.get("id").isNull(), !e.isIdMatched());
       Throwable classified = JsonRpcAggregatorClient.batchFailure(e, 1, null);
       BatchProofException typed = assertInstanceOf(BatchProofException.class, classified);
+      if (!e.isIdMatched()) {
+        // an error without the id of the request answers nothing of ours: no classification
+        assertEquals(BatchProofException.Kind.INVALID_RESPONSE, typed.getKind());
+        return;
+      }
       assertEquals(e.getCode(), typed.getCode());
       assertNull(typed.getWaitedMillis());
       JsonNode data = recorded.get("error").get("data");

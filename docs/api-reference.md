@@ -73,7 +73,11 @@ A wait completes exceptionally with:
 | `VerificationException` | A proof arrived and did not verify. Never resubmitted for. |
 | `JsonRpcDataException`, `JsonRpcNetworkException`, `JsonRpcResponseException`, `IOException` | The service's own error (`JsonRpcDataException` is a `JsonRpcNetworkException` whose status is the JSON-RPC code, with its data), an HTTP status, a response that is not a valid answer, or a transport failure. |
 
-`JsonRpcAggregatorClient` checks every response before it interprets it: a bounded body (8 MiB by default), version `2.0`, exactly one of result and error, and the id of the request, also on errors. An error whose id is null is kept and marked with `isIdMatched() == false`.
+`JsonRpcAggregatorClient` checks every response before it interprets it: a bounded body (8 MiB by default), one complete JSON object with no trailing data, version `2.0`, exactly one of `result` and `error` (by presence; `error` must be an object), and the id of the request, also on errors. An error whose id is null is kept for diagnostics and marked with `isIdMatched() == false`; it is never taken as an acknowledgement, a status or an unavailable answer.
+
+Checked versus unchecked: the wire-level failures (`JsonRpcNetworkException` and its subclass `JsonRpcDataException`) are the SDK's long-standing checked exceptions. They never need a `throws` clause, because the client API is asynchronous and they complete the returned future exceptionally. Every new domain error is unchecked and typed: `BatchProofException`, `NonInclusionProofException`, `InclusionProofWaitException`, `CertificationRejectedException`, `JsonRpcResponseException`.
+
+One deadline covers a whole operation: a wait, and `submitAndWait` across all its submissions and waits. When it passes, the future completes with `TimeoutException`, the active HTTP call and pause are cancelled, and a response or a verification that finishes late is discarded.
 
 ### Cancellation and the HTTP client
 

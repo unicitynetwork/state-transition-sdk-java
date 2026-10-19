@@ -23,6 +23,9 @@ import org.unicitylabs.sdk.api.WaitOptions;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.api.jsonrpc.JsonRpcDataException;
 import org.unicitylabs.sdk.api.jsonrpc.JsonRpcNetworkException;
+import org.unicitylabs.sdk.api.jsonrpc.JsonRpcResponseException;
+import org.unicitylabs.sdk.internal.InclusionProofWaiter;
+import org.unicitylabs.sdk.internal.OperationContext;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
 import org.unicitylabs.sdk.transaction.Transaction;
 import org.unicitylabs.sdk.util.InclusionProofUtils;
@@ -189,30 +192,42 @@ public class StateTransitionClient {
    */
   public CompletableFuture<SubmitOutcome> resubmitCertificationRequest(
       CertificationData certificationData, RequestOptions options) {
+    CompletableFuture<CertificationResponse> call;
+    try {
+      call = this.submitCertificationRequest(certificationData, options);
+    } catch (RuntimeException e) {
+      return CompletableFuture.failedFuture(e);
+    }
     CompletableFuture<SubmitOutcome> result = new CompletableFuture<>();
-    CompletableFuture<CertificationResponse> call =
-        this.submitCertificationRequest(certificationData, options);
     call.whenComplete((response, error) -> {
-      if (error != null) {
-        Throwable cause = error instanceof CompletionException && error.getCause() != null
-            ? error.getCause() : error;
-        if (isDuplicateSubmission(cause)) {
-          result.complete(new SubmitOutcome(SubmitOutcome.Kind.ALREADY_SUBMITTED,
-              CertificationResponse.create(CertificationStatus.STATE_ID_QUEUED)));
-        } else {
-          result.completeExceptionally(cause);
+      try {
+        if (error != null) {
+          Throwable cause = error instanceof CompletionException && error.getCause() != null
+              ? error.getCause() : error;
+          if (isDuplicateSubmission(cause)) {
+            result.complete(new SubmitOutcome(SubmitOutcome.Kind.ALREADY_SUBMITTED,
+                CertificationResponse.create(CertificationStatus.STATE_ID_QUEUED)));
+          } else {
+            result.completeExceptionally(cause);
+          }
+          return;
         }
-        return;
-      }
-      CertificationStatus status = response.getStatus();
-      if (CertificationStatus.SUCCESS.equals(status)) {
-        result.complete(new SubmitOutcome(SubmitOutcome.Kind.ACCEPTED, response));
-      } else if (CertificationStatus.STATE_ID_EXISTS.equals(status)
-          || CertificationStatus.ALREADY_SUBMITTED.equals(status)
-          || CertificationStatus.STATE_ID_QUEUED.equals(status)) {
-        result.complete(new SubmitOutcome(SubmitOutcome.Kind.ALREADY_SUBMITTED, response));
-      } else {
-        result.completeExceptionally(new CertificationRejectedException(status));
+        CertificationStatus status = response == null ? null : response.getStatus();
+        if (status == null) {
+          throw new JsonRpcResponseException("The aggregator answered without a status.");
+        }
+        if (CertificationStatus.SUCCESS.equals(status)) {
+          result.complete(new SubmitOutcome(SubmitOutcome.Kind.ACCEPTED, response));
+        } else if (CertificationStatus.STATE_ID_EXISTS.equals(status)
+            || CertificationStatus.ALREADY_SUBMITTED.equals(status)
+            || CertificationStatus.STATE_ID_QUEUED.equals(status)) {
+          result.complete(new SubmitOutcome(SubmitOutcome.Kind.ALREADY_SUBMITTED, response));
+        } else {
+          result.completeExceptionally(new CertificationRejectedException(status));
+        }
+      } catch (RuntimeException e) {
+        // a callback failure completes the exposed future, it is never lost
+        result.completeExceptionally(e);
       }
     });
     result.whenComplete((value, error) -> {
@@ -248,57 +263,81 @@ public class StateTransitionClient {
       throw new IllegalArgumentException("maxResubmits must not be negative");
     }
     CompletableFuture<InclusionProof> result = new CompletableFuture<>();
-    long deadline = System.nanoTime() + options.getTimeout().toNanos();
+    // one operation owns the whole call: a deadline for all attempts, and the cancellation of
+    // whichever child (a submission, a wait) is active
+    OperationContext operation = OperationContext.withBudget(options.getTimeout());
+    operation.onCancel(InclusionProofWaiter.scheduleOnSharedTimer(
+        () -> result.completeExceptionally(
+            new TimeoutException("Timeout waiting for inclusion proof")),
+        Math.max(0, options.getTimeout().toMillis())));
+    // every ending, the caller's cancellation and the deadline included, releases the operation
+    result.whenComplete((value, error) -> operation.cancel());
     attempt(transaction, certificationData, maxResubmits, trustBase, predicateVerifier, options,
-        deadline, result, new CompletableFuture<?>[1]);
+        operation, result);
     return result;
+  }
+
+  /** Cancels the child with the operation, also when the operation ended before it was adopted. */
+  private static void adopt(OperationContext operation, CompletableFuture<?> child) {
+    OperationContext.Registration registration = operation.onCancel(() -> child.cancel(true));
+    child.whenComplete((value, error) -> registration.remove());
   }
 
   private void attempt(Transaction transaction, CertificationData data, int resubmitsLeft,
       RootTrustBase trustBase, PredicateVerifierService verifier, WaitOptions options,
-      long deadline, CompletableFuture<InclusionProof> result, CompletableFuture<?>[] current) {
-    long left = deadline - System.nanoTime();
-    if (left <= 0) {
-      result.completeExceptionally(new TimeoutException("Timeout waiting for inclusion proof"));
+      OperationContext operation, CompletableFuture<InclusionProof> result) {
+    if (result.isDone()) {
       return;
     }
-    CompletableFuture<SubmitOutcome> submit = this.resubmitCertificationRequest(data,
-        RequestOptions.none().withCallTimeout(Duration.ofNanos(left)));
-    current[0] = submit;
-    submit.whenComplete((outcome, error) -> {
-      if (error != null) {
-        result.completeExceptionally(error);
-        return;
-      }
-      long remaining = deadline - System.nanoTime();
-      if (remaining <= 0) {
-        result.completeExceptionally(new TimeoutException("Timeout waiting for inclusion proof"));
-        return;
-      }
-      CompletableFuture<InclusionProof> wait = InclusionProofUtils.waitInclusionProof(this,
-          trustBase, verifier, transaction, options.timeout(Duration.ofNanos(remaining)));
-      current[0] = wait;
-      wait.whenComplete((proof, waitError) -> {
-        if (waitError == null) {
-          result.complete(proof);
+    try {
+      CompletableFuture<SubmitOutcome> submit = this.resubmitCertificationRequest(data,
+          RequestOptions.none().withOperation(operation));
+      adopt(operation, submit);
+      submit.whenComplete((outcome, error) -> {
+        if (result.isDone()) {
           return;
         }
-        Throwable cause = waitError instanceof CompletionException && waitError.getCause() != null
-            ? waitError.getCause() : waitError;
-        if (cause instanceof InclusionProofWaitException
-            && ((InclusionProofWaitException) cause).isResubmittable() && resubmitsLeft > 0) {
-          attempt(transaction, data, resubmitsLeft - 1, trustBase, verifier, options, deadline,
-              result, current);
-        } else {
-          result.completeExceptionally(cause);
+        if (error != null) {
+          result.completeExceptionally(
+              error instanceof CompletionException && error.getCause() != null
+                  ? error.getCause() : error);
+          return;
+        }
+        try {
+          Duration remaining = operation.remaining();
+          if (remaining.isZero()) {
+            result.completeExceptionally(
+                new TimeoutException("Timeout waiting for inclusion proof"));
+            return;
+          }
+          CompletableFuture<InclusionProof> wait = InclusionProofUtils.waitInclusionProof(this,
+              trustBase, verifier, transaction, options.timeout(remaining));
+          adopt(operation, wait);
+          wait.whenComplete((proof, waitError) -> {
+            if (result.isDone()) {
+              return;
+            }
+            if (waitError == null) {
+              result.complete(proof);
+              return;
+            }
+            Throwable cause = waitError instanceof CompletionException
+                && waitError.getCause() != null ? waitError.getCause() : waitError;
+            if (cause instanceof InclusionProofWaitException
+                && ((InclusionProofWaitException) cause).isResubmittable() && resubmitsLeft > 0) {
+              attempt(transaction, data, resubmitsLeft - 1, trustBase, verifier, options,
+                  operation, result);
+            } else {
+              result.completeExceptionally(cause);
+            }
+          });
+        } catch (RuntimeException e) {
+          result.completeExceptionally(e);
         }
       });
-    });
-    result.whenComplete((value, error) -> {
-      if (result.isCancelled() && current[0] != null) {
-        current[0].cancel(true);
-      }
-    });
+    } catch (RuntimeException e) {
+      result.completeExceptionally(e);
+    }
   }
 
   private static boolean isDuplicateSubmission(Throwable error) {
@@ -308,7 +347,8 @@ public class StateTransitionClient {
     } else if (error instanceof JsonRpcNetworkException) {
       rpc = ((JsonRpcNetworkException) error).getRpcError();
     }
-    if (rpc == null || rpc.getCode() != -32603) {
+    // an error that carries no id of this request acknowledges nothing
+    if (rpc == null || !rpc.isIdMatched() || rpc.getCode() != -32603) {
       return false;
     }
     // Heuristic: free text of a server internal error. Only a duplicate on the state id index

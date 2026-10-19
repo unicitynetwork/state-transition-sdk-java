@@ -41,6 +41,9 @@ public class JsonRpcHttpTransport {
   /** Default maximum response body size in bytes. */
   public static final int DEFAULT_MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 
+  /** A timeout this close to the end of the budget is the deadline of the operation. */
+  private static final Duration DEADLINE_SLACK = Duration.ofMillis(100);
+
   private static final MediaType MEDIA_TYPE_JSON = MediaType.get("application/json; charset=utf-8");
 
   private static final OkHttpClient DEFAULT_HTTP_CLIENT = new OkHttpClient.Builder()
@@ -240,7 +243,10 @@ public class JsonRpcHttpTransport {
             CancellationException cancelled = new CancellationException("Request cancelled.");
             cancelled.initCause(e);
             future.completeExceptionally(cancelled);
-          } else if (operation != null && operation.isExpired()) {
+          } else if (operation != null && (operation.isExpired()
+                  || (e instanceof java.io.InterruptedIOException
+                  && operation.remaining().compareTo(DEADLINE_SLACK) < 0))) {
+            // OkHttp's own timer, started from the remaining budget, may fire a hair before ours
             future.completeExceptionally(
                     (TimeoutException) new TimeoutException("Operation deadline expired.")
                             .initCause(e));
@@ -260,7 +266,7 @@ public class JsonRpcHttpTransport {
               // envelope says nothing about the request.
               JsonRpcDataException rpcError = null;
               if (envelope != null && "2.0".equals(envelope.path("jsonrpc").asText(null))
-                      && envelope.hasNonNull("error") && !envelope.has("result")
+                      && envelope.has("error") && envelope.get("error").isObject() && !envelope.has("result")
                       && requestId.equals(envelope.get("id"))) {
                 rpcError = JsonRpcHttpTransport.errorOf(envelope.get("error"), true, false);
               }
@@ -280,11 +286,16 @@ public class JsonRpcHttpTransport {
     return future;
   }
 
+  /** Parses the whole body as one JSON object; trailing data after the value is not a valid response. */
   private static JsonNode parseEnvelope(String body) {
-    try {
-      JsonNode node = UnicityObjectMapper.JSON.readTree(body);
-      return node != null && node.isObject() ? node : null;
-    } catch (JsonProcessingException e) {
+    try (com.fasterxml.jackson.core.JsonParser parser =
+                 UnicityObjectMapper.JSON.getFactory().createParser(body)) {
+      JsonNode node = UnicityObjectMapper.JSON.readTree(parser);
+      if (node == null || !node.isObject() || parser.nextToken() != null) {
+        return null;
+      }
+      return node;
+    } catch (IOException e) {
       return null;
     }
   }
@@ -299,7 +310,10 @@ public class JsonRpcHttpTransport {
               "Invalid JSON-RPC version: " + envelope.get("jsonrpc") + ".");
     }
     boolean hasResult = envelope.has("result");
-    boolean hasError = envelope.hasNonNull("error");
+    boolean hasError = envelope.has("error");
+    if (hasError && !envelope.get("error").isObject()) {
+      throw new JsonRpcResponseException("JSON-RPC error must be an object.");
+    }
     if (hasResult && hasError) {
       throw new JsonRpcResponseException(
               "JSON-RPC response must contain exactly one of result or error.");

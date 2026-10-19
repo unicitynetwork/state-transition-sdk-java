@@ -163,6 +163,10 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
             this.transport.call("certification_request", HexConverter.encode(request.toCbor()),
                     headers, options),
             result -> {
+              if (!result.isObject() || !result.path("status").isTextual()) {
+                throw new JsonRpcResponseException(
+                        "Malformed result of certification_request: a status is required.");
+              }
               try {
                 return UnicityObjectMapper.JSON.treeToValue(result, CertificationResponse.class);
               } catch (JsonProcessingException e) {
@@ -357,6 +361,11 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
               .call("get_inclusion_proofs.v1", params, JsonRpcAggregatorClient.this.authHeaders(),
                       callOptions);
       this.inFlight = call;
+      if (result.isDone()) {
+        // the caller cancelled between the snapshot of the previous call and this one
+        call.cancel(true);
+        return;
+      }
       call.whenComplete((value, error) -> {
         if (result.isDone()) {
           return;
@@ -479,6 +488,11 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
       return batchFailure(((JsonRpcNetworkException) e).getRpcError(), requests, waitAsked);
     }
     if (e instanceof JsonRpcDataException) {
+      if (!((JsonRpcDataException) e).isIdMatched()) {
+        // an error that carries no id of this request answers nothing of ours: no classification
+        return batchError(BatchProofException.Kind.INVALID_RESPONSE,
+            "JSON-RPC error without the request id.", e, null, null, null, requests, false, null);
+      }
       return rpcFailure((JsonRpcDataException) e, requests, waitAsked);
     }
     if (e instanceof JsonRpcResponseException) {

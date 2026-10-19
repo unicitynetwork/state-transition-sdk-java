@@ -85,6 +85,10 @@ class InclusionProofWaiterTest {
   private final List<Runnable> scheduled = new ArrayList<>();
   private final List<AtomicBoolean> scheduledCancelled = new ArrayList<>();
   private final List<CompletableFuture<InclusionProofResponse>> held = new ArrayList<>();
+  /** The deadline task of each wait: the first thing a wait schedules. */
+  private final List<Runnable> deadlines = new ArrayList<>();
+  private final List<AtomicBoolean> deadlinesCancelled = new ArrayList<>();
+  private boolean nextIsDeadline;
 
   private TestAggregatorClient aggregator;
   private StateId stateId;
@@ -105,6 +109,13 @@ class InclusionProofWaiterTest {
 
   private InclusionProofWaiter.Scheduler scheduler() {
     return (task, delay) -> {
+      if (nextIsDeadline) {
+        nextIsDeadline = false;
+        AtomicBoolean cancelledDeadline = new AtomicBoolean();
+        deadlines.add(task);
+        deadlinesCancelled.add(cancelledDeadline);
+        return () -> cancelledDeadline.set(true);
+      }
       pauses.add(delay);
       scheduled.add(task);
       AtomicBoolean cancelled = new AtomicBoolean();
@@ -179,6 +190,7 @@ class InclusionProofWaiterTest {
 
   private CompletableFuture<InclusionProof> await(AggregatorClient client, WaitOptions options,
       InclusionProofWaiter.ProofCheck check) {
+    nextIsDeadline = true;
     return InclusionProofWaiter.await(client, stateId, check, options, scheduler(), Runnable::run,
         nanos::get);
   }
@@ -198,6 +210,52 @@ class InclusionProofWaiterTest {
       throw new AssertionError(e);
     }
     throw new AssertionError("the future did not fail");
+  }
+
+  @Test
+  void aProofThatArrivesAfterTheBudgetIsDiscarded() {
+    answer(certified, 16_000);
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
+    assertInstanceOf(TimeoutException.class, failure(result));
+  }
+
+  @Test
+  void aVerificationThatUsesUpTheBudgetNeverSucceeds() {
+    answer(certified, 0);
+    CompletableFuture<InclusionProof> result = await(client(), WaitOptions.defaults(),
+        proof -> nanos.addAndGet(TimeUnit.SECONDS.toNanos(16)));
+    assertInstanceOf(TimeoutException.class, failure(result));
+  }
+
+  @Test
+  void aCallThatNeverAnswersIsEndedByTheDeadlineAndCancelled() {
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
+    assertEquals(1, held.size());
+    assertEquals(1, deadlines.size(), "the wait schedules one deadline for the whole operation");
+    assertFalse(result.isDone());
+    nanos.addAndGet(TimeUnit.SECONDS.toNanos(15));
+    deadlines.get(0).run();
+    assertInstanceOf(TimeoutException.class, failure(result));
+    assertTrue(held.get(0).isCancelled(), "the call in flight is cancelled with the deadline");
+    assertEquals(1, seen.size());
+  }
+
+  @Test
+  void theDeadlineTimerIsReleasedWhenTheWaitEnds() {
+    answer(certified, 0);
+    assertTrue(await(WaitOptions.defaults()).isDone());
+    assertTrue(deadlinesCancelled.get(0).get(), "no timer outlives the wait");
+  }
+
+  @Test
+  void anErrorThatCarriesNoIdOfOursIsNeitherPendingNorUnknown() {
+    JsonRpcDataException unmatched = new JsonRpcDataException(-32021, "pending", null, false);
+    fail(unmatched);
+    assertSame(unmatched, failure(await(WaitOptions.defaults())));
+    seen.clear();
+    JsonRpcDataException unknown = new JsonRpcDataException(-32020, "unknown", null, false);
+    fail(unknown);
+    assertSame(unknown, failure(await(WaitOptions.defaults())));
   }
 
   @Test
