@@ -10,12 +10,13 @@ import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.api.bft.ShardId;
 import org.unicitylabs.sdk.api.bft.UnicityCertificate;
 import org.unicitylabs.sdk.api.bft.UnicitySeal;
-import org.unicitylabs.sdk.api.bft.verification.SealAuthenticator;
-import org.unicitylabs.sdk.api.bft.verification.SealVerificationSession;
+import org.unicitylabs.sdk.api.bft.PartitionViewPolicy;
+import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerificationResult;
+import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerifier;
 import org.unicitylabs.sdk.api.bft.verification.VerificationPolicy;
-import org.unicitylabs.sdk.api.bft.verification.rule.UnicitySealHashMatchesWithRootHashRule;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializationException;
 import org.unicitylabs.sdk.util.UnsignedLongs;
+import org.unicitylabs.sdk.util.verification.VerificationResult;
 import org.unicitylabs.sdk.util.verification.VerificationStatus;
 
 /**
@@ -33,8 +34,9 @@ import org.unicitylabs.sdk.util.verification.VerificationStatus;
  * consensus-certified time, not proof of real-time freshness. Do not use unverified response
  * metadata for this check.
  *
- * <p>Several proofs under one operation share one {@link SealAuthenticator} (for example a
- * {@link SealVerificationSession}), so a seal common to them is authenticated once.
+ * <p>Several proofs under one operation share one operation verifier (see
+ * {@link UnicityCertificateVerifier#beginOperation}), so a seal and a certificate common to them
+ * are verified once.
  */
 public final class NonInclusionVerifier {
 
@@ -51,7 +53,7 @@ public final class NonInclusionVerifier {
   }
 
   /**
-   * Verifies a proof against the trust base, under the strict policy.
+   * Verifies a proof against the trust base, under the strict policy, in a new operation.
    *
    * <p>Non-inclusion proves absence only at the authenticated snapshot returned by verification.
    * It does not prove absence now, continuous absence, or that a token can be spent. Compare the
@@ -68,9 +70,9 @@ public final class NonInclusionVerifier {
    */
   public static NonInclusionOutcome verify(RootTrustBase trustBase, NonInclusionProof proof,
       NonInclusionContext context) {
-    Objects.requireNonNull(trustBase, "trustBase cannot be null");
-    return verify(SealVerificationSession.create(trustBase, VerificationPolicy.STRICT), proof,
-        context);
+    return verify(new UnicityCertificateVerifier()
+        .beginOperation(VerificationPolicy.STRICT, PartitionViewPolicy.none()),
+        trustBase, proof, context);
   }
 
   /**
@@ -83,26 +85,28 @@ public final class NonInclusionVerifier {
    * is a consensus-certified time, not proof of real-time freshness. Do not use unverified response
    * metadata for this check.
    *
-   * @param seals strict seal authenticator of the caller&rsquo;s authority
+   * @param verifier the verifier of the operation, from {@code beginOperation(STRICT, ...)}
+   * @param trustBase the authority
    * @param proof the unverified proof
    * @param target the state asked about
    * @param context what the caller trusts about the shard
    * @return the outcome with its authenticated snapshot
    * @throws NonInclusionVerificationException if the proof is rejected or bound to another state
    */
-  public static NonInclusionOutcome verify(SealAuthenticator seals, NonInclusionProof proof,
-      StateId target, NonInclusionContext context) {
+  public static NonInclusionOutcome verify(UnicityCertificateVerifier verifier,
+      RootTrustBase trustBase, NonInclusionProof proof, StateId target,
+      NonInclusionContext context) {
     Objects.requireNonNull(target, "target cannot be null");
     Objects.requireNonNull(proof, "proof cannot be null");
     if (!Arrays.equals(proof.getStateId().getData(), target.getData())) {
       throw new NonInclusionVerificationException(Reason.TARGET_MISMATCH,
           "the proof is bound to another state", null);
     }
-    return verify(seals, proof, context);
+    return verify(verifier, trustBase, proof, context);
   }
 
   /**
-   * Verifies a proof for the state it is bound to, using a caller-owned strict seal authenticator.
+   * Verifies a proof for the state it is bound to within an operation.
    *
    * <p>Non-inclusion proves absence only at the authenticated snapshot returned by verification.
    * It does not prove absence now, continuous absence, or that a token can be spent. Compare the
@@ -111,17 +115,26 @@ public final class NonInclusionVerifier {
    * is a consensus-certified time, not proof of real-time freshness. Do not use unverified response
    * metadata for this check.
    *
-   * @param seals strict seal authenticator of the caller&rsquo;s authority
+   * @param verifier the verifier of the operation, obtained from
+   *     {@link UnicityCertificateVerifier#beginOperation} with {@link VerificationPolicy#STRICT};
+   *     the plain verifier applies the legacy quorum policy and is refused
+   * @param trustBase the authority
    * @param proof the unverified proof, bound to the queried state
    * @param context what the caller trusts about the shard
    * @return the outcome with its authenticated snapshot
+   * @throws IllegalArgumentException if the plain (legacy) verifier is passed
    * @throws NonInclusionVerificationException if the proof is rejected; no snapshot is attached
    */
-  public static NonInclusionOutcome verify(SealAuthenticator seals, NonInclusionProof proof,
-      NonInclusionContext context) {
-    Objects.requireNonNull(seals, "seals cannot be null");
+  public static NonInclusionOutcome verify(UnicityCertificateVerifier verifier,
+      RootTrustBase trustBase, NonInclusionProof proof, NonInclusionContext context) {
+    Objects.requireNonNull(verifier, "verifier cannot be null");
+    Objects.requireNonNull(trustBase, "trustBase cannot be null");
     Objects.requireNonNull(proof, "proof cannot be null");
     Objects.requireNonNull(context, "context cannot be null");
+    if (verifier.getClass() == UnicityCertificateVerifier.class) {
+      throw new IllegalArgumentException(
+          "The plain verifier applies the legacy quorum policy; use beginOperation(STRICT, ...).");
+    }
 
     NonInclusionProof.Decoded decoded;
     try {
@@ -136,7 +149,7 @@ public final class NonInclusionVerifier {
     NonInclusionCertificate certificate = decoded.certificate;
     byte[] key = proof.getStateId().getData();
 
-    authenticateCertificate(seals, uc, context);
+    authenticateCertificate(verifier, trustBase, uc, context);
 
     InputRecord record = uc.getInputRecord();
     byte[] stateRoot = record.getHash();
@@ -172,16 +185,12 @@ public final class NonInclusionVerifier {
   }
 
   /**
-   * Authenticates a bare unicity certificate strictly: fixed partition, body, shard path, the
-   * context&rsquo;s shard and configuration pin, the path to the seal hash, the seal and the
-   * authority&rsquo;s end.
-   *
-   * <p>This is the single seam to the shared certificate verification of package A (raw
-   * certificate verification sharing the strict policy, session and pins); until that lands it is
-   * assembled from the existing rules and {@link SealAuthenticator}.
+   * Authenticates a bare unicity certificate strictly: the fixed partition, the body, the shard
+   * path, the context&rsquo;s shard and configuration pin, then the operation verifier (path to the
+   * seal hash, network, epoch interval and quorum), and the authority&rsquo;s end.
    */
-  private static void authenticateCertificate(SealAuthenticator seals, UnicityCertificate uc,
-      NonInclusionContext context) {
+  private static void authenticateCertificate(UnicityCertificateVerifier verifier,
+      RootTrustBase trustBase, UnicityCertificate uc, NonInclusionContext context) {
     // the fixed partition first: no memo, pin or signature can make another partition valid
     long partition = Integer.toUnsignedLong(uc.getUnicityTreeCertificate().getPartitionIdentifier());
     if (partition != AggregationPartition.AGGREGATION_PARTITION_ID) {
@@ -203,28 +212,43 @@ public final class NonInclusionVerifier {
     if (pin != null && !Arrays.equals(pin, uc.getShardConfigurationHash())) {
       throw invalid("the shard configuration hash differs from the pinned one");
     }
+
+    UnicityCertificateVerificationResult result;
     try {
-      if (UnicitySealHashMatchesWithRootHashRule.verify(uc).getStatus() != VerificationStatus.OK) {
-        throw invalid("the shard and partition paths do not reach the seal hash");
-      }
-    } catch (NonInclusionVerificationException e) {
+      result = verifier.verifyCertificate(trustBase, uc);
+    } catch (UnsupportedOperationException e) {
       throw e;
     } catch (RuntimeException e) {
       throw new NonInclusionVerificationException(Reason.UC_INVALID,
-          "the shard and partition paths cannot be evaluated", e);
+          "the certificate could not be evaluated", e);
     }
-
-    UnicitySeal seal = uc.getUnicitySeal();
-    if (seals.authenticate(seal).getStatus() != VerificationStatus.OK) {
-      throw new NonInclusionVerificationException(Reason.AUTHORITY_REJECTED,
-          "the seal is not authenticated by the trusted authority", null);
+    if (result.getStatus() != VerificationStatus.OK) {
+      // a failing path to the seal hash is a fault of the certificate, anything else (network,
+      // epoch, quorum) is the authority's refusal
+      throw new NonInclusionVerificationException(
+          failed(result, "UnicitySealHashMatchesWithRootHashRule") ? Reason.UC_INVALID
+              : Reason.AUTHORITY_REJECTED,
+          "the certificate is not authenticated by the trusted authority", null);
     }
     // the end of the authority is a statement about an authenticated seal
-    if (context.hasAuthorityEndRound() && !UnsignedLongs.lessThan(
-        seal.getRootChainRoundNumber(), context.getAuthorityEndRound())) {
+    long round = uc.getUnicitySeal().getRootChainRoundNumber();
+    if (context.hasAuthorityEndRound()
+        && !UnsignedLongs.lessThan(round, context.getAuthorityEndRound())) {
       throw new NonInclusionVerificationException(Reason.AUTHORITY_REJECTED,
           "the seal is not before the end of the authority", null);
     }
+  }
+
+  private static boolean failed(VerificationResult<?> result, String rule) {
+    if (rule.equals(result.getRule()) && result.getStatus() == VerificationStatus.FAIL) {
+      return true;
+    }
+    for (VerificationResult<?> child : result.getResults()) {
+      if (failed(child, rule)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
