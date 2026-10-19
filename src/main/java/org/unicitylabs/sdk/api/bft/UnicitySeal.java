@@ -1,15 +1,5 @@
 package org.unicitylabs.sdk.api.bft;
 
-import org.unicitylabs.sdk.api.NetworkId;
-import org.unicitylabs.sdk.crypto.secp256k1.Signature;
-import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
-import org.unicitylabs.sdk.serializer.cbor.CborDeserializer.CborTag;
-import org.unicitylabs.sdk.serializer.cbor.CborSerializationException;
-import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
-import org.unicitylabs.sdk.serializer.cbor.CborSerializer.CborMap;
-import org.unicitylabs.sdk.util.HexConverter;
-import org.unicitylabs.sdk.util.UnsignedLongs;
-
 import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -19,6 +9,15 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.unicitylabs.sdk.api.NetworkId;
+import org.unicitylabs.sdk.crypto.secp256k1.Signature;
+import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
+import org.unicitylabs.sdk.serializer.cbor.CborDeserializer.CborTag;
+import org.unicitylabs.sdk.serializer.cbor.CborSerializationException;
+import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
+import org.unicitylabs.sdk.serializer.cbor.CborSerializer.CborMap;
+import org.unicitylabs.sdk.util.HexConverter;
+import org.unicitylabs.sdk.util.UnsignedLongs;
 
 /**
  * UnicitySeal represents a seal in the Unicity BFT system, containing metadata and signatures.

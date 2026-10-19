@@ -1,10 +1,9 @@
 package org.unicitylabs.sdk.api.bft.verification;
 
-import org.unicitylabs.sdk.util.verification.VerificationResult;
-import org.unicitylabs.sdk.util.verification.VerificationStatus;
-
 import java.util.List;
 import java.util.Objects;
+import org.unicitylabs.sdk.util.verification.VerificationResult;
+import org.unicitylabs.sdk.util.verification.VerificationStatus;
 
 /**
  * Verification result type for unicity certificate verification.

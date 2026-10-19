@@ -1,14 +1,13 @@
 package org.unicitylabs.sdk.api.bft;
 
-import org.unicitylabs.sdk.crypto.hash.DataHasher;
-import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
-import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.unicitylabs.sdk.crypto.hash.DataHasher;
+import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
+import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 
 /**
  * Native shard tree of one partition, reconstructed from the complete leaf set.

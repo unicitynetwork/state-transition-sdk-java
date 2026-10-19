@@ -1,11 +1,10 @@
 package org.unicitylabs.sdk.api.bft.verification;
 
+import java.util.Objects;
 import org.unicitylabs.sdk.api.InclusionProof;
 import org.unicitylabs.sdk.api.bft.PartitionViewPolicy;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.api.bft.UnicityCertificate;
-
-import java.util.Objects;
 
 /**
  * Verifies the unicity certificate of an inclusion proof: network, fixed partition, certificate

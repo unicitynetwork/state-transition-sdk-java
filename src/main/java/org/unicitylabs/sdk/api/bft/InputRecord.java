@@ -1,16 +1,15 @@
 package org.unicitylabs.sdk.api.bft;
 
+import java.math.BigInteger;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Objects;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer.CborTag;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializationException;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.util.HexConverter;
 import org.unicitylabs.sdk.util.UnsignedLongs;
-
-import java.math.BigInteger;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Objects;
 
 /**
  * Input record for UnicityCertificate.

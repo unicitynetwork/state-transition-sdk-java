@@ -1,5 +1,9 @@
 package org.unicitylabs.sdk.api.bft.verification;
 
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicLong;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.api.bft.UnicitySeal;
 import org.unicitylabs.sdk.api.bft.verification.rule.UnicitySealQuorumSignaturesVerificationRule;
@@ -11,11 +15,6 @@ import org.unicitylabs.sdk.util.HexConverter;
 import org.unicitylabs.sdk.util.UnsignedLongs;
 import org.unicitylabs.sdk.util.verification.VerificationResult;
 import org.unicitylabs.sdk.util.verification.VerificationStatus;
-
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Seal authentication under a snapshot of the caller's trust base, with a bounded memo of

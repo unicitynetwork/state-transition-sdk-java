@@ -377,11 +377,11 @@ public final class ProofConsolidator {
               "The master certificate is of another shard.", masterShard, null);
         }
 
-        long quorumBefore = session.getStats().getQuorumChecks();
+        final long quorumBefore = session.getStats().getQuorumChecks();
         Target target = viewBytes != null
             ? authenticateView(viewBytes, enclosing, masterShard)
             : authenticateDirect(enclosing, masterShard, groups.size());
-        long quorumChecks = session.getStats().getQuorumChecks() - quorumBefore;
+        final long quorumChecks = session.getStats().getQuorumChecks() - quorumBefore;
         if (!target.seal().getNetworkId().equals(bound.network)) {
           throw integrity(ConsolidationOutcome.INCOMPATIBLE_LINEAGE,
               "The master seal is of another network than the original proofs.", null, null);
@@ -812,37 +812,8 @@ public final class ProofConsolidator {
       BatchProofException batch = (BatchProofException) e;
       String detail = batch.getDetail();
       switch (batch.getKind()) {
-        case UNAVAILABLE: {
-          String d = detail == null ? "" : detail;
-          if (BatchProofException.isStateDetail(d)) {
-            // the offending request positions of this shard's batch, as positions in the token's
-            // outer history
-            List<Integer> proofIndexes = null;
-            if (batch.getIndexes() != null) {
-              proofIndexes = new ArrayList<>();
-              for (int i : batch.getIndexes()) {
-                if (i >= 0 && i < positions.size()) {
-                  proofIndexes.add(positions.get(i));
-                }
-              }
-            }
-            return new UnavailableSignal(ProofUnavailableReason.valueOf(d.toUpperCase()),
-                "state_pending".equals(d), d, proofIndexes);
-          }
-          if (d.startsWith("busy")) {
-            return new UnavailableSignal(ProofUnavailableReason.BUSY, true, d, null);
-          }
-          if (d.equals("partition_view_unavailable")) {
-            return new UnavailableSignal(ProofUnavailableReason.PARTITION_VIEW_UNAVAILABLE,
-                batch.isRetryable(), d, null);
-          }
-          if (d.equals("view_not_retained") || (d.equals("state_not_included") && !master)) {
-            return new UnavailableSignal(ProofUnavailableReason.TARGET_NOT_RETAINED,
-                batch.isRetryable(), d, null);
-          }
-          return new UnavailableSignal(ProofUnavailableReason.PENDING_PUBLICATION,
-              batch.isRetryable(), d, null);
-        }
+        case UNAVAILABLE:
+          return unavailable(batch, detail, master, positions);
         case UNSUPPORTED:
           return new UnavailableSignal("method_not_found".equals(detail)
               ? ProofUnavailableReason.UNSUPPORTED_CAPABILITY
@@ -862,6 +833,39 @@ public final class ProofConsolidator {
           return new ConsolidationException(ConsolidationException.Kind.TRANSPORT,
               batch.getMessage(), null, detail, true, shard, batch);
       }
+    }
+
+    private UnavailableSignal unavailable(BatchProofException batch, String detail,
+        boolean master, List<Integer> positions) {
+      String d = detail == null ? "" : detail;
+      if (BatchProofException.isStateDetail(d)) {
+        // the offending request positions of this shard's batch, as positions in the token's
+        // outer history
+        List<Integer> proofIndexes = null;
+        if (batch.getIndexes() != null) {
+          proofIndexes = new ArrayList<>();
+          for (int i : batch.getIndexes()) {
+            if (i >= 0 && i < positions.size()) {
+              proofIndexes.add(positions.get(i));
+            }
+          }
+        }
+        return new UnavailableSignal(ProofUnavailableReason.valueOf(d.toUpperCase()),
+            "state_pending".equals(d), d, proofIndexes);
+      }
+      if (d.startsWith("busy")) {
+        return new UnavailableSignal(ProofUnavailableReason.BUSY, true, d, null);
+      }
+      if (d.equals("partition_view_unavailable")) {
+        return new UnavailableSignal(ProofUnavailableReason.PARTITION_VIEW_UNAVAILABLE,
+            batch.isRetryable(), d, null);
+      }
+      if (d.equals("view_not_retained") || (d.equals("state_not_included") && !master)) {
+        return new UnavailableSignal(ProofUnavailableReason.TARGET_NOT_RETAINED,
+            batch.isRetryable(), d, null);
+      }
+      return new UnavailableSignal(ProofUnavailableReason.PENDING_PUBLICATION,
+          batch.isRetryable(), d, null);
     }
 
     // --- per input rules -----------------------------------------------------------------------

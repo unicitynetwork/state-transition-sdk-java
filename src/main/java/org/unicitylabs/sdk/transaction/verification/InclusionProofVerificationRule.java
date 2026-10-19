@@ -60,11 +60,12 @@ public class InclusionProofVerificationRule {
    * @return a {@code VerificationResult} object containing the {@code InclusionProofVerificationStatus}
    *         and additional details about the verification outcome
    */
-  public static VerificationResult<InclusionProofVerificationStatus> verify(RootTrustBase trustBase,
-                                                                            PredicateVerifierService predicateVerifier,
-                                                                            UnicityCertificateVerifier certificateVerifier,
-                                                                            InclusionProof inclusionProof,
-                                                                            Transaction transaction) {
+  public static VerificationResult<InclusionProofVerificationStatus> verify(
+          RootTrustBase trustBase,
+          PredicateVerifierService predicateVerifier,
+          UnicityCertificateVerifier certificateVerifier,
+          InclusionProof inclusionProof,
+          Transaction transaction) {
     CertificationData certificationData = inclusionProof.getCertificationData();
     long referenceTime = inclusionProof.getReferenceTime();
 

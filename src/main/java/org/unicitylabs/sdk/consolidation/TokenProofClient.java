@@ -23,7 +23,6 @@ import org.unicitylabs.sdk.api.bft.verification.VerificationPolicy;
 import org.unicitylabs.sdk.internal.OperationContext;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
-
 import org.unicitylabs.sdk.transaction.CertifiedTransferTransaction;
 import org.unicitylabs.sdk.transaction.Token;
 import org.unicitylabs.sdk.transaction.verification.VerificationContext;
@@ -203,7 +202,7 @@ public final class TokenProofClient {
 
     private void verifyAndPlan() {
       throwIfDone();
-      RootTrustBase trustBase = context.getTrustBase();
+      final RootTrustBase trustBase = context.getTrustBase();
       UnicityCertificateVerifier base = context.getCertificateVerifier();
       OperationUnicityCertificateVerifier operation;
       VerificationContext tokenContext;

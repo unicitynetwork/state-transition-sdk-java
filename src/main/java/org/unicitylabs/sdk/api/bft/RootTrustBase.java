@@ -6,13 +6,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
-import org.unicitylabs.sdk.api.NetworkId;
-import org.unicitylabs.sdk.serializer.UnicityObjectMapper;
-import org.unicitylabs.sdk.serializer.json.JsonSerializationException;
-import org.unicitylabs.sdk.serializer.json.UnsignedLongJson;
-import org.unicitylabs.sdk.util.HexConverter;
-import org.unicitylabs.sdk.util.UnsignedLongs;
-
 import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -22,6 +15,12 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.unicitylabs.sdk.api.NetworkId;
+import org.unicitylabs.sdk.serializer.UnicityObjectMapper;
+import org.unicitylabs.sdk.serializer.json.JsonSerializationException;
+import org.unicitylabs.sdk.serializer.json.UnsignedLongJson;
+import org.unicitylabs.sdk.util.HexConverter;
+import org.unicitylabs.sdk.util.UnsignedLongs;
 
 /**
  * Root trust base information.

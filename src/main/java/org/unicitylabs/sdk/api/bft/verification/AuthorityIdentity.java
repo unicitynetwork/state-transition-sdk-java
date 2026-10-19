@@ -1,14 +1,13 @@
 package org.unicitylabs.sdk.api.bft.verification;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.crypto.hash.DataHasher;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.util.HexConverter;
-
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
 
 /**
  * Canonical identity of everything a seal verdict depends on in a trust base: network, epoch,
