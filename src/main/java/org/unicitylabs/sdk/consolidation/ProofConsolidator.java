@@ -7,6 +7,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
@@ -673,21 +674,14 @@ public final class ProofConsolidator {
         OperationContext.Registration registration = scope.onCancel(() -> call.cancel(true));
         call.whenComplete((batch, error) -> {
           registration.remove();
-          if (error != null) {
-            out.completeExceptionally(requestFailure(error, group.endpoint.getShard(), master,
-                group.indexes));
-            return;
+          try {
+            settle(out, group, ids.size(), master, batch, error);
+          } catch (Throwable t) {
+            // whatever goes wrong while classifying a response fails the step, typed and at once
+            out.completeExceptionally(t);
           }
-          if (batch == null || batch.getProofs().size() != ids.size()) {
-            out.completeExceptionally(new ConsolidationException(
-                ConsolidationException.Kind.INVALID_RESPONSE,
-                String.format("Got %d proofs for %d states.",
-                    batch == null ? 0 : batch.getProofs().size(), ids.size()),
-                ConsolidationOutcome.INVALID_INPUT, null, false, group.endpoint.getShard(), null));
-            return;
-          }
-          out.complete(new ShardBatch(batch, group));
         });
+
         // cancelling the result of this step cancels the call
         out.whenComplete((r, e) -> {
           if (out.isCancelled()) {
@@ -699,6 +693,24 @@ public final class ProofConsolidator {
             group.indexes));
       }
       return out;
+    }
+
+    private void settle(CompletableFuture<ShardBatch> out, Group group, int expected,
+        boolean master, InclusionProofBatch batch, Throwable error) {
+      if (error != null) {
+        out.completeExceptionally(requestFailure(error, group.endpoint.getShard(), master,
+            group.indexes));
+        return;
+      }
+      if (batch == null || batch.getProofs().size() != expected) {
+        out.completeExceptionally(new ConsolidationException(
+            ConsolidationException.Kind.INVALID_RESPONSE,
+            String.format("Got %d proofs for %d states.",
+                batch == null ? 0 : batch.getProofs().size(), expected),
+            ConsolidationOutcome.INVALID_INPUT, null, false, group.endpoint.getShard(), null));
+        return;
+      }
+      out.complete(new ShardBatch(batch, group));
     }
 
     /** The wait that fits the attempt deadline, or none: {@code min(window, left - margin)}. */
@@ -849,7 +861,7 @@ public final class ProofConsolidator {
             }
           }
         }
-        return new UnavailableSignal(ProofUnavailableReason.valueOf(d.toUpperCase()),
+        return new UnavailableSignal(ProofUnavailableReason.valueOf(d.toUpperCase(Locale.ROOT)),
             "state_pending".equals(d), d, proofIndexes);
       }
       if (d.startsWith("busy")) {

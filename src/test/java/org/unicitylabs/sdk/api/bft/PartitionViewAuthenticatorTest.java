@@ -299,4 +299,53 @@ class PartitionViewAuthenticatorTest {
     assertEquals(Reason.ENCODING, assertThrows(PartitionViewException.class,
         () -> PartitionViewAuthenticator.decodeEnclosing(trailing)).getReason());
   }
+
+  @Test
+  void aSaturatedMemoAuthenticatesForTheCallerInsteadOfThrowingInternals() throws Exception {
+    TestChain.Sealed first = four();
+    TestChain.Sealed second = TestChain.seal(AUTHORITY, 7, 10, TestChain.fourShards(4, NOW));
+    SealVerificationSession session = SealVerificationSession.create(AUTHORITY.trustBase());
+    java.util.concurrent.CountDownLatch inside = new java.util.concurrent.CountDownLatch(1);
+    java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+    java.util.concurrent.atomic.AtomicBoolean firstCall = new java.util.concurrent.atomic.AtomicBoolean(true);
+    // blocks inside the first authentication, so that it stays in flight
+    org.unicitylabs.sdk.api.bft.verification.SealAuthenticator blocking =
+        new org.unicitylabs.sdk.api.bft.verification.SealAuthenticator() {
+          @Override
+          public String getIdentity() {
+            return session.getIdentity();
+          }
+
+          @Override
+          public org.unicitylabs.sdk.util.verification.VerificationResult<VerificationStatus>
+              authenticate(UnicitySeal seal) {
+            if (firstCall.getAndSet(false)) {
+              inside.countDown();
+              try {
+                release.await(10, java.util.concurrent.TimeUnit.SECONDS);
+              } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+              }
+            }
+            return session.authenticate(seal);
+          }
+        };
+    PartitionViewAuthenticator authenticator =
+        new PartitionViewAuthenticator(blocking, PartitionViewPolicy.none(), 4, 1);
+    java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newSingleThreadExecutor();
+    try {
+      java.util.concurrent.Future<AuthenticatedPartitionView> running = pool.submit(
+          () -> authenticator.authenticate(first.view, first.certificate("00")));
+      assertTrue(inside.await(10, java.util.concurrent.TimeUnit.SECONDS));
+      // the memo is full of work in flight: a different view is authenticated by this caller
+      AuthenticatedPartitionView other = authenticator.authenticate(second.view,
+          second.certificate("00"));
+      assertEquals(second.seal, other.getSeal());
+      release.countDown();
+      assertEquals(first.seal, running.get(10, java.util.concurrent.TimeUnit.SECONDS).getSeal());
+    } finally {
+      release.countDown();
+      pool.shutdownNow();
+    }
+  }
 }

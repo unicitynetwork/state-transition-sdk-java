@@ -242,10 +242,18 @@ public final class OperationUnicityCertificateVerifier extends UnicityCertificat
             CborSerializer.encodeTextString(policy.name()),
             CborSerializer.encodeByteString(certificate.toCbor())))
         .digest().getData());
-    SingleFlightMemo.Outcome<CertificateChecks.Body> outcome = bodies.get(key, () -> {
+    SingleFlightMemo.Outcome<CertificateChecks.Body> outcome;
+    try {
+      outcome = bodies.get(key, () -> {
+        bodyChecks.incrementAndGet();
+        return CertificateChecks.body(certificate);
+      });
+    } catch (SingleFlightMemo.BusyException e) {
+      // too many distinct certificates in flight to share: this caller checks for itself, nothing
+      // is shared or retained
       bodyChecks.incrementAndGet();
       return CertificateChecks.body(certificate);
-    });
+    }
     if (outcome.getSource() != SingleFlightMemo.Source.COMPUTED) {
       bodyHits.incrementAndGet();
     }

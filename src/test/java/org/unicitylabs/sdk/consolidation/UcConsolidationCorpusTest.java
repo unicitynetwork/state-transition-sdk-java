@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletionException;
 import java.util.stream.Collectors;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -192,7 +193,8 @@ class UcConsolidationCorpusTest {
     assertEquals(counters.get("leafChecks").asLong(), proofs.getCounters().getLeafChecks());
     assertEquals(counters.get("evidenceQuorumChecks").asLong(),
         proofs.getCounters().getEvidenceQuorumChecks());
-    assertTrue(proofs.getCounters().getQuorumChecks() <= counters.get("quorumChecks").asLong());
+    // exactly the quorum check of the master seal: none lost, none repeated
+    assertEquals(counters.get("quorumChecks").asLong(), proofs.getCounters().getQuorumChecks());
     int shards = expected.get("shards").size();
     assertEquals(shards, proofs.getShards());
     assertEquals(shards > 1 ? 2 : 1, proofs.getWaves());
@@ -248,16 +250,15 @@ class UcConsolidationCorpusTest {
     Case c = new Case(name);
     String stage = c.expected.get("stage").asText();
     String outcome = c.expected.get("outcome").asText();
-    JsonNode changed = c.expected.path("changedFiles");
-    // the requests are derived from the evidence in this SDK, never supplied separately
-    boolean requestsDiffer = changed.size() == 1 && "requests.json".equals(changed.get(0).asText())
-        && "consolidate".equals(stage);
-    Set<String> notApplicable = Set.of("negative/request-differs-from-evidence",
-        "negative/request-wrong-state-id", "negative/request-wrong-leaf-value",
-        "negative/rmin-unknown");
-    if (notApplicable.contains(name) || requestsDiffer) {
-      return;
-    }
+    // cases whose input does not exist in this SDK: requests are derived from the evidence, there
+    // is no way to supply them separately
+    Map<String, String> notApplicable = Map.of(
+        "negative/request-differs-from-evidence", "requests are derived from the evidence",
+        "negative/request-wrong-state-id", "requests are derived from the evidence",
+        "negative/evidence-missing-for-request",
+        "every request is derived from its own evidence, none can lack one",
+        "negative/rmin-unknown", "R_min is derived from the evidence, none cannot be asked for");
+    Assumptions.assumeFalse(notApplicable.containsKey(name), notApplicable.get(name));
 
     if ("policy".equals(stage)) {
       String observed = "ok";
@@ -286,6 +287,14 @@ class UcConsolidationCorpusTest {
 
     Observation run = execute(c);
     assertEquals(outcome, run.outcome(), () -> String.valueOf(run.failure));
+    if ("negative/rmin-master-stale".equals(name)) {
+      // evidence newer than the master seal: pending publication after the one master request
+      assertEquals(ProofUnavailableReason.PENDING_PUBLICATION,
+          run.attempt.getUnavailability().getReason());
+      assertEquals("master_round_below_required", run.attempt.getUnavailability().getDetail());
+      assertTrue(run.attempt.getUnavailability().isRetryable());
+      assertEquals(1, run.calls.size());
+    }
 
     // the aggregator's state status details are reported under their own names
     JsonNode rpc = c.expected.path("rpc");
@@ -327,5 +336,18 @@ class UcConsolidationCorpusTest {
       }
     }
     throw new IllegalArgumentException(shard);
+  }
+
+  @Test
+  void aStateStatusIsClassifiedUnderAnyDefaultLocale() throws IOException {
+    java.util.Locale saved = java.util.Locale.getDefault();
+    try {
+      java.util.Locale.setDefault(new java.util.Locale("tr", "TR"));
+      Observation run = execute(new Case("negative/rpc-master-state-pending"));
+      assertEquals(null, run.failure);
+      assertEquals(ProofUnavailableReason.STATE_PENDING, run.attempt.getUnavailability().getReason());
+    } finally {
+      java.util.Locale.setDefault(saved);
+    }
   }
 }

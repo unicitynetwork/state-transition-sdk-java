@@ -40,8 +40,7 @@ public final class PartitionViewAuthenticator {
 
   private final SealAuthenticator seals;
   private final PartitionViewPolicy policy;
-  private final SingleFlightMemo<AuthenticatedPartitionView> memo =
-      new SingleFlightMemo<>(MAX_ENTRIES, MAX_IN_FLIGHT, view -> true);
+  private final SingleFlightMemo<AuthenticatedPartitionView> memo;
   private final AtomicLong authentications = new AtomicLong();
   private final AtomicLong memoHits = new AtomicLong();
 
@@ -53,6 +52,12 @@ public final class PartitionViewAuthenticator {
    * @throws PartitionViewException if the policy is not consistent
    */
   public PartitionViewAuthenticator(SealAuthenticator seals, PartitionViewPolicy policy) {
+    this(seals, policy, MAX_ENTRIES, MAX_IN_FLIGHT);
+  }
+
+  PartitionViewAuthenticator(SealAuthenticator seals, PartitionViewPolicy policy, int maxEntries,
+      int maxInFlight) {
+    this.memo = new SingleFlightMemo<>(maxEntries, maxInFlight, view -> true);
     this.seals = Objects.requireNonNull(seals, "seals cannot be null");
     this.policy = Objects.requireNonNull(policy, "policy cannot be null");
     policy.getIdentity();
@@ -106,8 +111,13 @@ public final class PartitionViewAuthenticator {
             CborSerializer.encodeByteString(viewBytes),
             CborSerializer.encodeByteString(enclosingBytes)))
         .digest().getData());
-    SingleFlightMemo.Outcome<AuthenticatedPartitionView> outcome =
-        memo.get(key, () -> run(view, enclosing));
+    SingleFlightMemo.Outcome<AuthenticatedPartitionView> outcome;
+    try {
+      outcome = memo.get(key, () -> run(view, enclosing));
+    } catch (SingleFlightMemo.BusyException e) {
+      // too many distinct authentications in flight to share: this caller authenticates for itself
+      return run(view, enclosing);
+    }
     if (outcome.getSource() != SingleFlightMemo.Source.COMPUTED) {
       memoHits.incrementAndGet();
     }
