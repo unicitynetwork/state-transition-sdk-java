@@ -54,6 +54,15 @@ public class ShardTreeCertificate {
   }
 
   /**
+   * Number of sibling hashes, without copying them.
+   *
+   * @return sibling count
+   */
+  public int getSiblingHashCount() {
+    return this.siblingHashList.size();
+  }
+
+  /**
    * Deserialize shard tree certificate from CBOR bytes.
    *
    * @param bytes CBOR bytes
@@ -105,18 +114,30 @@ public class ShardTreeCertificate {
       return false;
     }
     ShardTreeCertificate that = (ShardTreeCertificate) o;
-    return Objects.deepEquals(this.shard, that.shard)
-            && Objects.equals(this.siblingHashList, that.siblingHashList);
+    if (!Objects.equals(this.shard, that.shard)
+            || this.siblingHashList.size() != that.siblingHashList.size()) {
+      return false;
+    }
+    for (int i = 0; i < this.siblingHashList.size(); i++) {
+      if (!Arrays.equals(this.siblingHashList.get(i), that.siblingHashList.get(i))) {
+        return false;
+      }
+    }
+    return true;
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(this.shard, this.siblingHashList);
+    int result = Objects.hashCode(this.shard);
+    for (byte[] hash : this.siblingHashList) {
+      result = 31 * result + Arrays.hashCode(hash);
+    }
+    return result;
   }
 
   @Override
   public String toString() {
-    return String.format("ShardTreeCertificate{shard=%s, siblingHashList=%s}",
-            this.shard, this.siblingHashList);
+    return String.format("ShardTreeCertificate{shard=%s, siblingHashes=%s}",
+            this.shard, this.siblingHashList.size());
   }
 }

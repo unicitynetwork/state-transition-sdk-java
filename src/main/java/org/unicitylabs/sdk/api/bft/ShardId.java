@@ -5,7 +5,13 @@ import org.unicitylabs.sdk.serializer.cbor.CborSerializationException;
 import java.util.Arrays;
 import java.util.Objects;
 
+/**
+ * Shard identifier: a bit string of at most 256 bits in a view, encoded with a trailing end marker
+ * bit. Equality is by bits and length.
+ */
 public class ShardId {
+
+  private static final ShardId EMPTY = new ShardId(new byte[0], 0);
 
   private final byte[] bits;
   private final int length;
@@ -13,6 +19,48 @@ public class ShardId {
   private ShardId(byte[] bits, int length) {
     this.bits = Arrays.copyOf(bits, bits.length);
     this.length = length;
+  }
+
+  /**
+   * The empty shard id, the only shard of an unsharded partition (encoded {@code 80}).
+   *
+   * @return the empty shard id
+   */
+  public static ShardId empty() {
+    return EMPTY;
+  }
+
+  /**
+   * Builds a shard id from its bit string, for example {@code "01"}; the empty string is
+   * {@link #empty()}.
+   *
+   * @param bitString characters {@code 0} and {@code 1}
+   * @return shard id
+   * @throws IllegalArgumentException if the string holds another character
+   */
+  public static ShardId fromBitString(String bitString) {
+    if (bitString.isEmpty()) {
+      return EMPTY;
+    }
+    byte[] bytes = new byte[(bitString.length() + 7) / 8];
+    for (int i = 0; i < bitString.length(); i++) {
+      char c = bitString.charAt(i);
+      if (c == '1') {
+        bytes[i / 8] |= (byte) (0x80 >> (i % 8));
+      } else if (c != '0') {
+        throw new IllegalArgumentException("A shard id bit string holds only 0 and 1.");
+      }
+    }
+    return new ShardId(bytes, bitString.length());
+  }
+
+  /**
+   * Whether this is the empty shard id.
+   *
+   * @return true for the empty shard id
+   */
+  public boolean isEmpty() {
+    return this.length == 0;
   }
 
   public byte[] getBits() {
@@ -70,6 +118,44 @@ public class ShardId {
       throw new IndexOutOfBoundsException("ShardId bit index out of bounds");
     }
     return ((this.bits[index / 8] & 0xff) >> (7 - (index % 8))) & 1;
+  }
+
+  /**
+   * Tells whether this shard id is a bit prefix of another shard id (every id is a prefix of
+   * itself, the empty id of all).
+   *
+   * @param other the longer or equal id
+   * @return true if the first {@code getLength()} bits of {@code other} equal this id
+   */
+  public boolean isPrefixOf(ShardId other) {
+    return this.length <= other.length && this.isPrefixOf(other.bits);
+  }
+
+  /**
+   * Compares two shard ids in binary tree left-to-right order: lexicographic over the bits with
+   * {@code 0} before {@code 1}, a prefix before the longer ids it prefixes.
+   *
+   * @param a first id
+   * @param b second id
+   * @return negative, zero or positive as {@code a} sorts before, equal to or after {@code b}
+   */
+  public static int compareTreeOrder(ShardId a, ShardId b) {
+    int common = Math.min(a.length, b.length);
+    for (int i = 0; i < common / 8; i++) {
+      int diff = (a.bits[i] & 0xff) - (b.bits[i] & 0xff);
+      if (diff != 0) {
+        return diff;
+      }
+    }
+    int rest = common % 8;
+    if (rest > 0) {
+      int mask = 0xff & (0xff << (8 - rest));
+      int diff = (a.bits[common / 8] & mask) - (b.bits[common / 8] & mask);
+      if (diff != 0) {
+        return diff;
+      }
+    }
+    return Integer.compare(a.length, b.length);
   }
 
   public boolean isPrefixOf(byte[] data) {

@@ -8,8 +8,16 @@ import org.unicitylabs.sdk.serializer.cbor.CborSerializationException;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer.CborMap;
 import org.unicitylabs.sdk.util.HexConverter;
+import org.unicitylabs.sdk.util.UnsignedLongs;
 
-import java.util.*;
+import java.math.BigInteger;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -25,7 +33,10 @@ public class UnicitySeal {
   private final long timestamp;
   private final byte[] previousHash; // nullable
   private final byte[] hash;
-  private final Set<SignatureEntry> signatures;
+  // signer id to the witness exactly as received; null when the seal carries no signature map. A
+  // witness that is not a valid 65-byte signature is kept (it is part of every memo key and of the
+  // re-encoding) but never counts as a vote.
+  private final Map<String, byte[]> witnesses;
 
   UnicitySeal(
           NetworkId networkId,
@@ -36,17 +47,53 @@ public class UnicitySeal {
           byte[] hash,
           Set<SignatureEntry> signatures
   ) {
+    this(networkId, rootChainRoundNumber, epoch, timestamp, previousHash, hash,
+            toWitnesses(signatures));
+  }
+
+  private UnicitySeal(
+          NetworkId networkId,
+          long rootChainRoundNumber,
+          long epoch,
+          long timestamp,
+          byte[] previousHash,
+          byte[] hash,
+          Map<String, byte[]> witnesses
+  ) {
     Objects.requireNonNull(hash, "Hash cannot be null");
 
     this.networkId = networkId;
     this.rootChainRoundNumber = rootChainRoundNumber;
     this.epoch = epoch;
     this.timestamp = timestamp;
-    this.previousHash = previousHash;
-    this.hash = hash;
-    this.signatures = signatures == null
-            ? null
-            : Set.copyOf(signatures);
+    this.previousHash = previousHash != null ? Arrays.copyOf(previousHash, previousHash.length)
+            : null;
+    this.hash = Arrays.copyOf(hash, hash.length);
+    if (witnesses == null) {
+      this.witnesses = null;
+    } else {
+      Map<String, byte[]> copy = new LinkedHashMap<>();
+      for (Map.Entry<String, byte[]> entry : witnesses.entrySet()) {
+        copy.put(
+                Objects.requireNonNull(entry.getKey(), "Signer id cannot be null"),
+                Arrays.copyOf(entry.getValue(), entry.getValue().length)
+        );
+      }
+      this.witnesses = copy;
+    }
+  }
+
+  private static Map<String, byte[]> toWitnesses(Set<SignatureEntry> signatures) {
+    if (signatures == null) {
+      return null;
+    }
+    Map<String, byte[]> result = new LinkedHashMap<>();
+    for (SignatureEntry entry : signatures) {
+      Objects.requireNonNull(entry, "Signature entry cannot be null");
+      Objects.requireNonNull(entry.getSignature(), "Signature cannot be null");
+      result.put(entry.getKey(), entry.getSignature().encode());
+    }
+    return result;
   }
 
   /**
@@ -81,30 +128,85 @@ public class UnicitySeal {
   }
 
   /**
-   * Get the root chain round number.
+   * Get the root chain round number as unsigned 64-bit bits: a value of 2^63 or above reads as a
+   * negative {@code long}. See {@link #getRootChainRoundNumberUnsigned()}.
    *
-   * @return root chain round number
+   * @return root chain round number bits
    */
   public long getRootChainRoundNumber() {
     return this.rootChainRoundNumber;
   }
 
   /**
-   * Get the epoch.
+   * Get the root chain round number as a non-negative integer.
    *
-   * @return epoch
+   * @return root chain round number
+   */
+  public BigInteger getRootChainRoundNumberUnsigned() {
+    return UnsignedLongs.toBigInteger(this.rootChainRoundNumber);
+  }
+
+  /**
+   * Get the root chain round number in unsigned decimal.
+   *
+   * @return root chain round number
+   */
+  public String getRootChainRoundNumberDecimal() {
+    return UnsignedLongs.toDecimal(this.rootChainRoundNumber);
+  }
+
+  /**
+   * Get the epoch as unsigned 64-bit bits. See {@link #getEpochUnsigned()}.
+   *
+   * @return epoch bits
    */
   public long getEpoch() {
     return this.epoch;
   }
 
   /**
-   * Get the timestamp.
+   * Get the epoch as a non-negative integer.
    *
-   * @return timestamp
+   * @return epoch
+   */
+  public BigInteger getEpochUnsigned() {
+    return UnsignedLongs.toBigInteger(this.epoch);
+  }
+
+  /**
+   * Get the epoch in unsigned decimal.
+   *
+   * @return epoch
+   */
+  public String getEpochDecimal() {
+    return UnsignedLongs.toDecimal(this.epoch);
+  }
+
+  /**
+   * Get the timestamp (Unix seconds) as unsigned 64-bit bits. See {@link #getTimestampUnsigned()}.
+   *
+   * @return timestamp bits
    */
   public long getTimestamp() {
     return this.timestamp;
+  }
+
+  /**
+   * Get the timestamp as a non-negative integer.
+   *
+   * @return timestamp
+   */
+  public BigInteger getTimestampUnsigned() {
+    return UnsignedLongs.toBigInteger(this.timestamp);
+  }
+
+  /**
+   * Get the timestamp in unsigned decimal.
+   *
+   * @return timestamp
+   */
+  public String getTimestampDecimal() {
+    return UnsignedLongs.toDecimal(this.timestamp);
   }
 
   /**
@@ -127,12 +229,44 @@ public class UnicitySeal {
   }
 
   /**
-   * Get the signatures.
+   * Get the well-formed signatures (65 bytes, recovery id 0..3). A carried witness that is not
+   * well-formed is not listed here: it stays in the seal, is re-encoded and hashed unchanged, and
+   * never counts as a vote. See {@link #getWitnesses()} for every witness as received.
    *
-   * @return signatures
+   * @return signatures, or null if the seal carries no signature map
    */
   public Set<SignatureEntry> getSignatures() {
-    return this.signatures;
+    if (this.witnesses == null) {
+      return null;
+    }
+    Set<SignatureEntry> result = new LinkedHashSet<>();
+    for (Map.Entry<String, byte[]> entry : this.witnesses.entrySet()) {
+      try {
+        result.add(new SignatureEntry(entry.getKey(), Signature.decode(entry.getValue())));
+      } catch (IllegalArgumentException e) {
+        // malformed witness: carried, never counted
+      }
+    }
+    return Set.copyOf(result);
+  }
+
+  /**
+   * Get every signature witness exactly as received, the byte string of each map entry, well-formed
+   * or not. The quorum rule decodes each one strictly and counts a malformed one as zero votes, as
+   * the Go and Rust clients do.
+   *
+   * @return signer id to witness copies in encoding order, or null if the seal carries no
+   *     signature map
+   */
+  public Map<String, byte[]> getWitnesses() {
+    if (this.witnesses == null) {
+      return null;
+    }
+    Map<String, byte[]> copy = new LinkedHashMap<>();
+    for (Map.Entry<String, byte[]> entry : this.witnesses.entrySet()) {
+      copy.put(entry.getKey(), Arrays.copyOf(entry.getValue(), entry.getValue().length));
+    }
+    return copy;
   }
 
   /**
@@ -153,19 +287,32 @@ public class UnicitySeal {
       throw new CborSerializationException(String.format("Unsupported version: %s", version));
     }
 
+    NetworkId networkId;
+    try {
+      networkId = NetworkId.fromId(CborDeserializer.decodeUnsignedInteger(data.get(1)).asShort());
+    } catch (IllegalArgumentException e) {
+      throw new CborSerializationException("Invalid network identifier.", e);
+    }
+
+    Map<String, byte[]> witnesses = CborDeserializer.decodeNullable(data.get(7), map -> {
+      Map<String, byte[]> result = new LinkedHashMap<>();
+      for (CborMap.Entry entry : CborDeserializer.decodeMap(map)) {
+        String signer = CborDeserializer.decodeTextString(entry.getKey());
+        if (result.put(signer, CborDeserializer.decodeByteString(entry.getValue())) != null) {
+          throw new CborSerializationException("Duplicate signer id in seal signatures.");
+        }
+      }
+      return result;
+    });
+
     return new UnicitySeal(
-            NetworkId.fromId(CborDeserializer.decodeUnsignedInteger(data.get(1)).asShort()),
+            networkId,
             CborDeserializer.decodeUnsignedInteger(data.get(2)).asLong(),
             CborDeserializer.decodeUnsignedInteger(data.get(3)).asLong(),
             CborDeserializer.decodeUnsignedInteger(data.get(4)).asLong(),
             CborDeserializer.decodeNullable(data.get(5), CborDeserializer::decodeByteString),
             CborDeserializer.decodeByteString(data.get(6)),
-            CborDeserializer.decodeMap(data.get(7)).stream()
-                    .map(entry -> new SignatureEntry(
-                            CborDeserializer.decodeTextString(entry.getKey()),
-                            Signature.fromCbor(entry.getValue())
-                    ))
-                    .collect(Collectors.toSet())
+            witnesses
     );
   }
 
@@ -186,13 +333,13 @@ public class UnicitySeal {
                     CborSerializer.encodeNullable(this.previousHash, CborSerializer::encodeByteString),
                     CborSerializer.encodeByteString(this.hash),
                     CborSerializer.encodeNullable(
-                            this.signatures,
+                            this.witnesses,
                             (signatures) -> CborSerializer.encodeMap(
                                     new CborMap(
-                                            signatures.stream()
+                                            signatures.entrySet().stream()
                                                     .map(entry -> new CborMap.Entry(
                                                                     CborSerializer.encodeTextString(entry.getKey()),
-                                                                    entry.getSignature().toCbor()
+                                                                    CborSerializer.encodeByteString(entry.getValue())
                                                             )
                                                     )
                                                     .collect(Collectors.toSet())
@@ -216,7 +363,7 @@ public class UnicitySeal {
             this.timestamp,
             this.previousHash,
             this.hash,
-            null
+            (Map<String, byte[]>) null
     ).toCbor();
   }
 
@@ -232,28 +379,55 @@ public class UnicitySeal {
             && Objects.equals(this.timestamp, that.timestamp)
             && Objects.deepEquals(this.previousHash, that.previousHash)
             && Objects.deepEquals(this.hash, that.hash)
-            && Objects.equals(this.signatures, that.signatures);
+            && witnessesEqual(this.witnesses, that.witnesses);
+  }
+
+  private static boolean witnessesEqual(Map<String, byte[]> a, Map<String, byte[]> b) {
+    if (a == null || b == null) {
+      return a == b;
+    }
+    if (!a.keySet().equals(b.keySet())) {
+      return false;
+    }
+    for (Map.Entry<String, byte[]> entry : a.entrySet()) {
+      if (!Arrays.equals(entry.getValue(), b.get(entry.getKey()))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private static int witnessesHash(Map<String, byte[]> witnesses) {
+    if (witnesses == null) {
+      return 0;
+    }
+    int result = 1;
+    for (Map.Entry<String, byte[]> entry : witnesses.entrySet()) {
+      result += entry.getKey().hashCode() ^ Arrays.hashCode(entry.getValue());
+    }
+    return result;
   }
 
   @Override
   public int hashCode() {
     return Objects.hash(this.networkId, this.rootChainRoundNumber, this.epoch,
             this.timestamp,
-            Arrays.hashCode(this.previousHash), Arrays.hashCode(this.hash), this.signatures);
+            Arrays.hashCode(this.previousHash), Arrays.hashCode(this.hash),
+            witnessesHash(this.witnesses));
   }
 
   @Override
   public String toString() {
     return String.format(
             "UnicitySeal{networkId=%s, rootChainRoundNumber=%s, epoch=%s, timestamp=%s, "
-                    + "previousHash=%s, hash=%s, signatures=%s",
+                    + "previousHash=%s, hash=%s, signers=%s}",
             this.networkId,
-            this.rootChainRoundNumber,
-            this.epoch,
-            this.timestamp,
+            this.getRootChainRoundNumberDecimal(),
+            this.getEpochDecimal(),
+            this.getTimestampDecimal(),
             this.previousHash != null ? HexConverter.encode(this.previousHash) : null,
             HexConverter.encode(this.hash),
-            this.signatures.stream().map(SignatureEntry::toString).collect(Collectors.toList())
+            this.witnesses != null ? this.witnesses.keySet() : null
     );
   }
 

@@ -6,7 +6,7 @@ import org.unicitylabs.sdk.api.InclusionProof;
 import org.unicitylabs.sdk.api.LeafValue;
 import org.unicitylabs.sdk.api.StateId;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
-import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerification;
+import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerifier;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
@@ -43,6 +43,28 @@ public class InclusionProofVerificationRule {
   public static VerificationResult<InclusionProofVerificationStatus> verify(RootTrustBase trustBase,
                                                                             PredicateVerifierService predicateVerifier, InclusionProof inclusionProof,
                                                                             Transaction transaction) {
+    return verify(trustBase, predicateVerifier, new UnicityCertificateVerifier(), inclusionProof,
+            transaction);
+  }
+
+  /**
+   * Verifies the provided inclusion proof with an explicit certificate verifier, so that the work
+   * of an operation (certificate bodies, seals) is shared between proofs.
+   *
+   * @param trustBase the root trust base used to validate the inclusion proof
+   * @param predicateVerifier the service responsible for evaluating transaction predicates
+   * @param certificateVerifier verifier of the unicity certificate, typically an operation verifier
+   * @param inclusionProof the inclusion proof containing certification data and merkle tree path
+   * @param transaction the transaction that is being verified against the proof
+   *
+   * @return a {@code VerificationResult} object containing the {@code InclusionProofVerificationStatus}
+   *         and additional details about the verification outcome
+   */
+  public static VerificationResult<InclusionProofVerificationStatus> verify(RootTrustBase trustBase,
+                                                                            PredicateVerifierService predicateVerifier,
+                                                                            UnicityCertificateVerifier certificateVerifier,
+                                                                            InclusionProof inclusionProof,
+                                                                            Transaction transaction) {
     CertificationData certificationData = inclusionProof.getCertificationData();
     long referenceTime = inclusionProof.getReferenceTime();
 
@@ -78,7 +100,11 @@ public class InclusionProofVerificationRule {
 
     StateId stateId = StateId.fromTransaction(transaction);
     DataHash leafValue = LeafValue.calculate(certificationData.getTransactionHash(), referenceTime);
-    if (!inclusionProof.getInclusionCertificate().verify(stateId, leafValue, new DataHash(HashAlgorithm.SHA256, inclusionProof.getUnicityCertificate().getInputRecord().getHash()))) {
+    // a null root is the certified empty tree: no inclusion path can lead to it
+    byte[] stateRoot = inclusionProof.getUnicityCertificate().getInputRecord().getHash();
+    if (stateRoot == null
+            || !inclusionProof.getInclusionCertificate().verify(
+                    stateId, leafValue, new DataHash(HashAlgorithm.SHA256, stateRoot))) {
       return new VerificationResult<>("InclusionProofVerificationRule",
               InclusionProofVerificationStatus.PATH_INVALID);
     }
@@ -96,7 +122,7 @@ public class InclusionProofVerificationRule {
       );
     }
 
-    result = UnicityCertificateVerification.verify(trustBase, inclusionProof);
+    result = certificateVerifier.verify(trustBase, inclusionProof);
     if (result.getStatus() != VerificationStatus.OK) {
       return new VerificationResult<>(
               "InclusionProofVerificationRule",

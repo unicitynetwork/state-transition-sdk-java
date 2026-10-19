@@ -191,8 +191,10 @@ public final class Token {
    * @param context shared verification context (trust base + registries)
    * @return verification result with a child result per verified token
    */
-  public VerificationResult<VerificationStatus> verify(VerificationContext context) {
-    Objects.requireNonNull(context, "context cannot be null");
+  public VerificationResult<VerificationStatus> verify(VerificationContext verificationContext) {
+    Objects.requireNonNull(verificationContext, "context cannot be null");
+    // one operation spans the token and every nested token
+    VerificationContext context = verificationContext.forOperation();
 
     ArrayDeque<Token> pending = new ArrayDeque<>();
     pending.add(this);

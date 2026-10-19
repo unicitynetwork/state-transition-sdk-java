@@ -5,8 +5,11 @@ import org.unicitylabs.sdk.api.bft.PartitionViewPolicy;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.api.bft.UnicityCertificate;
 
+import java.util.Objects;
+
 /**
- * Verifies the unicity certificate of an inclusion proof: network, certificate body and seal.
+ * Verifies the unicity certificate of an inclusion proof: network, fixed partition, certificate
+ * body and seal.
  *
  * <p>The plain verifier is stateless and delegates to the existing static
  * {@link UnicityCertificateVerification}, so existing callers keep their behavior. An operation
@@ -60,6 +63,11 @@ public class UnicityCertificateVerifier {
    */
   public UnicityCertificateVerifier beginOperation(VerificationPolicy policy,
       PartitionViewPolicy pins) {
-    throw new UnsupportedOperationException("Implemented by package A");
+    Objects.requireNonNull(policy, "policy cannot be null");
+    if (getClass() != UnicityCertificateVerifier.class) {
+      return this;
+    }
+    return OperationUnicityCertificateVerifier.start(policy,
+        pins == null ? PartitionViewPolicy.none() : pins);
   }
 }

@@ -1,15 +1,19 @@
 package org.unicitylabs.sdk.api.bft;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import org.unicitylabs.sdk.api.NetworkId;
 import org.unicitylabs.sdk.serializer.UnicityObjectMapper;
 import org.unicitylabs.sdk.serializer.json.JsonSerializationException;
-import org.unicitylabs.sdk.serializer.json.LongAsStringSerializer;
+import org.unicitylabs.sdk.serializer.json.UnsignedLongJson;
 import org.unicitylabs.sdk.util.HexConverter;
+import org.unicitylabs.sdk.util.UnsignedLongs;
 
+import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -38,12 +42,16 @@ public class RootTrustBase {
 
   @JsonCreator
   RootTrustBase(
-          @JsonProperty("version") long version,
+          @JsonProperty("version")
+          @JsonDeserialize(using = UnsignedLongJson.Deserializer.class) long version,
           @JsonProperty("networkId") NetworkId networkId,
-          @JsonProperty("epoch") long epoch,
-          @JsonProperty("epochStartRound") long epochStartRound,
+          @JsonProperty("epoch")
+          @JsonDeserialize(using = UnsignedLongJson.Deserializer.class) long epoch,
+          @JsonProperty("epochStartRound")
+          @JsonDeserialize(using = UnsignedLongJson.Deserializer.class) long epochStartRound,
           @JsonProperty("rootNodes") List<NodeInfo> rootNodes,
-          @JsonProperty("quorumThreshold") long quorumThreshold,
+          @JsonProperty("quorumThreshold")
+          @JsonDeserialize(using = UnsignedLongJson.Deserializer.class) long quorumThreshold,
           @JsonProperty("stateHash") byte[] stateHash,
           @JsonProperty("changeRecordHash") byte[] changeRecordHash,
           @JsonProperty("previousEntryHash") byte[] previousEntryHash,
@@ -51,7 +59,7 @@ public class RootTrustBase {
   ) {
     if (version != RootTrustBase.VERSION) {
       throw new IllegalArgumentException(
-              String.format("Unsupported RootTrustBase version: %s", version));
+              String.format("Unsupported RootTrustBase version: %s", UnsignedLongs.toDecimal(version)));
     }
 
     Objects.requireNonNull(rootNodes, "rootNodes cannot be null");
@@ -73,7 +81,7 @@ public class RootTrustBase {
       throw new IllegalArgumentException("Trust base must contain at least one root node.");
     }
 
-    if (quorumThreshold < 1 || quorumThreshold > nodes.size()) {
+    if (quorumThreshold == 0 || UnsignedLongs.compare(quorumThreshold, nodes.size()) > 0) {
       throw new IllegalArgumentException(
               "Trust base quorum threshold must be between 1 and the root node count.");
     }
@@ -102,7 +110,7 @@ public class RootTrustBase {
    *
    * @return version
    */
-  @JsonSerialize(using = LongAsStringSerializer.class)
+  @JsonSerialize(using = UnsignedLongJson.Serializer.class)
   public long getVersion() {
     return RootTrustBase.VERSION;
   }
@@ -117,23 +125,44 @@ public class RootTrustBase {
   }
 
   /**
-   * Get current epoch.
+   * Get current epoch as unsigned 64-bit bits (2^63 or above reads as a negative {@code long}).
+   * See {@link #getEpochUnsigned()}.
    *
-   * @return epoch
+   * @return epoch bits
    */
-  @JsonSerialize(using = LongAsStringSerializer.class)
+  @JsonSerialize(using = UnsignedLongJson.Serializer.class)
   public long getEpoch() {
     return this.epoch;
   }
 
   /**
-   * Get epoch start round.
+   * Get epoch start round as unsigned 64-bit bits. See {@link #getEpochStartRoundUnsigned()}.
+   *
+   * @return epoch start round bits
+   */
+  @JsonSerialize(using = UnsignedLongJson.Serializer.class)
+  public long getEpochStartRound() {
+    return this.epochStartRound;
+  }
+
+  /**
+   * Get current epoch as a non-negative integer.
+   *
+   * @return epoch
+   */
+  @JsonIgnore
+  public BigInteger getEpochUnsigned() {
+    return UnsignedLongs.toBigInteger(this.epoch);
+  }
+
+  /**
+   * Get epoch start round as a non-negative integer.
    *
    * @return epoch start round
    */
-  @JsonSerialize(using = LongAsStringSerializer.class)
-  public long getEpochStartRound() {
-    return this.epochStartRound;
+  @JsonIgnore
+  public BigInteger getEpochStartRoundUnsigned() {
+    return UnsignedLongs.toBigInteger(this.epochStartRound);
   }
 
   /**
@@ -160,7 +189,7 @@ public class RootTrustBase {
    *
    * @return quorum threshold
    */
-  @JsonSerialize(using = LongAsStringSerializer.class)
+  @JsonSerialize(using = UnsignedLongJson.Serializer.class)
   public long getQuorumThreshold() {
     return this.quorumThreshold;
   }
@@ -251,11 +280,12 @@ public class RootTrustBase {
     NodeInfo(
             @JsonProperty("nodeId") String nodeId,
             @JsonProperty("sigKey") byte[] signingKey,
-            @JsonProperty("stake") long stakedAmount
+            @JsonProperty("stake")
+            @JsonDeserialize(using = UnsignedLongJson.Deserializer.class) long stakedAmount
     ) {
       Objects.requireNonNull(nodeId, "Node id cannot be null");
       Objects.requireNonNull(signingKey, "Node signing key cannot be null");
-      if (stakedAmount <= 0) {
+      if (stakedAmount == 0) {
         throw new IllegalArgumentException("Each trust base root node must have positive stake.");
       }
 
@@ -284,14 +314,24 @@ public class RootTrustBase {
     }
 
     /**
-     * Get staked amount.
+     * Get the staked amount as unsigned 64-bit bits. See {@link #getStakedAmountUnsigned()}.
+     *
+     * @return staked amount bits
+     */
+    @JsonProperty("stake")
+    @JsonSerialize(using = UnsignedLongJson.Serializer.class)
+    public long getStakedAmount() {
+      return this.stakedAmount;
+    }
+
+    /**
+     * Get the staked amount as a non-negative integer.
      *
      * @return staked amount
      */
-    @JsonProperty("stake")
-    @JsonSerialize(using = LongAsStringSerializer.class)
-    public long getStakedAmount() {
-      return this.stakedAmount;
+    @JsonIgnore
+    public BigInteger getStakedAmountUnsigned() {
+      return UnsignedLongs.toBigInteger(this.stakedAmount);
     }
 
     @Override

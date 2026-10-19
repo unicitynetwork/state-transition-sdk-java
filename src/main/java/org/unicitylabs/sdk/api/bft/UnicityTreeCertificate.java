@@ -27,7 +27,7 @@ public class UnicityTreeCertificate {
     Objects.requireNonNull(steps, "Steps cannot be null");
 
     this.partitionIdentifier = partitionIdentifier;
-    this.steps = List.copyOf(steps);
+    this.steps = List.copyOf(steps); // rejects null steps
   }
 
   /**
@@ -40,12 +40,23 @@ public class UnicityTreeCertificate {
   }
 
   /**
-   * Get partition identifier.
+   * Get partition identifier as the raw bits of the unsigned 32-bit wire value: an identifier of
+   * 2^31 or above reads as a negative {@code int}. Use {@link #getPartitionIdentifierUnsigned()}
+   * for the number; comparing this value with a partition constant is wrong in general.
    *
-   * @return partition identifier
+   * @return partition identifier bits
    */
   public int getPartitionIdentifier() {
     return this.partitionIdentifier;
+  }
+
+  /**
+   * Get partition identifier as the unsigned 32-bit number it is on the wire (0..2^32-1).
+   *
+   * @return partition identifier
+   */
+  public long getPartitionIdentifierUnsigned() {
+    return Integer.toUnsignedLong(this.partitionIdentifier);
   }
 
   /**
@@ -117,7 +128,8 @@ public class UnicityTreeCertificate {
 
   @Override
   public String toString() {
-    return String.format("UnicityTreeCertificate{partitionIdentifier=%s, steps=%s", this.partitionIdentifier, this.steps);
+    return String.format("UnicityTreeCertificate{partitionIdentifier=%s, steps=%s}",
+            this.getPartitionIdentifierUnsigned(), this.steps);
   }
 
   /**
@@ -136,12 +148,22 @@ public class UnicityTreeCertificate {
     }
 
     /**
-     * Get key.
+     * Get key as the raw bits of the unsigned 32-bit wire value: a key of 2^31 or above reads as a
+     * negative {@code int}. Use {@link #getKeyUnsigned()} for the number.
      *
-     * @return key
+     * @return key bits
      */
     public int getKey() {
       return this.key;
+    }
+
+    /**
+     * Get key as the unsigned 32-bit number it is on the wire (0..2^32-1).
+     *
+     * @return key
+     */
+    public long getKeyUnsigned() {
+      return Integer.toUnsignedLong(this.key);
     }
 
     /**
@@ -197,8 +219,8 @@ public class UnicityTreeCertificate {
 
     @Override
     public String toString() {
-      return String.format("UnicityTreeCertificate.HashStep{key=%s, hash=%s",
-              this.key, HexConverter.encode(this.hash));
+      return String.format("UnicityTreeCertificate.HashStep{key=%s, hash=%s}",
+              this.getKeyUnsigned(), HexConverter.encode(this.hash));
     }
   }
 }

@@ -9,6 +9,7 @@ import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
@@ -65,10 +66,15 @@ public class UnicityCertificateUtils {
             0,
             new byte[10]
     );
-    UnicityTreeCertificate unicityTreeCertificate = new UnicityTreeCertificate(0, List.of());
+    UnicityTreeCertificate unicityTreeCertificate = new UnicityTreeCertificate(7, List.of());
     byte[] technicalRecordHash = new byte[32];
     byte[] shardConfigurationHash = new byte[32];
-    ShardTreeCertificate shardTreeCertificate = new ShardTreeCertificate(shardId, List.of());
+    // a shard path has exactly one sibling per bit of the shard id
+    List<byte[]> siblings = new ArrayList<>();
+    for (int i = 0; i < shardId.getLength(); i++) {
+      siblings.add(new byte[32]);
+    }
+    ShardTreeCertificate shardTreeCertificate = new ShardTreeCertificate(shardId, siblings);
 
     DataHash shardTreeCertificateRootHash = UnicityCertificate.calculateShardTreeCertificateRootHash(
             inputRecord,
@@ -101,9 +107,9 @@ public class UnicityCertificateUtils {
 
     UnicitySeal seal = new UnicitySeal(
             NetworkId.LOCAL,
+            1L,
             0L,
-            0L,
-            0L,
+            timestamp,
             null,
             unicitySealHash.getData(),
             null
@@ -115,7 +121,7 @@ public class UnicityCertificateUtils {
             technicalRecordHash,
             shardConfigurationHash,
             shardTreeCertificate,
-            new UnicityTreeCertificate(0, List.of()),
+            new UnicityTreeCertificate(7, List.of()),
             seal.withSignatures(
                     Set.of(
                             new UnicitySeal.SignatureEntry(

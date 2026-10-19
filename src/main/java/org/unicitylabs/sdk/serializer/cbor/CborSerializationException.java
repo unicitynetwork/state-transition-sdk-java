@@ -13,4 +13,14 @@ public class CborSerializationException extends RuntimeException {
   public CborSerializationException(String message) {
     super(message);
   }
+
+  /**
+   * Create CBOR serialization exception with its cause.
+   *
+   * @param message error message
+   * @param cause underlying failure
+   */
+  public CborSerializationException(String message, Throwable cause) {
+    super(message, cause);
+  }
 }
