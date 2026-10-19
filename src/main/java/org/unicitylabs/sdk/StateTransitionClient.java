@@ -139,8 +139,8 @@ public class StateTransitionClient {
     }
     return CompletableFuture.failedFuture(new BatchProofException(
         BatchProofException.Kind.UNSUPPORTED,
-        "The aggregator client does not support batch inclusion proofs.", null, null,
-        "no_batch_capability", null, 0, false, null));
+        "The aggregator client does not support batch inclusion proofs.", "no_batch_capability",
+        false));
   }
 
   /**

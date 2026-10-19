@@ -17,7 +17,6 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -42,8 +41,6 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
   private static final String STATE_ID_HEADER = "X-State-ID";
   /** Longest hex string of a non-inclusion proof: 128 KiB of proof, plus the prefix room. */
   private static final int MAX_NON_INCLUSION_HEX = 128 * 1024 * 2 + 2;
-  private static final String[] BATCH_INDEX_CLASSES = {"expired", "not_in_root", "pending",
-      "unknown"};
 
   private final JsonRpcHttpTransport transport;
   private final String apiKey;
@@ -468,7 +465,7 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
   }
 
   private static BatchProofException invalid(String message, Throwable cause, int requests) {
-    return new BatchProofException(BatchProofException.Kind.INVALID_RESPONSE, message, cause, null,
+    return batchError(BatchProofException.Kind.INVALID_RESPONSE, message, cause, null,
             null, null, requests, false, null);
   }
 
@@ -485,17 +482,17 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
       return rpcFailure((JsonRpcDataException) e, requests, waitAsked);
     }
     if (e instanceof JsonRpcResponseException) {
-      return new BatchProofException(BatchProofException.Kind.INVALID_RESPONSE, e.getMessage(), e,
+      return batchError(BatchProofException.Kind.INVALID_RESPONSE, e.getMessage(), e,
               null, null, null, requests, false, null);
     }
     if (e instanceof JsonRpcNetworkException) {
       int status = ((JsonRpcNetworkException) e).getStatus();
-      return new BatchProofException(BatchProofException.Kind.TRANSPORT, "HTTP " + status, e, null,
+      return batchError(BatchProofException.Kind.TRANSPORT, "HTTP " + status, e, null,
               "http_" + status, null, requests,
               // the credential is missing or wrong: a new attempt with the same key cannot succeed
               status != 401 && status != 403, null);
     }
-    return new BatchProofException(BatchProofException.Kind.TRANSPORT, String.valueOf(
+    return batchError(BatchProofException.Kind.TRANSPORT, String.valueOf(
             e.getMessage()), e, null, null, null, requests, true, null);
   }
 
@@ -509,74 +506,70 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
     JsonNode echo = data == null ? null : data.get("waitedMs");
     // the echo of a request that asked for a wait; a malformed one is a protocol error
     if (waitAsked != null && echo != null && !LongPoll.isWireMillis(echo)) {
-      return new BatchProofException(BatchProofException.Kind.INVALID_RESPONSE,
+      return batchError(BatchProofException.Kind.INVALID_RESPONSE,
               "Malformed waitedMs in the error data.", e, code, null, null, requests, false, null);
     }
     Long waited = waitAsked != null && echo != null ? echo.longValue() : null;
     switch (code) {
       case -32008: // proof unavailable
-        if (isBatchStateDetail(detail)) {
+        if (BatchProofException.isStateDetail(detail)) {
           // by the contract only a pending state is worth another attempt, whatever else is said
-          return new BatchProofException(BatchProofException.Kind.UNAVAILABLE, e.getErrorMessage(), e,
-                  code, detail, stateIndexes(data), requests, "state_pending".equals(detail),
+          return batchError(BatchProofException.Kind.UNAVAILABLE, e.getErrorMessage(), e,
+                  code, detail, stateIndexes(data, detail), requests, "state_pending".equals(detail),
                   waited);
         }
-        return new BatchProofException("unsupported_configuration".equals(detail)
+        return batchError("unsupported_configuration".equals(detail)
                 ? BatchProofException.Kind.UNSUPPORTED : BatchProofException.Kind.UNAVAILABLE,
                 e.getErrorMessage(), e, code, detail, null, requests,
                 !"unsupported_configuration".equals(detail) && retryable, waited);
       case -32006: // concurrency limit: busy, with or without data
-        return new BatchProofException(BatchProofException.Kind.UNAVAILABLE, e.getErrorMessage(), e,
+        return batchError(BatchProofException.Kind.UNAVAILABLE, e.getErrorMessage(), e,
                 code, detail == null ? "busy" : "busy:" + detail, null, requests, true, waited);
       case -32601:
-        return new BatchProofException(BatchProofException.Kind.UNSUPPORTED, e.getErrorMessage(), e,
+        return batchError(BatchProofException.Kind.UNSUPPORTED, e.getErrorMessage(), e,
                 code, "method_not_found", null, requests, false, null);
       case -32602:
       case -32600:
-        return new BatchProofException(BatchProofException.Kind.REJECTED, e.getErrorMessage(), e, code,
+        return batchError(BatchProofException.Kind.REJECTED, e.getErrorMessage(), e, code,
                 detail, null, requests, false, waited);
       case -32007:
-        return new BatchProofException(BatchProofException.Kind.LIMIT_EXCEEDED, e.getErrorMessage(), e,
+        return batchError(BatchProofException.Kind.LIMIT_EXCEEDED, e.getErrorMessage(), e,
                 code, detail, null, requests, false, waited);
       default: // database, internal and unknown codes are operational failures
-        return new BatchProofException(BatchProofException.Kind.SERVER, e.getErrorMessage(), e, code,
+        return batchError(BatchProofException.Kind.SERVER, e.getErrorMessage(), e, code,
                 detail, null, requests, retryable, waited);
     }
   }
 
-  private static boolean isBatchStateDetail(String detail) {
-    return "state_expired".equals(detail) || "state_not_in_root".equals(detail)
-            || "state_pending".equals(detail) || "state_unknown".equals(detail);
-  }
-
   /**
-   * The offending request indexes of a state status error: {@code data.indexes} is an object with
-   * one list per class. Malformed lists are ignored, never trusted for control flow.
+   * The offending request indexes of the class a state status error names: {@code data.indexes} is
+   * an object with one list per class ({@code pending}, {@code expired}, {@code unknown},
+   * {@code not_in_root}). A malformed list is ignored, never trusted for control flow.
    */
-  private static Map<String, List<Integer>> stateIndexes(JsonNode data) {
+  private static List<Integer> stateIndexes(JsonNode data, String detail) {
     JsonNode raw = data == null ? null : data.get("indexes");
     if (raw == null || !raw.isObject()) {
       return null;
     }
-    Map<String, List<Integer>> classes = new LinkedHashMap<>();
-    int total = 0;
-    for (String klass : BATCH_INDEX_CLASSES) {
-      JsonNode list = raw.get(klass);
-      if (list == null || !list.isArray()) {
-        continue;
-      }
-      List<Integer> valid = new ArrayList<>();
-      for (JsonNode index : list) {
-        if (index.isIntegralNumber() && index.canConvertToInt() && index.intValue() >= 0) {
-          valid.add(index.intValue());
-        }
-      }
-      total += list.size();
-      if (valid.size() == list.size() && total <= BATCH_MAX_STATE_IDS) {
-        classes.put(klass, valid);
-      }
+    JsonNode list = raw.get(detail.substring("state_".length()));
+    if (list == null || !list.isArray() || list.size() > BATCH_MAX_STATE_IDS) {
+      return null;
     }
-    return classes.isEmpty() ? null : classes;
+    List<Integer> valid = new ArrayList<>();
+    for (JsonNode index : list) {
+      if (!index.isIntegralNumber() || !index.canConvertToInt() || index.intValue() < 0) {
+        return null;
+      }
+      valid.add(index.intValue());
+    }
+    return valid;
+  }
+
+  private static BatchProofException batchError(BatchProofException.Kind kind, String message,
+      Throwable cause, Integer code, String detail, List<Integer> indexes, int requests,
+      boolean retryable, Long waitedMillis) {
+    return new BatchProofException(kind, message, code, detail, indexes, retryable, requests,
+        waitedMillis, cause);
   }
 
   // ---- non-inclusion -----------------------------------------------------------------------

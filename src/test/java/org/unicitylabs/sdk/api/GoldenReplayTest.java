@@ -3,6 +3,7 @@ package org.unicitylabs.sdk.api;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -138,7 +139,7 @@ class GoldenReplayTest {
         assertEquals(BatchProofException.Kind.UNAVAILABLE, typed.getKind());
         // by the contract only a pending state is worth another attempt
         assertEquals(data.get("detail").asText().equals("state_pending"), typed.isRetryable());
-        assertFalse(typed.getIndexesByClass().isEmpty());
+        assertNotNull(typed.getIndexes());
       }
       return;
     }

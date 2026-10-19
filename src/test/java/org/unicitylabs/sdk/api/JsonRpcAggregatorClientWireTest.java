@@ -231,8 +231,7 @@ class JsonRpcAggregatorClientWireTest {
         "{\"detail\":\"state_unknown\",\"retryable\":true,\"indexes\":{\"unknown\":[0],\"bogus\":[1]}}")));
     BatchProofException unknown = batch();
     assertFalse(unknown.isRetryable(), "whatever else the data says");
-    assertEquals(List.of(0), unknown.getIndexesByClass().get("unknown"));
-    assertFalse(unknown.getIndexesByClass().containsKey("bogus"));
+    assertEquals(List.of(0), unknown.getIndexes());
     server.enqueue(new MockResponse().setBody(error(-32008, "{\"detail\":\"unsupported_configuration\"}")));
     assertEquals(BatchProofException.Kind.UNSUPPORTED, batchKind());
     server.enqueue(new MockResponse().setBody(error(-32603, "{\"retryable\":true}")));
@@ -247,7 +246,7 @@ class JsonRpcAggregatorClientWireTest {
   void aBadIndexListIsIgnoredNeverTrustedForControlFlow() throws Exception {
     server.enqueue(new MockResponse().setBody(error(-32008,
         "{\"detail\":\"state_pending\",\"indexes\":{\"pending\":[0,-1,\"x\"]}}")));
-    assertTrue(batch().getIndexesByClass().isEmpty());
+    assertNull(batch().getIndexes());
   }
 
   @Test

@@ -96,7 +96,7 @@ Both reports are by state ID only, so a different request for the same state, su
 
 ### Batches
 
-`StateTransitionClient.getInclusionProofs(stateIds, BatchRequestOptions)` (optional capability `BatchAggregatorClient`, `get_inclusion_proofs.v1`) returns the proofs of 1 to 256 distinct states in request order from one finalized view, or fails as a whole. Absence is a `BatchProofException` of kind `UNAVAILABLE` with the offending indexes, never a successful empty proof. A client without the capability completes with kind `UNSUPPORTED`; a batch is never emulated with single calls.
+`StateTransitionClient.getInclusionProofs(stateIds, BatchRequestOptions)` (optional capability `BatchAggregatorClient`, `get_inclusion_proofs.v1`) returns the proofs of 1 to 256 distinct states in request order from one finalized view, or fails as a whole. Absence is a `BatchProofException` of kind `UNAVAILABLE` with the offending indexes (`getIndexes()`, of the class its detail names), never a successful empty proof. A client without the capability completes with kind `UNSUPPORTED`; a batch is never emulated with single calls.
 
 `withWaitMillis` holds a latest-view request while every missing state is merely pending, and is never sent for an exact state root. A server whose strict parser does not know the wait parameter answers the generic `-32602`, reason `invalid_request`, detail `malformed_params`, without a `waitedMs` echo. The client then repeats the request once without the wait, within the same budget; both requests are counted in `InclusionProofBatch.getRequests()`. No other error is retried, an answer with an echo is never retried, nothing is cached across calls, and there is no separate capability probe.
 
