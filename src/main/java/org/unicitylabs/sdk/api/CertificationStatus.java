@@ -64,6 +64,18 @@ public final class CertificationStatus {
   public static final CertificationStatus SERVICE_NOT_READY =
       new CertificationStatus("SERVICE_NOT_READY");
 
+  /** A request for the state id is already certified (set by the aggregator). */
+  public static final CertificationStatus STATE_ID_EXISTS =
+      new CertificationStatus("STATE_ID_EXISTS");
+  /** The aggregator confirms that this very request was submitted before. */
+  public static final CertificationStatus ALREADY_SUBMITTED =
+      new CertificationStatus("ALREADY_SUBMITTED");
+  /**
+   * A request for the state id is queued, possibly another one. Not an acceptance of this request.
+   */
+  public static final CertificationStatus STATE_ID_QUEUED =
+      new CertificationStatus("STATE_ID_QUEUED");
+
   private static final CertificationStatus[] VALUES = {
       SUCCESS,
       STATE_ID_MISMATCH,
@@ -75,7 +87,10 @@ public final class CertificationStatus {
       UNSUPPORTED_ALGORITHM,
       INVALID_SHARD,
       REQUEST_EXPIRED,
-      SERVICE_NOT_READY
+      SERVICE_NOT_READY,
+      STATE_ID_EXISTS,
+      ALREADY_SUBMITTED,
+      STATE_ID_QUEUED
   };
 
   private final String value;
