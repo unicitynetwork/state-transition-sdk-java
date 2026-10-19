@@ -172,4 +172,60 @@ class MethodFutureDeadlineTest {
       }
     }
   }
+  @Test
+  void architectCancellationStateBlocksBatchAndNiPublicationBeforeListenerDispatch() throws Exception {
+    java.util.List<String> failures = new java.util.ArrayList<>();
+    for (boolean batch : new boolean[] {true, false}) {
+      CompletableFuture<JsonNode> raw = new CompletableFuture<>();
+      CountDownLatch decoding = new CountDownLatch(1);
+      CountDownLatch releaseDecode = new CountDownLatch(1);
+      CountDownLatch cancellationStarted = new CountDownLatch(1);
+      CountDownLatch releaseCancellation = new CountDownLatch(1);
+      OperationContext operation = OperationContext.withBudget(Duration.ofSeconds(30));
+      // An earlier child of the same operation has a consumer completion callback that blocks.
+      CompletableFuture<Integer> otherRaw = new CompletableFuture<>();
+      CompletableFuture<Integer> otherChild = org.unicitylabs.sdk.internal.LongPoll.map(
+          otherRaw, value -> value, operation);
+      otherChild.whenComplete((value, error) -> {
+        cancellationStarted.countDown();
+        try { releaseCancellation.await(); }
+        catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+      });
+      JsonNode proof = pausedProof(decoding, releaseDecode);
+      JsonNode body = proof;
+      CompletableFuture<?> result;
+      if (batch) {
+        com.fasterxml.jackson.databind.node.ObjectNode b = new ObjectMapper().createObjectNode();
+        b.putArray("proofs").add(proof);
+        body = b;
+        result = scripted(raw).getInclusionProofs(List.of(WireTestSupport.stateId("ab".repeat(32))),
+            BatchRequestOptions.latest().withOperation(operation));
+      } else {
+        result = scripted(raw).getNonInclusionProof(WireTestSupport.stateId("ab".repeat(32)),
+            RequestOptions.none().withOperation(operation));
+      }
+      JsonNode response = body;
+      Thread callback = new Thread(() -> raw.complete(response));
+      Thread cancellation = new Thread(operation::cancel);
+      callback.start();
+      try {
+        assertTrue(decoding.await(2, TimeUnit.SECONDS));
+        cancellation.start();
+        assertTrue(cancellationStarted.await(2, TimeUnit.SECONDS));
+        assertTrue(operation.isCancelled());
+        releaseDecode.countDown();
+        callback.join(2000);
+        if (!result.isCompletedExceptionally()) {
+          failures.add("cancelled operation published success before listener dispatch: batch=" + batch + " " + result);
+        }
+      } finally {
+        releaseDecode.countDown();
+        releaseCancellation.countDown();
+        callback.join(2000);
+        cancellation.join(2000);
+      }
+    }
+    assertTrue(failures.isEmpty(), String.join("; ", failures));
+  }
+
 }

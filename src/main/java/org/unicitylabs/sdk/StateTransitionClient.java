@@ -250,11 +250,12 @@ public class StateTransitionClient {
    * @param transaction the transaction whose request is submitted
    * @param certificationData its certification data
    * @param maxResubmits resubmissions allowed after the first submission, not negative
-   * @throws IllegalArgumentException if the certification data is not that of the transaction
    * @param trustBase root trust base
    * @param predicateVerifier predicate verifier service
    * @param options wait options; the timeout is the total of the call
    * @return verified inclusion proof
+   * @throws IllegalArgumentException if the certification data is not that of the transaction, or
+   *     {@code maxResubmits} is negative
    */
   public CompletableFuture<InclusionProof> submitAndWait(Transaction transaction,
       CertificationData certificationData, int maxResubmits, RootTrustBase trustBase,

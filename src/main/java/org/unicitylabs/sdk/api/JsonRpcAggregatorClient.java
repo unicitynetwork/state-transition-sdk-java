@@ -10,6 +10,7 @@ import org.unicitylabs.sdk.api.jsonrpc.JsonRpcHttpTransport;
 import org.unicitylabs.sdk.api.jsonrpc.JsonRpcNetworkException;
 import org.unicitylabs.sdk.api.jsonrpc.JsonRpcResponseException;
 import org.unicitylabs.sdk.internal.LongPoll;
+import org.unicitylabs.sdk.internal.OperationContext;
 import org.unicitylabs.sdk.serializer.UnicityObjectMapper;
 import org.unicitylabs.sdk.util.HexConverter;
 
@@ -380,7 +381,10 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
           try {
             InclusionProofBatch decoded =
                 decodeBatch(value, this.ids.size(), this.exact, requests, wait);
-            if (this.options.getOperation() != null && this.options.getOperation().isExpired()) {
+            OperationContext operation = this.options.getOperation();
+            if (operation != null && operation.isCancelled()) {
+              result.completeExceptionally(new CancellationException("Operation cancelled."));
+            } else if (operation != null && operation.isExpired()) {
               result.completeExceptionally(new TimeoutException("Operation deadline expired."));
             } else {
               result.complete(decoded);
@@ -624,7 +628,13 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
       if (error != null) {
         NonInclusionProofException failure = classifyNonInclusionFailure(unwrap(error), options);
         if (failure == null) {
-          result.complete(NonInclusionProofResponse.includedHint());
+          // the hint is a result like any other: it is not published after the operation ended
+          NonInclusionProofException late = lateFailure(options.getOperation());
+          if (late != null) {
+            result.completeExceptionally(late);
+          } else {
+            result.complete(NonInclusionProofResponse.includedHint());
+          }
         } else {
           result.completeExceptionally(failure);
         }
@@ -640,10 +650,9 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
       try {
         NonInclusionProofResponse decoded = NonInclusionProofResponse.absence(
                 new NonInclusionProof(stateId, HexConverter.decode(value.textValue())));
-        if (options.getOperation() != null && options.getOperation().isExpired()) {
-          result.completeExceptionally(new NonInclusionProofException(
-                  NonInclusionProofException.Kind.TIMEOUT, "The deadline of the request expired.",
-                  null, null, true));
+        NonInclusionProofException late = lateFailure(options.getOperation());
+        if (late != null) {
+          result.completeExceptionally(late);
         } else {
           result.complete(decoded);
         }
@@ -659,6 +668,19 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
       }
     });
     return result;
+  }
+
+  /** The failure of a result that is ready after its operation ended, or null while it is live. */
+  private static NonInclusionProofException lateFailure(OperationContext operation) {
+    if (operation != null && operation.isCancelled()) {
+      return new NonInclusionProofException(NonInclusionProofException.Kind.CANCELLED,
+              "The request was cancelled.", null, null, false);
+    }
+    if (operation != null && operation.isExpired()) {
+      return new NonInclusionProofException(NonInclusionProofException.Kind.TIMEOUT,
+              "The deadline of the request expired.", null, null, true);
+    }
+    return null;
   }
 
   /** A failure of the call, or null for the service's claim that the state is included. */

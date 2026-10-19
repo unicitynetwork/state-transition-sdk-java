@@ -186,6 +186,9 @@ public final class LongPoll {
     });
     Runnable timer = null;
     Duration left = operation.remaining();
+    // An unbounded operation reports an effectively endless time left; a budget of a day or more
+    // arms no timer either, as such a deadline is no practical bound and the platform timer
+    // delay must not overflow. Cancellation is bound in every case.
     if (left.compareTo(Duration.ofDays(1)) < 0) {
       timer = InclusionProofWaiter.scheduleOnSharedTimer(() -> {
         result.completeExceptionally(onTimeout.get());
