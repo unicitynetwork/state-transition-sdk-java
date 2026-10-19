@@ -85,6 +85,17 @@ public final class VerificationContext {
   }
 
   /**
+   * The same dependencies with another certificate verifier.
+   *
+   * @param certificateVerifier verifier of unicity certificates
+   * @return new context
+   */
+  public VerificationContext withCertificateVerifier(UnicityCertificateVerifier certificateVerifier) {
+    return new VerificationContext(this.trustBase, this.predicateVerifier,
+            this.mintJustificationVerifier, this.tokenIssuanceVerifier, certificateVerifier);
+  }
+
+  /**
    * Context for one verification operation: the same dependencies with the certificate verifier of
    * an operation under the legacy quorum policy of ordinary token proofs, which shares work
    * between the proofs of the token and of every nested token. A verifier that already is an

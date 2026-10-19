@@ -294,16 +294,15 @@ public class UnicitySeal {
       throw new CborSerializationException("Invalid network identifier.", e);
     }
 
-    Map<String, byte[]> witnesses = CborDeserializer.decodeNullable(data.get(7), map -> {
-      Map<String, byte[]> result = new LinkedHashMap<>();
-      for (CborMap.Entry entry : CborDeserializer.decodeMap(map)) {
-        String signer = CborDeserializer.decodeTextString(entry.getKey());
-        if (result.put(signer, CborDeserializer.decodeByteString(entry.getValue())) != null) {
-          throw new CborSerializationException("Duplicate signer id in seal signatures.");
-        }
+    // a seal that arrives over the wire carries its signature map; the null form exists only for
+    // the seal hash, which is computed over the seal without signatures
+    Map<String, byte[]> witnesses = new LinkedHashMap<>();
+    for (CborMap.Entry entry : CborDeserializer.decodeMap(data.get(7))) {
+      String signer = CborDeserializer.decodeTextString(entry.getKey());
+      if (witnesses.put(signer, CborDeserializer.decodeByteString(entry.getValue())) != null) {
+        throw new CborSerializationException("Duplicate signer id in seal signatures.");
       }
-      return result;
-    });
+    }
 
     return new UnicitySeal(
             networkId,

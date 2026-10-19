@@ -19,13 +19,18 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Seal authentication under a snapshot of the caller's trust base, with a bounded memo of
- * successful checks and sharing of checks in flight.
+ * successful quorum checks and sharing of checks in flight.
  *
- * <p>The memo key binds the complete seal bytes including the signature witnesses, the authority
- * content and the kind of check (strict or legacy). Only successes are retained; failures and
- * failed in-flight checks are removed, the memo is bounded and evicts the oldest entry. Structure,
- * network, epoch and round checks of the strict path run on every call, hits included. The session
- * owns exactly one quorum rule and no verified flag can be supplied from outside.
+ * <p>What is memoized is the signature verdict "this exact seal carries a quorum of valid
+ * signatures of this authority", a pure function of the complete seal bytes (signature witnesses
+ * included) and the authority content: the key binds exactly those, so altered witnesses or
+ * another authority cannot hit an entry, and one verification serves every policy. Everything that
+ * depends on the policy is evaluated on every call, memo hits included: the strict path checks the
+ * seal structure, network, exact epoch and the epoch start round before it looks at the memo, so a
+ * success of the legacy path can never admit a strict request. Only successes are retained;
+ * failures and failed in-flight checks are removed, the memo is bounded and evicts the oldest
+ * entry. The session owns exactly one quorum rule and no verified flag can be supplied from
+ * outside.
  *
  * <p>Thread safe. Instances are scoped to one operation; they are not a process-wide cache.
  */
@@ -38,8 +43,6 @@ public final class SealVerificationSession implements SealAuthenticator {
   /** Earliest plausible seal timestamp: Thursday, April 20, 2023 6:11:24 AM GMT+00:00. */
   public static final long GENESIS_TIME = 1681971084L;
 
-  private static final String STRICT_KIND = "strict";
-  private static final String LEGACY_KIND = "legacy";
   private static final String QUORUM_RULE = "UnicitySealQuorumSignaturesVerificationRule";
 
   private final RootTrustBase trustBase;
@@ -147,9 +150,9 @@ public final class SealVerificationSession implements SealAuthenticator {
 
   /**
    * Strict authentication: structure, network, epoch, epoch start round and quorum. The only
-   * authentication this session offers, whatever policy an operation applies to token proofs; its
-   * memo key is distinct from the legacy one, so a legacy success never admits a strict request.
-   * The authority must weigh every node equally (stake 1), as the quorum rule counts signers;
+   * authentication this session offers, whatever policy an operation applies to token proofs. The
+   * checks other than the quorum signatures run on every call; a quorum verdict memoized by the
+   * legacy path is reused, a legacy success never stands for the checks. The authority must weigh every node equally (stake 1), as the quorum rule counts signers;
    * another authority is refused rather than judged by the wrong rule.
    *
    * @param seal the seal
@@ -162,21 +165,21 @@ public final class SealVerificationSession implements SealAuthenticator {
     if (failure != null) {
       return failure;
     }
-    return quorum(STRICT_KIND, seal);
+    return quorum(seal);
   }
 
   /**
    * Legacy check for historical token proofs: quorum signatures only, no structure, epoch or round
    * constraint (the network is checked with the certificate). Kept apart from
-   * {@link #authenticate}: its results are memoized under a separate key, never satisfy a strict
-   * request, and must not be reported as authentication.
+   * {@link #authenticate}: it is not authentication, it must not be reported as such, and it
+   * shares nothing but the signature verdict with the strict path.
    *
    * @param seal the seal
    * @return OK, or FAIL with the failing rule
    */
   public SealVerificationResult verifyLegacyQuorum(UnicitySeal seal) {
     Objects.requireNonNull(seal, "seal cannot be null");
-    return quorum(LEGACY_KIND, seal);
+    return quorum(seal);
   }
 
   /**
@@ -220,10 +223,9 @@ public final class SealVerificationSession implements SealAuthenticator {
     return null;
   }
 
-  private SealVerificationResult quorum(String kind, UnicitySeal seal) {
+  private SealVerificationResult quorum(UnicitySeal seal) {
     String key = HexConverter.encode(new DataHasher(HashAlgorithm.SHA256)
         .update(CborSerializer.encodeArray(
-            CborSerializer.encodeTextString(kind),
             CborSerializer.encodeTextString(identity),
             CborSerializer.encodeByteString(seal.toCbor())))
         .digest().getData());

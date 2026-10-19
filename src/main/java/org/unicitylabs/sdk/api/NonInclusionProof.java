@@ -7,9 +7,13 @@ import java.util.Objects;
  * Unverified material that claims the absence of a state at a snapshot. It is not evidence until a
  * non-inclusion verification accepts it.
  *
- * <p>This is the transport-level holder agreed as a contract of the shared interfaces; package B
- * owns the canonical decoding, the certificate model and the verification, and extends this class
- * without changing the accessors below.
+ * <p>This is the transport-level holder of the shared interfaces. {@link #getEncoded()} is the
+ * <em>complete</em> {@code get_non_inclusion_proof.v1} result exactly as the service sent it
+ * (hex-decoded), the wrapper {@code [blockNumber, 39034([1, certificate, unicityCertificate])]}
+ * included: wrapper-level malformation is a rejection of the verification, so the holder never
+ * splits or normalizes the wrapper. The canonical decoding, the certificate model and the
+ * verification belong to the non-inclusion verifier. An HTTP adapter passes the decoded result
+ * bytes unchanged.
  */
 public final class NonInclusionProof {
 
@@ -38,7 +42,7 @@ public final class NonInclusionProof {
   }
 
   /**
-   * The proof bytes as received.
+   * The complete {@code get_non_inclusion_proof.v1} result as received.
    *
    * @return copy of the bytes
    */

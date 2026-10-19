@@ -147,6 +147,40 @@ public final class OperationUnicityCertificateVerifier extends UnicityCertificat
   }
 
   /**
+   * Verifies the body of a certificate that is not itself the subject of an authentication: its
+   * partition, body and seal structure, the shard and partition paths to the seal hash, and the
+   * pins of the operation, with the operation's body memo. The seal is <em>not</em> authenticated
+   * and the network is not compared with an authority. Meant for certificates derived from an
+   * authenticated partition view, whose seal the operation's session authenticated strictly; a
+   * result of this method is never evidence that a seal is trusted.
+   *
+   * @param certificate the certificate
+   * @return verification result; its failure is one of the certificate faults, never an authority
+   *     rejection
+   */
+  public UnicityCertificateVerificationResult verifyBody(UnicityCertificate certificate) {
+    List<VerificationResult<?>> results = new ArrayList<>();
+    VerificationResult<VerificationStatus> partition = CertificateChecks.partition(certificate);
+    results.add(partition);
+    if (partition.getStatus() != VerificationStatus.OK) {
+      return UnicityCertificateVerificationResult.fail(
+          UnicityCertificateFailure.PARTITION_MISMATCH, results);
+    }
+    CertificateChecks.Body body = body(certificate);
+    results.addAll(body.getRules());
+    if (!body.isOk()) {
+      return UnicityCertificateVerificationResult.fail(body.getFailure(), results);
+    }
+    VerificationResult<VerificationStatus> pinned = CertificateChecks.pins(pins, certificate);
+    results.add(pinned);
+    if (pinned.getStatus() != VerificationStatus.OK) {
+      return UnicityCertificateVerificationResult.fail(
+          UnicityCertificateFailure.PIN_MISMATCH, results);
+    }
+    return UnicityCertificateVerificationResult.ok(results);
+  }
+
+  /**
    * Seal authenticator of an authority within this operation. Whoever authenticates seals strictly
    * in this operation (views, non-inclusion) shares the quorum checks of the proofs verified
    * through this verifier.
