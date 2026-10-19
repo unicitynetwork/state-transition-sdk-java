@@ -30,6 +30,7 @@ import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
 /**
@@ -214,12 +215,18 @@ public class JsonRpcHttpTransport {
 
       OkHttpClient client = this.clientFor(options);
       Call call = client.newCall(requestBuilder.build());
+      // OkHttp also cancels a call whose own timeout expired: only our own cancellation counts as one
+      AtomicBoolean cancelledByUs = new AtomicBoolean();
+      Runnable cancelCall = () -> {
+        cancelledByUs.set(true);
+        call.cancel();
+      };
       OperationContext.Registration registration =
-              operation == null ? null : operation.onCancel(call::cancel);
+              operation == null ? null : operation.onCancel(cancelCall);
 
       future.whenComplete((result, error) -> {
         if (future.isCancelled()) {
-          call.cancel();
+          cancelCall.run();
         }
         if (registration != null) {
           registration.remove();
@@ -229,7 +236,7 @@ public class JsonRpcHttpTransport {
       call.enqueue(new Callback() {
         @Override
         public void onFailure(Call call, IOException e) {
-          if (call.isCanceled() || (operation != null && operation.isCancelled())) {
+          if (cancelledByUs.get() || (operation != null && operation.isCancelled())) {
             CancellationException cancelled = new CancellationException("Request cancelled.");
             cancelled.initCause(e);
             future.completeExceptionally(cancelled);
