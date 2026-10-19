@@ -71,7 +71,7 @@ A wait completes exceptionally with:
 | `InclusionProofWaitException.Expired` / `.Unknown` | An unauthenticated hint ended the wait. `isResubmittable()` is true. |
 | `InclusionProofWaitException.Conflict` | The aggregator certified another request for this state ID. The proof was authenticated first, so this is not a forged-proof report. Not resubmittable. |
 | `VerificationException` | A proof arrived and did not verify. Never resubmitted for. |
-| `JsonRpcDataException`, `JsonRpcNetworkException`, `JsonRpcResponseException`, `IOException` | The service's error, an HTTP status, a response that is not a valid answer, or a transport failure. |
+| `JsonRpcDataException`, `JsonRpcNetworkException`, `JsonRpcResponseException`, `IOException` | The service's own error (`JsonRpcDataException` is a `JsonRpcNetworkException` whose status is the JSON-RPC code, with its data), an HTTP status, a response that is not a valid answer, or a transport failure. |
 
 `JsonRpcAggregatorClient` checks every response before it interprets it: a bounded body (8 MiB by default), version `2.0`, exactly one of result and error, and the id of the request, also on errors. An error whose id is null is kept and marked with `isIdMatched() == false`.
 

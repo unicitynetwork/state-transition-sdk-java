@@ -111,7 +111,7 @@ class JsonRpcHttpTransportTest {
         "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32008,\"message\":\"m\",\"data\":{\"waitedMs\":5}},\"id\":7}"));
     JsonRpcDataException e = (JsonRpcDataException) failure(call());
     assertEquals(-32008, e.getCode());
-    assertEquals("m", e.getMessage());
+    assertEquals("m", e.getErrorMessage());
     assertEquals(5, e.getData().get("waitedMs").asInt());
     assertTrue(e.isIdMatched());
   }

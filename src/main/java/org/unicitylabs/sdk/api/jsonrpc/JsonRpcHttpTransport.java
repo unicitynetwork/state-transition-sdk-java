@@ -269,7 +269,7 @@ public class JsonRpcHttpTransport {
               return;
             }
             future.complete(JsonRpcHttpTransport.result(envelope, requestId));
-          } catch (RuntimeException | IOException e) {
+          } catch (Exception e) {
             future.completeExceptionally(e);
           }
         }
@@ -289,13 +289,14 @@ public class JsonRpcHttpTransport {
     }
   }
 
-  private static JsonNode result(JsonNode envelope, JsonNode requestId) {
+  private static JsonNode result(JsonNode envelope, JsonNode requestId)
+          throws JsonRpcDataException {
     if (envelope == null) {
       throw new JsonRpcResponseException("JSON-RPC response is not a valid JSON object.");
     }
     if (!"2.0".equals(envelope.path("jsonrpc").asText(null))) {
       throw new JsonRpcResponseException(
-              "Unsupported JSON-RPC version: " + envelope.get("jsonrpc") + ".");
+              "Invalid JSON-RPC version: " + envelope.get("jsonrpc") + ".");
     }
     boolean hasResult = envelope.has("result");
     boolean hasError = envelope.hasNonNull("error");

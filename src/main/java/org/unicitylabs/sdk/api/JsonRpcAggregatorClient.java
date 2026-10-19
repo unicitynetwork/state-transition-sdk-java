@@ -517,29 +517,29 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
       case -32008: // proof unavailable
         if (isBatchStateDetail(detail)) {
           // by the contract only a pending state is worth another attempt, whatever else is said
-          return new BatchProofException(BatchProofException.Kind.UNAVAILABLE, e.getMessage(), e,
+          return new BatchProofException(BatchProofException.Kind.UNAVAILABLE, e.getErrorMessage(), e,
                   code, detail, stateIndexes(data), requests, "state_pending".equals(detail),
                   waited);
         }
         return new BatchProofException("unsupported_configuration".equals(detail)
                 ? BatchProofException.Kind.UNSUPPORTED : BatchProofException.Kind.UNAVAILABLE,
-                e.getMessage(), e, code, detail, null, requests,
+                e.getErrorMessage(), e, code, detail, null, requests,
                 !"unsupported_configuration".equals(detail) && retryable, waited);
       case -32006: // concurrency limit: busy, with or without data
-        return new BatchProofException(BatchProofException.Kind.UNAVAILABLE, e.getMessage(), e,
+        return new BatchProofException(BatchProofException.Kind.UNAVAILABLE, e.getErrorMessage(), e,
                 code, detail == null ? "busy" : "busy:" + detail, null, requests, true, waited);
       case -32601:
-        return new BatchProofException(BatchProofException.Kind.UNSUPPORTED, e.getMessage(), e,
+        return new BatchProofException(BatchProofException.Kind.UNSUPPORTED, e.getErrorMessage(), e,
                 code, "method_not_found", null, requests, false, null);
       case -32602:
       case -32600:
-        return new BatchProofException(BatchProofException.Kind.REJECTED, e.getMessage(), e, code,
+        return new BatchProofException(BatchProofException.Kind.REJECTED, e.getErrorMessage(), e, code,
                 detail, null, requests, false, waited);
       case -32007:
-        return new BatchProofException(BatchProofException.Kind.LIMIT_EXCEEDED, e.getMessage(), e,
+        return new BatchProofException(BatchProofException.Kind.LIMIT_EXCEEDED, e.getErrorMessage(), e,
                 code, detail, null, requests, false, waited);
       default: // database, internal and unknown codes are operational failures
-        return new BatchProofException(BatchProofException.Kind.SERVER, e.getMessage(), e, code,
+        return new BatchProofException(BatchProofException.Kind.SERVER, e.getErrorMessage(), e, code,
                 detail, null, requests, retryable, waited);
     }
   }
@@ -653,20 +653,20 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
       switch (rpc.getCode()) {
         case -32020: // no certified snapshot yet
           return new NonInclusionProofException(NonInclusionProofException.Kind.UNAVAILABLE,
-                  rpc.getMessage(), e, rpc.getCode(), true);
+                  rpc.getErrorMessage(), e, rpc.getCode(), true);
         case -32022: // the claim, not an error
           return null;
         case -32023: // proof admission limit
           return new NonInclusionProofException(NonInclusionProofException.Kind.BUSY,
-                  rpc.getMessage(), e, rpc.getCode(), true);
+                  rpc.getErrorMessage(), e, rpc.getCode(), true);
         case -32600:
         case -32601:
         case -32602:
           return new NonInclusionProofException(NonInclusionProofException.Kind.REJECTED,
-                  rpc.getMessage(), e, rpc.getCode(), false);
+                  rpc.getErrorMessage(), e, rpc.getCode(), false);
         default: // internal and unknown codes are kept, not interpreted
           return new NonInclusionProofException(NonInclusionProofException.Kind.SERVER,
-                  rpc.getMessage(), e, rpc.getCode(), false);
+                  rpc.getErrorMessage(), e, rpc.getCode(), false);
       }
     }
     if (e instanceof JsonRpcResponseException) {
