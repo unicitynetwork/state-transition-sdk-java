@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Duration;
@@ -36,12 +37,14 @@ import org.unicitylabs.sdk.api.SubmitOutcome;
 import org.unicitylabs.sdk.api.WaitOptions;
 import org.unicitylabs.sdk.api.jsonrpc.JsonRpcDataException;
 import org.unicitylabs.sdk.api.jsonrpc.JsonRpcNetworkException;
+import org.unicitylabs.sdk.api.jsonrpc.JsonRpcResponseException;
 import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
 import org.unicitylabs.sdk.predicate.builtin.SignaturePredicate;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
 import org.unicitylabs.sdk.transaction.MintTransaction;
 import org.unicitylabs.sdk.transaction.TokenSalt;
 import org.unicitylabs.sdk.util.InclusionProofUtils;
+import org.unicitylabs.sdk.util.verification.VerificationException;
 
 /** The facade: capability fallbacks, idempotent resubmission and the bounded submit-and-wait. */
 class StateTransitionClientTest {
@@ -137,7 +140,7 @@ class StateTransitionClientTest {
   // ---- the default wait ----------------------------------------------------------------------
 
   @Test
-  void reviewHungSubmissionHasIndependentDeadline() {
+  void aSubmissionThatNeverCompletesIsEndedByTheDeadlineAndCancelled() {
     CompletableFuture<CertificationResponse> submission = new CompletableFuture<>();
     java.util.concurrent.atomic.AtomicInteger lookups = new java.util.concurrent.atomic.AtomicInteger();
     AggregatorClient raw = new AggregatorClient() {
@@ -159,7 +162,7 @@ class StateTransitionClientTest {
   }
 
   @Test
-  void reviewNullSubmissionMustTerminate() {
+  void aNullSubmissionResultEndsTheResubmissionWithATypedFailure() {
     AggregatorClient raw = new AggregatorClient() {
       public CompletableFuture<CertificationResponse> submitCertificationRequest(CertificationData d) {
         return CompletableFuture.completedFuture(null);
@@ -169,11 +172,11 @@ class StateTransitionClientTest {
     };
     CompletableFuture<SubmitOutcome> result = new StateTransitionClient(raw)
         .resubmitCertificationRequest(data, RequestOptions.none());
-    assertTrue(result.isCompletedExceptionally(), "Null peer result must reject, not strand the caller");
+    assertInstanceOf(JsonRpcResponseException.class, failure(result), "a null result must not strand the caller");
   }
 
   @Test
-  void reviewUnmatchedDuplicateCannotBecomeSuccess() {
+  void aDuplicateReportWithoutOurIdIsNotAnAcknowledgement() {
     AggregatorClient raw = new AggregatorClient() {
       public CompletableFuture<CertificationResponse> submitCertificationRequest(CertificationData d) {
         return CompletableFuture.failedFuture(new JsonRpcDataException(-32603,
@@ -184,11 +187,11 @@ class StateTransitionClientTest {
     };
     CompletableFuture<SubmitOutcome> result = new StateTransitionClient(raw)
         .resubmitCertificationRequest(data, RequestOptions.none());
-    assertTrue(result.isCompletedExceptionally(), "An error without our ID is not a duplicate acknowledgement");
+    assertInstanceOf(JsonRpcDataException.class, failure(result));
   }
 
   @Test
-  void reviewCancelDuringSubmitToWaitHandoffCancelsNewCall() throws Exception {
+  void cancellingBetweenTheSubmissionAndTheWaitCancelsTheNewWait() throws Exception {
     CompletableFuture<CertificationResponse> submit = new CompletableFuture<>();
     CompletableFuture<InclusionProofResponse> proofCall = new CompletableFuture<>();
     java.util.concurrent.CountDownLatch entered = new java.util.concurrent.CountDownLatch(1);
@@ -197,7 +200,11 @@ class StateTransitionClientTest {
       public CompletableFuture<CertificationResponse> submitCertificationRequest(CertificationData d) { return submit; }
       public CompletableFuture<InclusionProofResponse> getInclusionProof(StateId id) {
         entered.countDown();
-        try { release.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        try {
+          release.await();
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+        }
         return proofCall;
       }
       public CompletableFuture<Long> getLatestBlockNumber() { return CompletableFuture.completedFuture(1L); }
@@ -383,5 +390,39 @@ class StateTransitionClientTest {
     org.awaitility.Awaitility.await().pollDelay(Duration.ofMillis(600)).atMost(Duration.ofSeconds(5))
         .until(() -> aggregator.lookups.get() <= lookups + 1);
     assertTrue(future.isCancelled());
+  }
+
+  @Test
+  void aForgedProofOfAnotherRequestIsAVerificationFailureNotAConflictAndNothingIsResubmitted()
+      throws Exception {
+    TokenSalt salt = TokenSalt.generate();
+    MintTransaction mine = mint(salt, new byte[] {1});
+    MintTransaction theirs = mint(salt, new byte[] {2});
+    assertEquals(StateId.fromTransaction(mine).toString(), StateId.fromTransaction(theirs).toString());
+    // the proof of the other request is signed by a key the trust base does not know: it matches
+    // neither this transaction nor the network, so it authenticates nothing
+    aggregator.submitCertificationRequest(CertificationData.fromMintTransaction(theirs)).get();
+    int before = aggregator.submissions.get();
+    Throwable e = failure(client.submitAndWait(mine, CertificationData.fromMintTransaction(mine), 3,
+        TestAggregatorClient.create().getTrustBase(), PredicateVerifierService.create(), fast()));
+    assertInstanceOf(VerificationException.class, e);
+    assertEquals(before + 1, aggregator.submissions.get(), "no resubmission for a proof that does not verify");
+  }
+
+  @Test
+  void submitAndWaitRefusesCertificationDataThatIsNotThatOfTheTransaction() {
+    MintTransaction other = mint(TokenSalt.generate(), null);
+    IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> client.submitAndWait(
+        transaction, CertificationData.fromMintTransaction(other), 1, aggregator.inner.getTrustBase(),
+        PredicateVerifierService.create(), fast()));
+    assertTrue(e.getMessage().contains("does not belong"));
+    // the same state id with another transaction hash is refused too
+    TokenSalt salt = TokenSalt.generate();
+    MintTransaction mine = mint(salt, new byte[] {1});
+    MintTransaction sameState = mint(salt, new byte[] {2});
+    assertThrows(IllegalArgumentException.class, () -> client.submitAndWait(mine,
+        CertificationData.fromMintTransaction(sameState), 1, aggregator.inner.getTrustBase(),
+        PredicateVerifierService.create(), fast()));
+    assertEquals(0, aggregator.submissions.get(), "nothing was submitted");
   }
 }

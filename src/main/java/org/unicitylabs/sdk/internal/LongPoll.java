@@ -126,6 +126,12 @@ public final class LongPoll {
   public static <T, R> CompletableFuture<R> map(CompletableFuture<T> source,
       Function<T, R> mapper, OperationContext operation) {
     CompletableFuture<R> result = new CompletableFuture<>();
+    // registered before any processing: the exposed future ends at the deadline or the
+    // cancellation of the operation whatever the decoding below is doing
+    bind(result, operation,
+        () -> new java.util.concurrent.TimeoutException("Operation deadline expired."),
+        () -> new java.util.concurrent.CancellationException("Operation cancelled."),
+        () -> source.cancel(true));
     source.whenComplete((value, error) -> {
       if (error != null) {
         result.completeExceptionally(error);
@@ -133,7 +139,10 @@ public final class LongPoll {
       }
       try {
         R mapped = mapper.apply(value);
-        if (operation != null && operation.isExpired()) {
+        if (operation != null && operation.isCancelled()) {
+          result.completeExceptionally(
+              new java.util.concurrent.CancellationException("Operation cancelled."));
+        } else if (operation != null && operation.isExpired()) {
           result.completeExceptionally(
               new java.util.concurrent.TimeoutException("Operation deadline expired."));
         } else {
@@ -149,6 +158,47 @@ public final class LongPoll {
       }
     });
     return result;
+  }
+
+  /**
+   * Binds an exposed future to the deadline and the cancellation of an operation until it is
+   * complete: the future ends with the given error at either, the active source work is cancelled,
+   * a result that is ready later cannot be published, and the cancellation registration and the
+   * timer are released on every terminal path. An already running codec is not interrupted, but the
+   * caller gets the terminal result independently of its progress.
+   *
+   * @param result the exposed future
+   * @param operation operation whose budget and cancellation govern it, may be null (nothing bound)
+   * @param onTimeout error to complete with at the deadline
+   * @param onCancel error to complete with at cancellation
+   * @param cancelSource cancels the work that feeds the future
+   * @param <R> result type
+   */
+  public static <R> void bind(CompletableFuture<R> result, OperationContext operation,
+      java.util.function.Supplier<Throwable> onTimeout,
+      java.util.function.Supplier<Throwable> onCancel, Runnable cancelSource) {
+    if (operation == null) {
+      return;
+    }
+    OperationContext.Registration registration = operation.onCancel(() -> {
+      result.completeExceptionally(onCancel.get());
+      cancelSource.run();
+    });
+    Runnable timer = null;
+    Duration left = operation.remaining();
+    if (left.compareTo(Duration.ofDays(1)) < 0) {
+      timer = InclusionProofWaiter.scheduleOnSharedTimer(() -> {
+        result.completeExceptionally(onTimeout.get());
+        cancelSource.run();
+      }, Math.max(0, left.toMillis()));
+    }
+    Runnable release = timer;
+    result.whenComplete((value, error) -> {
+      registration.remove();
+      if (release != null) {
+        release.run();
+      }
+    });
   }
 
   private static long clampMillis(Duration duration) {

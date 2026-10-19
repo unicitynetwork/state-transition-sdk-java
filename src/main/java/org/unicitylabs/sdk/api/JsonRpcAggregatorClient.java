@@ -310,6 +310,11 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
     CompletableFuture<InclusionProofBatch> result = new CompletableFuture<>();
     BatchCall call = new BatchCall(ids, exact ? HexConverter.encode(
             options.getStateRoot().getData()) : "latest", exact, waitMillis, callOptions);
+    // registered before the call starts: the deadline and the cancellation of the operation end
+    // the exposed future whatever the decoding is doing
+    LongPoll.bind(result, options.getOperation(),
+        () -> new TimeoutException("Operation deadline expired."),
+        () -> new CancellationException("Operation cancelled."), call::cancel);
     call.start(result);
     result.whenComplete((value, error) -> {
       if (result.isCancelled()) {
@@ -609,6 +614,12 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
     CompletableFuture<JsonNode> call =
             this.transport.call("get_non_inclusion_proof.v1", params, Map.of(), options);
     CompletableFuture<NonInclusionProofResponse> result = new CompletableFuture<>();
+    LongPoll.bind(result, options.getOperation(),
+        () -> new NonInclusionProofException(NonInclusionProofException.Kind.TIMEOUT,
+            "The deadline of the request expired.", null, null, true),
+        () -> new NonInclusionProofException(NonInclusionProofException.Kind.CANCELLED,
+            "The request was cancelled.", null, null, false),
+        () -> call.cancel(true));
     call.whenComplete((value, error) -> {
       if (error != null) {
         NonInclusionProofException failure = classifyNonInclusionFailure(unwrap(error), options);

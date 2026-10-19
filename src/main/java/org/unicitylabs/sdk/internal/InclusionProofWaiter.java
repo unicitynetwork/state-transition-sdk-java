@@ -75,6 +75,8 @@ public final class InclusionProofWaiter {
   private static final class Shared {
     static final ScheduledExecutorService TIMER = timer();
     static final Executor VERIFIER = Executors.newFixedThreadPool(2, daemonFactory("verify"));
+    /** Runs what the timer fires: completion callbacks must never block the one timer thread. */
+    static final Executor FIRED = Executors.newCachedThreadPool(daemonFactory("fired"));
 
     private static ScheduledExecutorService timer() {
       ScheduledThreadPoolExecutor executor =
@@ -141,12 +143,15 @@ public final class InclusionProofWaiter {
   /**
    * Runs a task on the shared timer thread after a delay (a deadline, a pause).
    *
-   * @param task task; keep it short, it runs on the timer thread
+   * @param task task, run on a pool thread after the delay
    * @param delayMillis delay in milliseconds
    * @return handle that cancels a task that did not run yet
    */
   public static Runnable scheduleOnSharedTimer(Runnable task, long delayMillis) {
-    ScheduledFuture<?> handle = Shared.TIMER.schedule(task, delayMillis, TimeUnit.MILLISECONDS);
+    // the timer thread only hands the task over: the callbacks that completing a future runs may
+    // block or take long, and a deadline of another operation must not wait for them
+    ScheduledFuture<?> handle = Shared.TIMER.schedule(() -> Shared.FIRED.execute(task), delayMillis,
+        TimeUnit.MILLISECONDS);
     return () -> handle.cancel(false);
   }
 

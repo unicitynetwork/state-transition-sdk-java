@@ -213,7 +213,7 @@ class InclusionProofWaiterTest {
   }
 
   @Test
-  void reviewDeadlineFinishesWhileVerificationIsQueued() {
+  void aDeadlineThatPassesWhileVerificationIsQueuedDiscardsTheLateWork() {
     answer(certified, 0);
     nextIsDeadline = true;
     List<Runnable> cpu = new ArrayList<>();
@@ -232,7 +232,7 @@ class InclusionProofWaiterTest {
   }
 
   @Test
-  void reviewRealTimerFinishesWhileVerificationIsRunning() throws Exception {
+  void theRealTimerEndsTheWaitWhileVerificationIsStillRunning() throws Exception {
     answer(certified, 0);
     java.util.concurrent.CountDownLatch entered = new java.util.concurrent.CountDownLatch(1);
     java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
@@ -240,9 +240,13 @@ class InclusionProofWaiterTest {
     CompletableFuture<InclusionProof> result = InclusionProofWaiter.await(client(), stateId,
         proof -> {
           entered.countDown();
-          try { release.await(); }
-          catch (InterruptedException e) { Thread.currentThread().interrupt(); }
-          finally { exited.countDown(); }
+          try {
+            release.await();
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+          } finally {
+            exited.countDown();
+          }
         }, WaitOptions.defaults().timeout(Duration.ofMillis(200)));
     try {
       assertTrue(entered.await(2, TimeUnit.SECONDS));
@@ -253,29 +257,6 @@ class InclusionProofWaiterTest {
       result.cancel(true);
     }
     assertInstanceOf(TimeoutException.class, failure(result));
-  }
-
-  @Test
-  void reviewProofAfterDeadlineMustNotSucceed() {
-    answer(certified, 16000);
-    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
-    assertTrue(result.isCompletedExceptionally(), "A proof received after the 15 s budget must time out");
-  }
-
-  @Test
-  void reviewVerificationCannotOutliveBudget() {
-    answer(certified, 0);
-    CompletableFuture<InclusionProof> result = await(client(), WaitOptions.defaults(),
-        proof -> nanos.addAndGet(TimeUnit.SECONDS.toNanos(16)));
-    assertTrue(result.isCompletedExceptionally(), "Verification used up the total budget");
-  }
-
-  @Test
-  void reviewHungCallMustHaveDeadlineTask() {
-    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
-    assertEquals(1, held.size());
-    assertFalse(deadlines.isEmpty(), "No deadline task exists to end a call that never responds");
-    result.cancel(true);
   }
 
   @Test

@@ -250,6 +250,7 @@ public class StateTransitionClient {
    * @param transaction the transaction whose request is submitted
    * @param certificationData its certification data
    * @param maxResubmits resubmissions allowed after the first submission, not negative
+   * @throws IllegalArgumentException if the certification data is not that of the transaction
    * @param trustBase root trust base
    * @param predicateVerifier predicate verifier service
    * @param options wait options; the timeout is the total of the call
@@ -261,6 +262,13 @@ public class StateTransitionClient {
     Objects.requireNonNull(options, "options cannot be null");
     if (maxResubmits < 0) {
       throw new IllegalArgumentException("maxResubmits must not be negative");
+    }
+    Objects.requireNonNull(transaction, "transaction cannot be null");
+    Objects.requireNonNull(certificationData, "certificationData cannot be null");
+    // the request that is submitted must be the one that is waited for and verified
+    if (!StateId.fromCertificationData(certificationData).equals(StateId.fromTransaction(transaction))
+        || !certificationData.getTransactionHash().equals(transaction.calculateTransactionHash())) {
+      throw new IllegalArgumentException("The certification data does not belong to the transaction.");
     }
     CompletableFuture<InclusionProof> result = new CompletableFuture<>();
     // one operation owns the whole call: a deadline for all attempts, and the cancellation of

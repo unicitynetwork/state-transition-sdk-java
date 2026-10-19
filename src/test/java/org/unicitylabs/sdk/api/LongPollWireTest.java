@@ -361,6 +361,44 @@ class LongPollWireTest {
     }
   }
 
+  private static final String MALFORMED_PARAMS = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,"
+      + "\"message\":\"Invalid params\",\"data\":{\"reason\":\"invalid_request\","
+      + "\"detail\":\"malformed_params\"}},\"id\":5}";
+
+  @Test
+  void theRetryWithoutTheWaitStaysUnderTheBudgetOfTheOperation() throws Exception {
+    java.util.concurrent.atomic.AtomicLong nanos = new java.util.concurrent.atomic.AtomicLong(1_000_000_000L);
+    org.unicitylabs.sdk.internal.OperationContext budget =
+        org.unicitylabs.sdk.internal.OperationContext.withBudget(java.time.Duration.ofSeconds(1), nanos::get);
+    server.enqueue(new MockResponse().setBody(MALFORMED_PARAMS));
+    server.enqueue(new MockResponse().setHeadersDelay(5, java.util.concurrent.TimeUnit.SECONDS).setBody("{}"));
+    CompletableFuture<InclusionProofBatch> future = WireTestSupport.client(server, http, 5).getInclusionProofs(
+        List.of(WireTestSupport.stateId("ab".repeat(32))),
+        BatchRequestOptions.latest().withWaitMillis(1000).withOperation(budget));
+    server.takeRequest();
+    server.takeRequest();
+    // the budget is spent in fake time while the retry is held
+    nanos.addAndGet(java.util.concurrent.TimeUnit.SECONDS.toNanos(2));
+    assertInstanceOf(java.util.concurrent.TimeoutException.class, WireTestSupport.failure(future));
+  }
+
+  @Test
+  void cancellingTheOperationCancelsTheRetryInFlight() throws Exception {
+    org.unicitylabs.sdk.internal.OperationContext operation =
+        org.unicitylabs.sdk.internal.OperationContext.unbounded();
+    server.enqueue(new MockResponse().setBody(MALFORMED_PARAMS));
+    server.enqueue(new MockResponse().setHeadersDelay(5, java.util.concurrent.TimeUnit.SECONDS).setBody("{}"));
+    CompletableFuture<InclusionProofBatch> future = WireTestSupport.client(server, http, 5).getInclusionProofs(
+        List.of(WireTestSupport.stateId("ab".repeat(32))),
+        BatchRequestOptions.latest().withWaitMillis(1000).withOperation(operation));
+    server.takeRequest();
+    server.takeRequest();
+    operation.cancel();
+    assertInstanceOf(java.util.concurrent.CancellationException.class, WireTestSupport.failure(future));
+    org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(5))
+        .until(() -> http.dispatcher().runningCallsCount() == 0);
+  }
+
   @Test
   void aSecondMalformedParamsAnswerIsFinalAndNothingIsRemembered() throws Exception {
     String malformed = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\","

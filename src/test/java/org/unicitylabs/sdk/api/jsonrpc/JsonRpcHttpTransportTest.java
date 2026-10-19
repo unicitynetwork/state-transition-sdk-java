@@ -77,19 +77,23 @@ class JsonRpcHttpTransportTest {
   }
 
   @Test
-  void reviewBodyProcessingPastRealDeadlineCannotPublishSuccess() throws Exception {
+  void aResponseBodyThatFinishesAfterTheBudgetCannotPublishSuccess() throws Exception {
     java.util.concurrent.CountDownLatch read = new java.util.concurrent.CountDownLatch(1);
     java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
     OkHttpClient pausing = http.newBuilder().addInterceptor(chain -> {
       okhttp3.Response response = chain.proceed(chain.request());
       okhttp3.ResponseBody original = response.body();
       okio.BufferedSource source = okio.Okio.buffer(new okio.ForwardingSource(original.source()) {
-        @Override public long read(okio.Buffer sink, long count) throws java.io.IOException {
+        @Override
+        public long read(okio.Buffer sink, long count) throws java.io.IOException {
           long n = super.read(sink, count);
           if (n == -1) {
             read.countDown();
-            try { release.await(); }
-            catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            try {
+              release.await();
+            } catch (InterruptedException e) {
+              Thread.currentThread().interrupt();
+            }
           }
           return n;
         }
@@ -116,7 +120,7 @@ class JsonRpcHttpTransportTest {
   }
 
   @Test
-  void reviewLateSuccessfulTransportResponseMustNotOutliveBudget() {
+  void aSuccessfulResponseThatArrivesAfterTheBudgetIsDiscarded() {
     AtomicLong nanos = new AtomicLong();
     OperationContext operation = OperationContext.withBudget(Duration.ofSeconds(1), nanos::get);
     OkHttpClient advancing = http.newBuilder().addInterceptor(chain -> {
@@ -129,18 +133,6 @@ class JsonRpcHttpTransportTest {
     server.enqueue(new MockResponse().setBody("{\"jsonrpc\":\"2.0\",\"result\":1,\"id\":7}"));
     assertInstanceOf(TimeoutException.class, failure(tested.call("m", Map.of(), Map.of(),
         RequestOptions.none().withOperation(operation))));
-  }
-
-  @Test
-  void reviewExplicitNullErrorCannotCoexistWithResult() {
-    server.enqueue(new MockResponse().setBody("{\"jsonrpc\":\"2.0\",\"result\":1,\"error\":null,\"id\":7}"));
-    assertInstanceOf(JsonRpcResponseException.class, failure(call()));
-  }
-
-  @Test
-  void reviewTrailingJsonMustBeRejected() {
-    server.enqueue(new MockResponse().setBody("{\"jsonrpc\":\"2.0\",\"result\":1,\"id\":7} {}"));
-    assertInstanceOf(JsonRpcResponseException.class, failure(call()));
   }
 
   @Test
@@ -193,6 +185,9 @@ class JsonRpcHttpTransportTest {
         "{\"result\":1,\"id\":7}",
         "{\"jsonrpc\":\"2.0\",\"result\":1,\"error\":{\"code\":1,\"message\":\"m\"},\"id\":7}",
         "{\"jsonrpc\":\"2.0\",\"id\":7}",
+        "{\"jsonrpc\":\"2.0\",\"result\":1,\"error\":null,\"id\":7}",
+        "{\"jsonrpc\":\"2.0\",\"error\":null,\"id\":7}",
+        "{\"jsonrpc\":\"2.0\",\"result\":1,\"id\":7} {}",
         "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":\"x\",\"message\":\"m\"},\"id\":7}",
         "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":1},\"id\":7}",
     };
