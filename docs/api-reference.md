@@ -10,7 +10,7 @@ This document describes SDK behaviour that the README only summarizes. The Javad
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `timeout` | 30 s | Total time of the wait. It covers every request, pause and the verification, and is measured on a monotonic clock. |
+| `timeout` | 15 s | Total time of the wait. It covers every request, pause and the verification, and is measured on a monotonic clock. |
 | `longPoll` | on | Ask the aggregator to hold each request while the state is pending. `longPoll(false)` polls at the interval and sends no wait parameter. |
 | `interval` | 1 s | Pace of the polling fallback. |
 | `window` | 20 s | Preferred wait of one long-poll request. |
@@ -44,7 +44,7 @@ The aggregator certifies in rounds of about 1.5 s on the networks the SDK was me
 | Polling at 1 s | 1.9 to 2.0 rounds | about 4 |
 | Polling at 250 ms | 1.6 to 1.7 rounds | about 11 |
 
-Latency does not depend on the load of the aggregator until it saturates; the tail grows under saturation, and single waits of 10 s and more were observed there. Keep the default budget of 30 s or more for production, and use `longPoll(false)` only against aggregators that need it. Polling at a short interval buys little latency for many times the requests.
+Latency does not depend on the load of the aggregator until it saturates; the tail grows under saturation, and single waits of 10 s and more were observed there. The default budget is 15 s in every Unicity SDK: the wait polls at a fixed interval, with no exponential backoff, and fails relatively fast. Raise `timeout` where the network is saturated or a late proof is acceptable. Use `longPoll(false)` only against aggregators that need it. Polling at a short interval buys little latency for many times the requests.
 
 ### Status hints
 

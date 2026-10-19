@@ -208,29 +208,29 @@ class InclusionProofWaiterTest {
     assertSame(certified.getInclusionProof(), result.get());
     assertEquals(1, seen.size());
     assertTrue(pauses.isEmpty(), "no initial pause");
-    // window 20 s, 30 s budget, 2 s margin: the whole window fits; the call timeout is wait + margin
-    assertEquals(20_000L, seen.get(0).waitMillis);
+    // window 20 s, 15 s budget, 2 s margin: the budget caps the window; the call timeout is wait + margin
+    assertEquals(13_000L, seen.get(0).waitMillis);
     assertTrue(seen.get(0).statusHint);
-    assertEquals(Duration.ofSeconds(22), seen.get(0).callTimeout);
+    assertEquals(Duration.ofSeconds(15), seen.get(0).callTimeout);
   }
 
   @Test
   void aHeldAnswerIsFollowedByTheNextRequestAtOnce() {
     // pending after a full hold: the aggregator echoed the wait, the call took at least the interval
-    answer(pending.withStatusHint(ProofStatusHint.PENDING).withWaitedMillis(20_000L), 20_000);
+    answer(pending.withStatusHint(ProofStatusHint.PENDING).withWaitedMillis(13_000L), 13_000);
     answer(certified.withWaitedMillis(300L), 300);
     CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
     assertTrue(result.isDone());
     assertEquals(2, seen.size(), "one request per hold");
     assertTrue(pauses.isEmpty(), "a real hold needs no pause");
-    // the second window is clipped by what the budget has left: 30 s - 20 s - 2 s margin
-    assertEquals(8_000L, seen.get(1).waitMillis);
+    // 2 s are left after the first hold and the margin takes them: an ordinary lookup
+    assertNull(seen.get(1).waitMillis);
   }
 
   @Test
   void aQuickOrZeroEchoIsPacedAtTheIntervalNeverSpun() {
     answer(pending.withStatusHint(ProofStatusHint.PENDING).withWaitedMillis(0L), 0);
-    answer(pending.withStatusHint(ProofStatusHint.PENDING).withWaitedMillis(20_000L), 1);
+    answer(pending.withStatusHint(ProofStatusHint.PENDING).withWaitedMillis(12_000L), 1);
     CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
     assertFalse(result.isDone());
     // zero echo: the rest of the interval
@@ -239,7 +239,7 @@ class InclusionProofWaiterTest {
     // a "hold" that came back after 1 ms is not a hold either: the rest of the interval
     assertEquals(2, seen.size());
     assertEquals(List.of(1000L, 999L), pauses);
-    assertEquals(20_000L, seen.get(1).waitMillis);
+    assertEquals(12_000L, seen.get(1).waitMillis);
   }
 
   @Test
@@ -248,7 +248,7 @@ class InclusionProofWaiterTest {
     answer(pending, 0);
     answer(certified, 0);
     CompletableFuture<InclusionProof> result = await(WaitOptions.defaults().interval(Duration.ofMillis(250)));
-    assertEquals(20_000L, seen.get(0).waitMillis);
+    assertEquals(13_000L, seen.get(0).waitMillis);
     assertEquals(List.of(250L), pauses);
     firePause();
     assertNull(seen.get(1).waitMillis, "no wait is asked for once the echo was missing");

@@ -143,7 +143,9 @@ class StateTransitionClientTest {
         PredicateVerifierService.create(), transaction).get(10, TimeUnit.SECONDS);
     assertNotNull(proof.getCertificationData());
     assertEquals(1, aggregator.lookups.get(), "the proof was there: one request, no pause");
-    assertEquals(List.of(20_000L), aggregator.waits);
+    // the 15 s default budget less the 2 s margin, less what was spent before the first request
+    assertEquals(1, aggregator.waits.size());
+    assertTrue(aggregator.waits.get(0) > 12_500L && aggregator.waits.get(0) <= 13_000L, "" + aggregator.waits);
     assertEquals(List.of(true), aggregator.hints);
   }
 

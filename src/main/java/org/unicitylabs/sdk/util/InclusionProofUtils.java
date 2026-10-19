@@ -34,7 +34,7 @@ public class InclusionProofUtils {
    * Wait for an inclusion proof to be available and verified, with the default options: the
    * aggregator is asked to hold each request while the state is pending (long poll), the first
    * request goes out at once, and the wait falls back to polling at one second when the aggregator
-   * does not support the hold. The total time is 30 seconds.
+   * does not support the hold. The total time is 15 seconds.
    *
    * @param client            State transition client
    * @param trustBase         Root trust base
