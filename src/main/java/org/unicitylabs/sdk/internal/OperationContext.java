@@ -115,7 +115,9 @@ public final class OperationContext {
   }
 
   /**
-   * Cancels the operation and runs the registered actions once.
+   * Cancels the operation and runs every registered action once. All actions run even if one of
+   * them throws: the registrations are drained first, and the first failure is rethrown afterwards
+   * with the others as suppressed exceptions, so no outstanding work is left uncancelled.
    *
    * @return true if this call cancelled the operation, false if it was already cancelled
    */
@@ -123,10 +125,33 @@ public final class OperationContext {
     if (!cancelled.compareAndSet(false, true)) {
       return false;
     }
+    RuntimeException failure = null;
+    Error error = null;
     for (Runnable action : actions) {
-      if (actions.remove(action)) {
-        action.run();
+      if (!actions.remove(action)) {
+        continue;
       }
+      try {
+        action.run();
+      } catch (RuntimeException e) {
+        if (failure == null) {
+          failure = e;
+        } else {
+          failure.addSuppressed(e);
+        }
+      } catch (Error e) {
+        if (error == null) {
+          error = e;
+        } else {
+          error.addSuppressed(e);
+        }
+      }
+    }
+    if (error != null) {
+      throw error;
+    }
+    if (failure != null) {
+      throw failure;
     }
     return true;
   }

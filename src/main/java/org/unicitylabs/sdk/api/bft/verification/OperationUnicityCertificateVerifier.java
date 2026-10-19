@@ -2,6 +2,7 @@ package org.unicitylabs.sdk.api.bft.verification;
 
 import org.unicitylabs.sdk.api.InclusionProof;
 import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.UnicityCertificate;
 
 /**
  * Certificate verifier of one operation. Identical certificate bodies and seals of the token and of
@@ -28,6 +29,20 @@ public final class OperationUnicityCertificateVerifier extends UnicityCertificat
   @Override
   public UnicityCertificateVerificationResult verify(RootTrustBase trustBase,
       InclusionProof inclusionProof) {
+    throw new UnsupportedOperationException("Implemented by package A");
+  }
+
+  /**
+   * Verifies a raw certificate under the policy of the operation, with the operation's seal
+   * session, body memo and pins. Used for strict evidence such as non-inclusion.
+   *
+   * @param trustBase the authority
+   * @param certificate the certificate
+   * @return verification result
+   */
+  @Override
+  public UnicityCertificateVerificationResult verifyCertificate(RootTrustBase trustBase,
+      UnicityCertificate certificate) {
     throw new UnsupportedOperationException("Implemented by package A");
   }
 

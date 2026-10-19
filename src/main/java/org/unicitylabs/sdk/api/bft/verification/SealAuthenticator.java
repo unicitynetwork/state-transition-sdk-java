@@ -24,7 +24,10 @@ public interface SealAuthenticator {
   String getIdentity();
 
   /**
-   * Authenticates a seal.
+   * Authenticates a seal. Always strict: an implementation never relaxes this check, whatever
+   * policy it was created or used with elsewhere. Legacy quorum-only checking of historical proofs
+   * is a separate, differently named operation (see
+   * {@link SealVerificationSession#verifyLegacyQuorum}) and its success never stands for this one.
    *
    * @param seal the seal, possibly from an untrusted source
    * @return OK, or FAIL with the failing rule; malformed peer data never throws a generic

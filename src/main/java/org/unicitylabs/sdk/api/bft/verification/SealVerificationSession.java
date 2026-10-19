@@ -10,10 +10,10 @@ import org.unicitylabs.sdk.util.verification.VerificationStatus;
  * successful checks and sharing of checks in flight.
  *
  * <p>The memo key binds the complete seal bytes including the signature witnesses, the authority
- * content and the policy. Only successes are retained, failures and failed in-flight checks are
- * removed, the memo is bounded and evicts the oldest entry. Network, epoch and round checks run on
- * every call, hits included. The session does not accept a custom rule silently: an injected rule
- * is called every time and its result is never memoized.
+ * content and the kind of check (strict or legacy). Only successes are retained; failures and
+ * failed in-flight checks are removed, the memo is bounded and evicts the oldest entry. Network,
+ * epoch and round checks run on every call, hits included. The session does not accept a custom
+ * rule silently: an injected rule is called every time and its result is never memoized.
  *
  * <p>Thread safe. Instances are scoped to one operation; they are not a process-wide cache.
  */
@@ -32,10 +32,9 @@ public final class SealVerificationSession implements SealAuthenticator {
    * affect the session.
    *
    * @param trustBase the authority
-   * @param policy the policy the session applies
    * @return new session with the default limits
    */
-  public static SealVerificationSession create(RootTrustBase trustBase, VerificationPolicy policy) {
+  public static SealVerificationSession create(RootTrustBase trustBase) {
     throw new UnsupportedOperationException("Implemented by package A");
   }
 
@@ -43,14 +42,13 @@ public final class SealVerificationSession implements SealAuthenticator {
    * Creates a session with explicit limits.
    *
    * @param trustBase the authority
-   * @param policy the policy the session applies
    * @param maxEntries memo size, positive
    * @param maxInFlight most verifications in flight, positive
    * @return new session
    * @throws IllegalArgumentException if a limit is not positive
    */
-  public static SealVerificationSession create(RootTrustBase trustBase, VerificationPolicy policy,
-      int maxEntries, int maxInFlight) {
+  public static SealVerificationSession create(RootTrustBase trustBase, int maxEntries,
+      int maxInFlight) {
     throw new UnsupportedOperationException("Implemented by package A");
   }
 
@@ -60,16 +58,27 @@ public final class SealVerificationSession implements SealAuthenticator {
   }
 
   /**
-   * The policy of this session.
+   * Strict authentication: structure, network, epoch, epoch start round and quorum. The only
+   * authentication this session offers, whatever policy an operation applies to token proofs; its
+   * memo holds strict successes only.
    *
-   * @return policy
+   * @param seal the seal
+   * @return OK, or FAIL with the failing rule
    */
-  public VerificationPolicy getPolicy() {
+  @Override
+  public VerificationResult<VerificationStatus> authenticate(UnicitySeal seal) {
     throw new UnsupportedOperationException("Implemented by package A");
   }
 
-  @Override
-  public VerificationResult<VerificationStatus> authenticate(UnicitySeal seal) {
+  /**
+   * Legacy check for historical token proofs: network and quorum signatures only, no epoch
+   * constraint. Kept apart from {@link #authenticate}: its results are memoized under a separate
+   * key, never satisfy a strict request, and must not be reported as authentication.
+   *
+   * @param seal the seal
+   * @return OK, or FAIL with the failing rule
+   */
+  public VerificationResult<VerificationStatus> verifyLegacyQuorum(UnicitySeal seal) {
     throw new UnsupportedOperationException("Implemented by package A");
   }
 

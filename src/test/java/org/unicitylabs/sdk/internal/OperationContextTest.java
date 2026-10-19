@@ -53,4 +53,25 @@ class OperationContextTest {
     context.onCancel(calls::incrementAndGet);
     assertEquals(1, calls.get());
   }
+
+  @Test
+  void cancelRunsEveryActionEvenIfOneThrows() {
+    OperationContext context = OperationContext.unbounded();
+    AtomicInteger calls = new AtomicInteger();
+    context.onCancel(() -> {
+      calls.incrementAndGet();
+      throw new IllegalStateException("first");
+    });
+    context.onCancel(calls::incrementAndGet);
+    context.onCancel(() -> {
+      calls.incrementAndGet();
+      throw new IllegalArgumentException("third");
+    });
+    IllegalStateException thrown = assertThrows(IllegalStateException.class, context::cancel);
+    assertEquals(3, calls.get());
+    assertEquals(1, thrown.getSuppressed().length);
+    assertTrue(context.isCancelled());
+    assertFalse(context.cancel());
+    assertEquals(3, calls.get());
+  }
 }
