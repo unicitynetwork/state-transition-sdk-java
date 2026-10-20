@@ -429,15 +429,24 @@ public class JsonRpcHttpTransport {
       java.util.regex.Matcher shape = RFC850_SHAPE.matcher(value);
       if (shape.matches()) {
         java.time.ZonedDateTime utcNow = java.time.ZonedDateTime.ofInstant(now, java.time.ZoneOffset.UTC);
-        int year = utcNow.getYear() / 100 * 100 + Integer.parseInt(shape.group(2));
-        // the year is decided by the date alone, then the weekday has to agree with it
-        Instant sameCentury = parseStrict(RFC850_NO_WEEKDAY,
-                "x, " + shape.group(1).substring(shape.group(1).indexOf(", ") + 2) + year + shape.group(3));
-        if (sameCentury != null) {
-          if (sameCentury.isAfter(utcNow.plusYears(50).toInstant())) {
-            year -= 100;
+        Instant limit = utcNow.plusYears(50).toInstant();
+        String dayMonth = shape.group(1).substring(shape.group(1).indexOf(", ") + 2);
+        // RFC 9110 5.6.7: a date that appears more than 50 years ahead is the most recent past year
+        // with the same two digits, so the year is the latest one with them that is not after
+        // now + 50 years (the window is now - 49 years up to now + 50 years); the weekday then has
+        // to agree with that year
+        int year = limit.atZone(java.time.ZoneOffset.UTC).getYear() / 100 * 100
+                + Integer.parseInt(shape.group(2));
+        for (int tries = 0; tries < 3 && year >= MIN_DATE_YEAR - 100; tries++, year -= 100) {
+          Instant candidate = parseStrict(RFC850_NO_WEEKDAY, "x, " + dayMonth + year + shape.group(3));
+          if (candidate == null) {
+            break;
           }
-          date = parseStrict(RFC850_DATE, shape.group(0).replaceFirst("-\\d{2} ", "-" + year + " "));
+          if (!candidate.isAfter(limit)) {
+            date = parseStrict(RFC850_DATE,
+                    shape.group(0).replaceFirst("-\\d{2} ", "-" + year + " "));
+            break;
+          }
         }
       }
     }
