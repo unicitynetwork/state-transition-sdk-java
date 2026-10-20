@@ -185,7 +185,7 @@ byte[] payload = new Payment(assets).encode();
 return mint(client, context, owner, payload, journal);
 ```
 
-`TokenSplit.split(token, paymentDataDeserializer, requests, burnStateMask, burnExpiresAt)` divides a payment token into new tokens. For every asset, the outputs together must carry exactly the amount of the source. The result holds a burn transaction for the source token and, for each output, the data to mint it. `split` throws the checked `org.unicitylabs.sdk.smt.LeafExistsException` when two outputs would get the same token ID, for example a reused salt. It is thrown by the call itself, not delivered through a future.
+`TokenSplit.split(token, paymentDataDeserializer, requests, burnStateMask, burnExpiresAt)` divides a payment token into new tokens. For every asset, the outputs together must carry exactly the amount of the source. The result holds a burn transaction for the source token and, for each output, the data to mint it. When two outputs would get the same token ID (for example a reused salt), `split` throws the unchecked `DuplicateSplitTokenIdException`. Outputs that do not match the source's assets throw `TokenAssetMissingException`, `TokenAssetCountMismatchException` or `TokenAssetValueMismatchException` (all `IllegalArgumentException`). These are thrown by the call itself, not delivered through a future. `split` also declares the checked `org.unicitylabs.sdk.smt.LeafExistsException`; callers must catch or declare it, but it cannot occur once the token IDs are distinct.
 
 1. Persist every input of the split (below), then submit the burn transaction as an ordinary transfer and keep the burned token.
 2. For every `SplitToken`, mint it with the type, salt, network, recipient and payment data it names, and with the justification `SplitMintJustification.create(burnedToken, splitToken.getProofs()).toCbor()`. Persist each mint transaction before submitting it.
@@ -219,6 +219,8 @@ journal.put("split.mask", burnMask.getBytes());
 journal.put("split.expiresAt", ByteBuffer.allocate(Long.BYTES).putLong(burnExpiresAt).array());
 return TokenSplit.split(source, Payment::decode, requests, burnMask, burnExpiresAt);
 ```
+
+If you let the service assign the burn deadline (`burnExpiresAt` is `null`), persist that absence and pass `null` again on recovery.
 
 ```java
 TransferTransaction burn = split.getBurnTransaction();
@@ -520,11 +522,12 @@ try {
 | `BatchProofException` | A batch lookup failed. `getKind()`: `UNAVAILABLE`, `UNSUPPORTED`, `REJECTED`, `LIMIT_EXCEEDED`, `SERVER`, `TRANSPORT`, `INVALID_RESPONSE`. | `isRetryable()` tells whether a new attempt may succeed. |
 | `NonInclusionProofException` | A non-inclusion lookup failed. `getKind()`: `UNAVAILABLE`, `BUSY`, `REJECTED`, `SERVER`, `TRANSPORT`, `TIMEOUT`, `CANCELLED`, `INVALID_RESPONSE`. | `isRetryable()`. |
 | `ConsolidationException` | Consolidation failed. `getKind()`: `CANCELLED`, `INPUT`, `INTEGRITY`, `INVALID_RESPONSE`, `REJECTED`, `SERVER`, `TIMEOUT`, `TRANSPORT`. | `isRetryable()`; `INTEGRITY` means the material was refused. |
-| `LeafExistsException` | `TokenSplit.split` found two outputs with the same token ID (a reused salt). Checked; thrown by the call, not through a future. | Use a distinct salt for every output. |
+| `DuplicateSplitTokenIdException` | `TokenSplit.split` found two outputs with the same token ID (a reused salt). Unchecked; thrown by the call, not through a future. | Use a distinct salt for every output. |
+| `LeafExistsException` | Declared by `TokenSplit.split` (checked). Cannot occur once the token IDs are distinct. | Catch or declare it to compile. |
 | `IllegalArgumentException`, `NullPointerException` | A builder or factory got invalid input (sizes, ranges, null). | Fix the call. |
 | `CancellationException` | The caller cancelled the future. | None. |
 
-Checked versus unchecked: `JsonRpcNetworkException` (and its subclass `JsonRpcDataException`) are checked, but only ever appear as the cause of a failed future, so they need no `throws` clause. `LeafExistsException` is the one checked exception that a call throws directly: `TokenSplit.split` declares it. Every other domain error is unchecked and typed.
+Checked versus unchecked: `JsonRpcNetworkException` (and its subclass `JsonRpcDataException`) are checked, but only ever appear as the cause of a failed future, so they need no `throws` clause. `LeafExistsException` is the one checked exception a call declares directly (`TokenSplit.split`); it cannot occur in practice. Every other domain error is unchecked and typed.
 
 ## 9. Advanced
 
