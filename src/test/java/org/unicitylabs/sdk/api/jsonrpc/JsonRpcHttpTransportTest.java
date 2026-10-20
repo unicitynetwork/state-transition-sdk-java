@@ -308,7 +308,7 @@ class JsonRpcHttpTransportTest {
     assertEquals(2L, seconds.getRetryAfterSeconds());
 
     server.enqueue(new MockResponse().setResponseCode(429)
-        .setHeader("Retry-After", "Wed, 21 Oct 2026 07:28:00 GMT").setBody("slow down"));
+        .setHeader("Retry-After", "tomorrow, maybe").setBody("slow down"));
     assertNull(assertInstanceOf(JsonRpcNetworkException.class, failure(call())).getRetryAfterSeconds());
 
     server.enqueue(new MockResponse().setResponseCode(503).setHeader("Retry-After", "-5").setBody("busy"));
@@ -389,7 +389,7 @@ class JsonRpcHttpTransportTest {
     assertNull(JsonRpcHttpTransport.retryAfter("5.5"));
     assertNull(JsonRpcHttpTransport.retryAfter("-1"));
     assertNull(JsonRpcHttpTransport.retryAfter("+5"));
-    assertNull(JsonRpcHttpTransport.retryAfter("Wed, 21 Oct 2026 07:28:00 GMT"));
+    assertNull(JsonRpcHttpTransport.retryAfter("tomorrow, maybe"));
     assertNull(JsonRpcHttpTransport.retryAfter("1e3"));
     // large values also reach the caller through the HTTP error
     server.enqueue(new MockResponse().setResponseCode(503).setHeader("Retry-After", "1000000000000")
@@ -427,5 +427,70 @@ class JsonRpcHttpTransportTest {
     longer.call("m", Map.of(), Map.of(), RequestOptions.none()).get(5, TimeUnit.SECONDS);
 
     assertEquals(java.util.List.of("60000/60000", "5000/3000", "60000/60000"), seen);
+  }
+
+  @Test
+  void theStatusOfAFailureSurvivesANonJsonOrOversizedBody() {
+    JsonRpcHttpTransport small = transport(64);
+    server.enqueue(new MockResponse().setResponseCode(502).setBody("<html>Bad Gateway</html>"));
+    JsonRpcNetworkException html = assertInstanceOf(JsonRpcNetworkException.class,
+        failure(small.call("m", Map.of(), Map.of(), RequestOptions.none())));
+    assertEquals(502, html.getStatus());
+    assertNull(html.getRpcError());
+
+    // larger than the bounded reader: still the status, never a response failure
+    server.enqueue(new MockResponse().setResponseCode(504).setBody("x".repeat(5000)));
+    JsonRpcNetworkException oversized = assertInstanceOf(JsonRpcNetworkException.class,
+        failure(small.call("m", Map.of(), Map.of(), RequestOptions.none())));
+    assertEquals(504, oversized.getStatus());
+    assertTrue(oversized.getErrorMessage().contains("exceeds"), oversized.getErrorMessage());
+    assertNull(oversized.getRpcError());
+
+    // an oversized body of a success is still a response failure
+    server.enqueue(new MockResponse().setBody("{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":\""
+        + "x".repeat(5000) + "\"}"));
+    assertInstanceOf(JsonRpcResponseException.class,
+        failure(small.call("m", Map.of(), Map.of(), RequestOptions.none())));
+  }
+
+  @Test
+  void aTruncatedErrorBodyStillReportsTheStatus() {
+    server.enqueue(new MockResponse().setResponseCode(502).setBody("partial body that is cut")
+        .setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.DISCONNECT_DURING_RESPONSE_BODY));
+    Throwable failure = failure(call());
+    if (failure instanceof JsonRpcNetworkException) {
+      assertEquals(502, ((JsonRpcNetworkException) failure).getStatus());
+    }
+  }
+
+  @Test
+  void retryAfterAcceptsTheHttpDateFormsAsTheDelayFromNow() {
+    java.time.Instant now = java.time.Instant.parse("2026-10-21T07:28:00Z");
+    // IMF-fixdate (the preferred form)
+    assertEquals(5L, JsonRpcHttpTransport.retryAfter("Wed, 21 Oct 2026 07:28:05 GMT", now));
+    // a fraction of a second rounds up
+    assertEquals(1L, JsonRpcHttpTransport.retryAfter("Wed, 21 Oct 2026 07:28:00 GMT",
+        now.minusMillis(500)));
+    // capped at 60 s, floored at 0
+    assertEquals(60L, JsonRpcHttpTransport.retryAfter("Wed, 21 Oct 2026 08:28:00 GMT", now));
+    assertEquals(0L, JsonRpcHttpTransport.retryAfter("Wed, 21 Oct 2026 07:27:00 GMT", now));
+    // the two obsolete forms
+    assertEquals(30L, JsonRpcHttpTransport.retryAfter("Wednesday, 21-Oct-26 07:28:30 GMT", now));
+    assertEquals(12L, JsonRpcHttpTransport.retryAfter("Wed Oct 21 07:28:12 2026", now));
+    // anything else is ignored
+    assertNull(JsonRpcHttpTransport.retryAfter("Wed, 32 Oct 2026 07:28:05 GMT", now));
+    assertNull(JsonRpcHttpTransport.retryAfter("tomorrow", now));
+    assertNull(JsonRpcHttpTransport.retryAfter("2026-10-21T07:28:05Z", now));
+    // seconds still work
+    assertEquals(9L, JsonRpcHttpTransport.retryAfter("9", now));
+  }
+
+  @Test
+  void aSingleLookupStillExposesAnIntermediaryErrorToTheCaller() {
+    // the one-shot API has no retry policy: only the wait helpers do
+    server.enqueue(new MockResponse().setResponseCode(502).setBody("<html>Bad Gateway</html>"));
+    JsonRpcNetworkException failure = assertInstanceOf(JsonRpcNetworkException.class, failure(call()));
+    assertEquals(502, failure.getStatus());
+    assertEquals(1, server.getRequestCount());
   }
 }

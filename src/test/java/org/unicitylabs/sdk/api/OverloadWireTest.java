@@ -141,4 +141,68 @@ class OverloadWireTest {
     assertTrue(reads.get() >= 5, "the wait kept reading past the grace of two intervals: "
         + reads.get());
   }
+
+  private JsonRpcAggregatorClient smallBodies() {
+    return new JsonRpcAggregatorClient(org.unicitylabs.sdk.api.jsonrpc.TestTransports.withIds(
+        server.url("/").toString(), http, 65536, () -> com.fasterxml.jackson.databind.node.IntNode.valueOf(1)),
+        null);
+  }
+
+  /** Exception B: 502 on the held read, 504 (oversized body) on a plain read, then the proof. */
+  @Test
+  void intermediaryErrorsOnTheHeldAndOnPlainReadsAreRiddenOutWithPlainReads() throws Exception {
+    String hex = WireTestSupport.MAPPER.readTree(java.nio.file.Files.readAllBytes(
+        java.nio.file.Paths.get("src/test/resources/shared/uc-consolidation/v1/shards-1/responses.json")))
+        .get("master").get("result").get("proofs").get(0).asText();
+    server.enqueue(new MockResponse().setResponseCode(502).setBody("<html>Bad Gateway</html>"));
+    server.enqueue(new MockResponse().setResponseCode(504).setBody("x".repeat(200_000)));
+    server.enqueue(new MockResponse().setBody("{\"jsonrpc\":\"2.0\",\"result\":\"" + hex + "\",\"id\":1}"));
+
+    long started = System.nanoTime();
+    CompletableFuture<InclusionProof> wait = InclusionProofWaiter.await(smallBodies(), stateId(),
+        proof -> { }, WaitOptions.defaults().interval(Duration.ofMillis(50)));
+    assertNotNull(wait.get(10, java.util.concurrent.TimeUnit.SECONDS));
+
+    assertEquals(3, server.getRequestCount());
+    assertTrue(params(server.takeRequest()).toString().contains("wait"), "the first read is held");
+    for (int i = 0; i < 2; i++) {
+      assertFalse(params(server.takeRequest()).toString().contains("wait"),
+          "no wait after an intermediary error");
+    }
+    assertTrue(System.nanoTime() - started >= Duration.ofMillis(100).toNanos(),
+        "the retries are paced by the interval");
+    org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(2)).until(
+        () -> http.dispatcher().runningCallsCount() == 0);
+  }
+
+  @Test
+  void submitAndWaitSubmitsOnceAndEndsAtTheOriginalDeadlineThroughIntermediaryErrors() throws Exception {
+    AtomicInteger submissions = new AtomicInteger();
+    AtomicInteger reads = new AtomicInteger();
+    server.setDispatcher(new Dispatcher() {
+      @Override
+      public MockResponse dispatch(RecordedRequest request) {
+        if (request.getBody().readUtf8().contains("\"certification_request\"")) {
+          submissions.incrementAndGet();
+          return new MockResponse().setBody(
+              "{\"jsonrpc\":\"2.0\",\"result\":{\"status\":\"SUCCESS\"},\"id\":1}");
+        }
+        return new MockResponse().setResponseCode(reads.incrementAndGet() % 2 == 0 ? 502 : 504)
+            .setBody("<html>gateway</html>");
+      }
+    });
+    MintTransaction transaction = MintTransaction.builder(NetworkId.LOCAL,
+        SignaturePredicate.fromSigningService(SigningService.generate())).build();
+    long started = System.nanoTime();
+    Throwable failure = WireTestSupport.failure(new StateTransitionClient(smallBodies()).submitAndWait(
+        transaction, CertificationData.fromMintTransaction(transaction), 3,
+        TestAggregatorClient.create().getTrustBase(), PredicateVerifierService.create(),
+        WaitOptions.defaults().interval(Duration.ofMillis(30)).timeout(Duration.ofSeconds(1))));
+
+    assertInstanceOf(TimeoutException.class, failure);
+    assertEquals(1, submissions.get(), "an intermediary error is no reason to submit again");
+    assertTrue(reads.get() >= 5, "the wait kept reading: " + reads.get());
+    assertTrue(System.nanoTime() - started < Duration.ofSeconds(3).toNanos(),
+        "no budget extension beyond the original deadline");
+  }
 }

@@ -750,4 +750,69 @@ class InclusionProofWaiterTest {
     assertEquals(58_000L, seen.get(0).waitMillis, "the wait gives way, the 2 s margin stays");
     assertEquals(Duration.ofSeconds(60), seen.get(0).callTimeout);
   }
+
+  // Intermediary errors (502/504) inside a wait: inconclusive, same budget, no resubmission.
+
+  @Test
+  void anIntermediaryErrorOnTheHeldReadAndThenOnAPlainReadIsPacedAndTheBudgetIsNotRestarted() {
+    fail(new JsonRpcNetworkException(502, "<html>Bad Gateway</html>"));
+    fail(new JsonRpcNetworkException(504, "gateway timeout"));
+    answer(certified, 0);
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
+    assertEquals(13_000L, seen.get(0).waitMillis, "the first read is held");
+    assertEquals(List.of(1000L), pauses);
+    firePause();
+    assertNull(seen.get(1).waitMillis, "no wait is asked for after the 502");
+    assertEquals(List.of(1000L, 1000L), pauses, "paced at the interval");
+    firePause();
+    assertTrue(result.isDone());
+    assertNull(seen.get(2).waitMillis, "nor after the 504 of a plain read");
+    assertEquals(3, seen.size());
+    assertEquals(1, deadlines.size(), "one deadline for the whole wait: the budget is not restarted");
+    assertTrue(deadlinesCancelled.get(0).get());
+  }
+
+  @Test
+  void anIntermediaryErrorHonoursALongerRetryAfterIncludingTheDateForm() {
+    fail(new JsonRpcNetworkException(504, "gateway timeout", null, 4L));
+    answer(certified, 0);
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
+    assertEquals(List.of(4000L), pauses);
+    firePause();
+    assertTrue(result.isDone());
+  }
+
+  @Test
+  void anIntermediaryErrorThatDoesNotFitFailsWithinTheBudgetAndNamesTheIntermediary() {
+    script.add(new Reply(null, new JsonRpcNetworkException(502, "bad gateway"), 14_500));
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults().longPoll(false));
+    Throwable failure = failure(result);
+    assertInstanceOf(TimeoutException.class, failure);
+    assertInstanceOf(JsonRpcNetworkException.class, failure.getCause());
+    assertEquals(502, ((JsonRpcNetworkException) failure.getCause()).getStatus());
+    assertTrue(failure.getMessage().contains("Intermediary error (HTTP 502)"), failure.getMessage());
+    assertTrue(failure.getMessage().contains("no retry-after was given"), failure.getMessage());
+    assertEquals(1, seen.size());
+  }
+
+  @Test
+  void cancellingDuringTheIntermediaryPauseStopsTheWaitAndSendsNothingMore() {
+    fail(new JsonRpcNetworkException(502, "bad gateway"));
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
+    assertFalse(result.isDone());
+    result.cancel(true);
+    assertTrue(scheduledCancelled.get(0).get(), "the pending pause is cancelled");
+    assertEquals(1, seen.size());
+  }
+
+  @Test
+  void otherServerErrorsAreStillTerminal() {
+    JsonRpcNetworkException internal = new JsonRpcNetworkException(500, "boom");
+    fail(internal);
+    assertSame(internal, failure(await(WaitOptions.defaults())));
+    seen.clear();
+    JsonRpcNetworkException gone = new JsonRpcNetworkException(501, "not implemented");
+    fail(gone);
+    assertSame(gone, failure(await(WaitOptions.defaults())));
+  }
 }

@@ -399,10 +399,14 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
         // naming the field. Repeat once without it, same other params and same operation (the
         // deadline is the caller's, never renewed); the second answer stands, whatever it is.
         // Nothing is cached: the next call tries the wait again.
-        if (wait != null && requests == 1 && cause instanceof JsonRpcDataException
-                && ((JsonRpcDataException) cause).isIdMatched()
-                && LongPoll.isMalformedParams(((JsonRpcDataException) cause).getCode(),
-                ((JsonRpcDataException) cause).getData())) {
+        // The error may sit behind an HTTP status (the gateway answers a client routing error with
+        // 400): only what the matching JSON-RPC body says counts, never the status.
+        JsonRpcDataException rpc = cause instanceof JsonRpcDataException
+                ? (JsonRpcDataException) cause
+                : cause instanceof JsonRpcNetworkException
+                ? ((JsonRpcNetworkException) cause).getRpcError() : null;
+        if (wait != null && requests == 1 && rpc != null && rpc.isIdMatched()
+                && LongPoll.isMalformedParams(rpc.getCode(), rpc.getData())) {
           this.send(null, 2, result);
           return;
         }

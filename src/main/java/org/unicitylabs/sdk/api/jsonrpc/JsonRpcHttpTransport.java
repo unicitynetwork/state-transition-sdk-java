@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -282,7 +283,11 @@ public class JsonRpcHttpTransport {
               future.completeExceptionally(new TimeoutException("Operation deadline expired."));
               return;
             }
-            String bodyString = JsonRpcHttpTransport.this.readBounded(body);
+            // The HTTP status of a failure is kept whatever the body is: a proxy page, a body that is
+            // not JSON or one over the size limit must not turn a 502 into a response failure.
+            String bodyString = response.isSuccessful()
+                    ? JsonRpcHttpTransport.this.readBounded(body)
+                    : JsonRpcHttpTransport.this.readErrorBody(body);
             JsonNode envelope = JsonRpcHttpTransport.parseEnvelope(bodyString);
 
             if (!response.isSuccessful()) {
@@ -319,24 +324,49 @@ public class JsonRpcHttpTransport {
 
   /**
    * Rewrites a decimal Retry-After to its saturated value before OkHttp's own retry logic reads it:
-   * OkHttp parses the header of a 503 as an {@code int} and fails the call on a longer number.
+   * OkHttp parses the header of a 503 as an {@code int} and fails the call on a longer number. A
+   * date or any other form is left as it is.
    */
   private static okhttp3.Response saturateRetryAfter(okhttp3.Interceptor.Chain chain)
           throws IOException {
     okhttp3.Response response = chain.proceed(chain.request());
     String header = response.header("Retry-After");
-    Long seconds = retryAfter(header);
-    if (seconds != null && !String.valueOf(seconds).equals(header)) {
-      return response.newBuilder().header("Retry-After", String.valueOf(seconds)).build();
+    if (header != null && header.trim().matches("[0-9]+")) {
+      Long seconds = retryAfter(header, Instant.EPOCH);
+      if (seconds != null && !String.valueOf(seconds).equals(header)) {
+        return response.newBuilder().header("Retry-After", String.valueOf(seconds)).build();
+      }
     }
     return response;
   }
 
+  private static final java.util.List<java.time.format.DateTimeFormatter> HTTP_DATES =
+          java.util.List.of(
+                  java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME,
+                  java.time.format.DateTimeFormatter.ofPattern(
+                          "EEEE, dd-MMM-yy HH:mm:ss 'GMT'", java.util.Locale.US)
+                          .withZone(java.time.ZoneOffset.UTC),
+                  java.time.format.DateTimeFormatter.ofPattern(
+                          "EEE MMM ppd HH:mm:ss yyyy", java.util.Locale.US)
+                          .withZone(java.time.ZoneOffset.UTC));
+
   /**
-   * The Retry-After header as seconds. Only the decimal delta-seconds form counts: a value of any
-   * length saturates at {@link #MAX_RETRY_AFTER_SECONDS}, a malformed or date-form value is null.
+   * The Retry-After header as seconds (RFC 9110, 10.2.3): delay-seconds, or an HTTP-date as the
+   * time from now to it. Seconds of any length, and a date further away, saturate at
+   * {@link #MAX_RETRY_AFTER_SECONDS}; a date in the past is 0. Anything else is null.
    */
   static Long retryAfter(String header) {
+    return retryAfter(header, Instant.now());
+  }
+
+  /**
+   * As {@link #retryAfter(String)} with the time now given, so the date form can be tested.
+   *
+   * @param header the header value, may be null
+   * @param now the time a date is measured from
+   * @return seconds, null if the header is absent or in no valid form
+   */
+  static Long retryAfter(String header, Instant now) {
     if (header == null) {
       return null;
     }
@@ -344,15 +374,26 @@ public class JsonRpcHttpTransport {
     if (value.isEmpty()) {
       return null;
     }
-    long seconds = 0;
-    for (int i = 0; i < value.length(); i++) {
-      char digit = value.charAt(i);
-      if (digit < '0' || digit > '9') {
-        return null;
+    if (value.chars().allMatch(c -> c >= '0' && c <= '9')) {
+      long seconds = 0;
+      for (int i = 0; i < value.length(); i++) {
+        seconds = Math.min(MAX_RETRY_AFTER_SECONDS, seconds * 10 + (value.charAt(i) - '0'));
       }
-      seconds = Math.min(MAX_RETRY_AFTER_SECONDS, seconds * 10 + (digit - '0'));
+      return seconds;
     }
-    return seconds;
+    for (java.time.format.DateTimeFormatter format : HTTP_DATES) {
+      try {
+        Instant date = Instant.from(format.parse(value));
+        long millis = date.toEpochMilli() - now.toEpochMilli();
+        if (millis <= 0) {
+          return 0L;
+        }
+        return Math.min(MAX_RETRY_AFTER_SECONDS, (millis + 999) / 1000);
+      } catch (java.time.DateTimeException e) {
+        // another form
+      }
+    }
+    return null;
   }
 
   /** Parses the whole body as one JSON object; trailing data after the value is not a valid response. */
@@ -468,6 +509,21 @@ public class JsonRpcHttpTransport {
     // zero means "no timeout" to OkHttp: never let an exhausted budget become unbounded
     Duration bounded = timeout.isZero() ? Duration.ofMillis(1) : timeout;
     return this.httpClient.newBuilder().callTimeout(bounded).readTimeout(bounded).build();
+  }
+
+  /**
+   * The body of a non-success response, for the message of the failure: a body over the limit or
+   * one that cannot be read is replaced by a note, so the status is always reported. Closing the
+   * response discards the connection of an abandoned body.
+   */
+  private String readErrorBody(ResponseBody body) {
+    try {
+      return this.readBounded(body);
+    } catch (JsonRpcResponseException e) {
+      return "(response body exceeds the maximum allowed size)";
+    } catch (IOException e) {
+      return "(response body unreadable: " + e.getMessage() + ")";
+    }
   }
 
   /**

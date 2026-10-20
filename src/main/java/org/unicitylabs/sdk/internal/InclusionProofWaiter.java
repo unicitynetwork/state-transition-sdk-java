@@ -404,14 +404,17 @@ public final class InclusionProofWaiter {
   }
 
   /**
-   * The retryable overload answer of a proof read: HTTP 503 or 429, JSON-RPC -32006, or any
-   * JSON-RPC error whose data says {@code retryable: true}.
+   * The inconclusive answer of a proof read: HTTP 503 or 429 (overload), 502 or 504 (an
+   * intermediary's error), JSON-RPC -32006, or any JSON-RPC error whose data says
+   * {@code retryable: true}.
    */
   private static boolean isOverload(Throwable cause, JsonRpcDataException rpc) {
     if (!(cause instanceof JsonRpcDataException)
         && cause instanceof JsonRpcNetworkException) {
       int status = ((JsonRpcNetworkException) cause).getStatus();
-      if (status == 503 || status == 429) {
+      // 503 and 429 are overload; 502 and 504 are an intermediary (gateway, load balancer) that
+      // gave up on a request: the aggregator may well be fine. All four are inconclusive in a wait.
+      if (status == 503 || status == 429 || status == 502 || status == 504) {
         return true;
       }
     }
@@ -445,8 +448,11 @@ public final class InclusionProofWaiter {
       String answer = cause instanceof JsonRpcDataException
           ? "JSON-RPC error " + ((JsonRpcDataException) cause).getCode()
           : "HTTP " + ((JsonRpcNetworkException) cause).getStatus();
+      boolean intermediary = !(cause instanceof JsonRpcDataException)
+          && (((JsonRpcNetworkException) cause).getStatus() == 502
+          || ((JsonRpcNetworkException) cause).getStatus() == 504);
       TimeoutException timeout = new TimeoutException(
-          "Aggregator overloaded (" + answer + "), "
+          (intermediary ? "Intermediary error (" : "Aggregator overloaded (") + answer + "), "
               + (hinted ? "retry-after " + (retryAfterMillis / 1000) + " s" : "no retry-after was given")
               + "; the " + pause + " ms pause does not fit in the " + left
               + " ms left for the inclusion proof");
