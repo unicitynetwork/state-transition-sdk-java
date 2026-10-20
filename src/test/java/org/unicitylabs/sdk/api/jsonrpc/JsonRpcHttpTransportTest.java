@@ -493,4 +493,69 @@ class JsonRpcHttpTransportTest {
     assertEquals(502, failure.getStatus());
     assertEquals(1, server.getRequestCount());
   }
+
+  /** A source that reports when the body is being read, so a test can act in the middle of it. */
+  private static OkHttpClient observing(OkHttpClient base, Runnable onRead, Runnable onEnd) {
+    return base.newBuilder().addInterceptor(chain -> {
+      okhttp3.Response response = chain.proceed(chain.request());
+      okhttp3.ResponseBody original = response.body();
+      okio.BufferedSource source = okio.Okio.buffer(new okio.ForwardingSource(original.source()) {
+        @Override
+        public long read(okio.Buffer sink, long count) throws java.io.IOException {
+          onRead.run();
+          long n = super.read(sink, count);
+          if (n == -1) {
+            onEnd.run();
+          }
+          return n;
+        }
+      });
+      return response.newBuilder().body(new okhttp3.ResponseBody() {
+        @Override public okhttp3.MediaType contentType() { return original.contentType(); }
+        @Override public long contentLength() { return original.contentLength(); }
+        @Override public okio.BufferedSource source() { return source; }
+      }).build();
+    }).build();
+  }
+
+  @Test
+  void aCancellationWhileAnErrorBodyIsReadStaysACancellation() throws Exception {
+    java.util.concurrent.CountDownLatch reading = new java.util.concurrent.CountDownLatch(1);
+    OkHttpClient observed = observing(http, reading::countDown, () -> { });
+    JsonRpcHttpTransport tested = TestTransports.withIds(server.url("/").toString(), observed, 1024,
+        () -> IntNode.valueOf(7));
+    server.enqueue(new MockResponse().setResponseCode(502).setBody("slow proxy page")
+        .setBodyDelay(2, TimeUnit.SECONDS));
+    OperationContext operation = OperationContext.unbounded();
+    CompletableFuture<JsonNode> future = tested.call("m", Map.of(), Map.of(),
+        RequestOptions.none().withOperation(operation));
+    assertTrue(reading.await(2, TimeUnit.SECONDS), "the error body is being read");
+    operation.cancel();
+    assertInstanceOf(CancellationException.class, failure(future));
+    Awaitility.await().atMost(Duration.ofSeconds(2))
+        .until(() -> http.dispatcher().runningCallsCount() == 0);
+  }
+
+  @Test
+  void aDeadlineThatPassesWhileAnErrorBodyIsReadStaysATimeout() {
+    AtomicLong nanos = new AtomicLong();
+    OperationContext operation = OperationContext.withBudget(Duration.ofSeconds(10), nanos::get);
+    OkHttpClient advancing = observing(http, () -> { },
+        () -> nanos.set(TimeUnit.SECONDS.toNanos(11)));
+    JsonRpcHttpTransport tested = TestTransports.withIds(server.url("/").toString(), advancing, 1024,
+        () -> IntNode.valueOf(7));
+    server.enqueue(new MockResponse().setResponseCode(504).setBody("timeout page"));
+    assertInstanceOf(TimeoutException.class, failure(tested.call("m", Map.of(), Map.of(),
+        RequestOptions.none().withOperation(operation))));
+  }
+
+  @Test
+  void anOrdinaryBodyProblemKeepsTheStatusWhileTheOperationIsLive() {
+    OperationContext operation = OperationContext.unbounded();
+    server.enqueue(new MockResponse().setResponseCode(502).setBody("x".repeat(5000)));
+    JsonRpcNetworkException failure = assertInstanceOf(JsonRpcNetworkException.class,
+        failure(transport(64).call("m", Map.of(), Map.of(),
+            RequestOptions.none().withOperation(operation))));
+    assertEquals(502, failure.getStatus());
+  }
 }

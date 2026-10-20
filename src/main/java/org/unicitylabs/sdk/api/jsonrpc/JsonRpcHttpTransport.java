@@ -120,7 +120,13 @@ public class JsonRpcHttpTransport {
             .newBuilder()
             .followRedirects(false)
             .followSslRedirects(false)
-            .addNetworkInterceptor(JsonRpcHttpTransport::saturateRetryAfter)
+            // A JSON-RPC POST is never replayed by the transport: a replayed submission has an
+            // uncertain outcome, and a replayed read would hide an overload from the waiter's
+            // policy. The request body is one-shot, which stops OkHttp's replay of a sent request
+            // (a 408, a dropped connection); the 503 replay on Retry-After 0 is stopped by hiding
+            // that header, see below. Trying another route (IPv6 then IPv4) before anything was
+            // sent stays possible, so retryOnConnectionFailure is left as the caller set it.
+            .addNetworkInterceptor(JsonRpcHttpTransport::hideRetryAfter)
             .build();
     this.maxResponseBytes = maxResponseBytes;
   }
@@ -215,9 +221,9 @@ public class JsonRpcHttpTransport {
 
       Request.Builder requestBuilder = new Request.Builder()
               .url(this.url)
-              .post(RequestBody.create(
+              .post(JsonRpcHttpTransport.oneShot(RequestBody.create(
                       UnicityObjectMapper.JSON.writeValueAsString(envelope),
-                      JsonRpcHttpTransport.MEDIA_TYPE_JSON));
+                      JsonRpcHttpTransport.MEDIA_TYPE_JSON)));
       headers.forEach((header, values) ->
               values.forEach(value -> requestBuilder.addHeader(header, value)));
 
@@ -288,6 +294,16 @@ public class JsonRpcHttpTransport {
             String bodyString = response.isSuccessful()
                     ? JsonRpcHttpTransport.this.readBounded(body)
                     : JsonRpcHttpTransport.this.readErrorBody(body);
+            // A cancellation or a deadline that came while the body was read is the failure, never a
+            // retryable HTTP status built from whatever was left of the body.
+            if (cancelledByUs.get() || (operation != null && operation.isCancelled())) {
+              future.completeExceptionally(new CancellationException("Request cancelled."));
+              return;
+            }
+            if (operation != null && operation.isExpired()) {
+              future.completeExceptionally(new TimeoutException("Operation deadline expired."));
+              return;
+            }
             JsonNode envelope = JsonRpcHttpTransport.parseEnvelope(bodyString);
 
             if (!response.isSuccessful()) {
@@ -301,11 +317,11 @@ public class JsonRpcHttpTransport {
               }
               future.completeExceptionally(
                       new JsonRpcNetworkException(response.code(), bodyString, rpcError,
-                              JsonRpcHttpTransport.retryAfter(response.header("Retry-After"))));
+                              JsonRpcHttpTransport.retryAfterOf(response)));
               return;
             }
             JsonNode result = JsonRpcHttpTransport.result(envelope, requestId,
-                    JsonRpcHttpTransport.retryAfter(response.header("Retry-After")));
+                    JsonRpcHttpTransport.retryAfterOf(response));
             if (operation != null && operation.isExpired()) {
               future.completeExceptionally(new TimeoutException("Operation deadline expired."));
               return;
@@ -322,22 +338,55 @@ public class JsonRpcHttpTransport {
     return future;
   }
 
+  /** Header the transport keeps the server's Retry-After in, out of OkHttp's sight. */
+  static final String RETRY_AFTER_KEPT = "X-Unicity-Retry-After";
+
   /**
-   * Rewrites a decimal Retry-After to its saturated value before OkHttp's own retry logic reads it:
-   * OkHttp parses the header of a 503 as an {@code int} and fails the call on a longer number. A
-   * date or any other form is left as it is.
+   * Moves Retry-After out of the response before OkHttp's retry logic reads it. OkHttp replays the
+   * request on a 503 whose Retry-After is 0 (and fails the call on a number that does not fit an
+   * int); the transport never replays, and keeps the server's value in another header for the
+   * typed failure. Whatever a server sends as the kept header itself is dropped.
    */
-  private static okhttp3.Response saturateRetryAfter(okhttp3.Interceptor.Chain chain)
+  private static okhttp3.Response hideRetryAfter(okhttp3.Interceptor.Chain chain)
           throws IOException {
     okhttp3.Response response = chain.proceed(chain.request());
     String header = response.header("Retry-After");
-    if (header != null && header.trim().matches("[0-9]+")) {
-      Long seconds = retryAfter(header, Instant.EPOCH);
-      if (seconds != null && !String.valueOf(seconds).equals(header)) {
-        return response.newBuilder().header("Retry-After", String.valueOf(seconds)).build();
-      }
+    okhttp3.Response.Builder builder = response.newBuilder()
+            .removeHeader("Retry-After").removeHeader(RETRY_AFTER_KEPT);
+    if (header != null) {
+      builder.header(RETRY_AFTER_KEPT, header);
     }
-    return response;
+    return builder.build();
+  }
+
+  /** The Retry-After the server sent, as seconds, from the kept header. */
+  private static Long retryAfterOf(Response response) {
+    return retryAfter(response.header(RETRY_AFTER_KEPT));
+  }
+
+  /** A body that is sent once and never again: OkHttp does not replay a one-shot request. */
+  private static RequestBody oneShot(RequestBody body) {
+    return new RequestBody() {
+      @Override
+      public okhttp3.MediaType contentType() {
+        return body.contentType();
+      }
+
+      @Override
+      public long contentLength() throws IOException {
+        return body.contentLength();
+      }
+
+      @Override
+      public void writeTo(okio.BufferedSink sink) throws IOException {
+        body.writeTo(sink);
+      }
+
+      @Override
+      public boolean isOneShot() {
+        return true;
+      }
+    };
   }
 
   private static final java.util.List<java.time.format.DateTimeFormatter> HTTP_DATES =
@@ -432,8 +481,12 @@ public class JsonRpcHttpTransport {
     if (hasError) {
       // An error that answers no request of ours (a null id is what a server uses when it could
       // not read the id) is kept for callers that tolerate it, marked as not matched.
+      // A missing id is no such answer: only an explicit null is.
+      if (!envelope.has("id")) {
+        throw new JsonRpcResponseException("JSON-RPC error response has no id.");
+      }
       boolean matched = requestId.equals(id);
-      if (!matched && !(id == null || id.isNull())) {
+      if (!matched && !id.isNull()) {
         throw new JsonRpcResponseException("JSON-RPC response id mismatch: expected " + requestId
                 + ", got " + id + ".");
       }

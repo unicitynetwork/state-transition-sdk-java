@@ -257,8 +257,7 @@ class JsonRpcAggregatorClientWireTest {
     assertFalse(denied.isRetryable(), "the credential is missing or wrong");
     server.enqueue(new MockResponse().setResponseCode(502).setBody("<html>"));
     assertTrue(batch().isRetryable());
-    // OkHttp repeats a request once after a dropped connection
-    server.enqueue(new MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AFTER_REQUEST));
+    // the transport never repeats a request after a dropped connection: one request, one failure
     server.enqueue(new MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AFTER_REQUEST));
     BatchProofException io = batch();
     assertEquals(BatchProofException.Kind.TRANSPORT, io.getKind());

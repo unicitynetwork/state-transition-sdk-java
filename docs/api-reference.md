@@ -63,7 +63,7 @@ The default `new TokenIssuanceVerifierService()` rejects every token whose type 
 
 ### HTTP client and timeouts
 
-The default client uses OkHttp defaults (10 s connect, read and write timeouts, no call timeout) and does not follow redirects. To change them, pass your own `OkHttpClient`; the SDK shares its connection pool and dispatcher, never shuts the dispatcher down, and switches redirect following off on the requests it makes.
+The transport never replays a request: it sends each JSON-RPC POST once, also when your own `OkHttpClient` would retry (after a dropped connection, on a 408, or on a 503 with `Retry-After: 0`), because a replayed submission has an uncertain outcome. Retrying reads is the job of the wait helpers. The default client uses OkHttp defaults (10 s connect, read and write timeouts, no call timeout) and does not follow redirects. To change them, pass your own `OkHttpClient`; the SDK shares its connection pool and dispatcher, never shuts the dispatcher down, and switches redirect following off on the requests it makes.
 
 ```java
 var http = new OkHttpClient.Builder()
@@ -446,7 +446,7 @@ An HTTP 502 or 504 on a proof read inside a wait is inconclusive in the same way
 
 A wait completes exceptionally with the exceptions of [section 8](#8-errors). One deadline covers a whole operation, a wait or a `submitAndWait` with all its submissions and waits. When it passes, the future completes with `TimeoutException`, the active HTTP call and pause are cancelled, and a response or verification that finishes late is discarded.
 
-`JsonRpcAggregatorClient` checks every response before interpreting it: a bounded body, one complete JSON object, version `2.0`, exactly one of `result` and `error`, and the id of the request, also on errors. An error with a null id is kept for diagnostics (`isIdMatched() == false`) and is never taken as an acknowledgement or a status. The one exception is the aggregator's server-wide busy answer, which it sends before it parses the request, as HTTP 200 with `-32006` and a null id: during a wait that is an overload answer, like any null-id error whose data says `retryable: true`. An error with another non-null id is a `JsonRpcResponseException`.
+`JsonRpcAggregatorClient` checks every response before interpreting it: a bounded body, one complete JSON object, version `2.0`, exactly one of `result` and `error`, and the id of the request, also on errors. An error with a null id is kept for diagnostics (`isIdMatched() == false`) and is never taken as an acknowledgement or a status. The one exception is the aggregator's server-wide busy answer, which it sends before it parses the request, as HTTP 200 with `-32006` and an explicit `"id": null` (an error without any `id` member is a `JsonRpcResponseException`): during a wait that is an overload answer, like any null-id error whose data says `retryable: true`. An error with another non-null id is a `JsonRpcResponseException`.
 
 ### Cancellation
 

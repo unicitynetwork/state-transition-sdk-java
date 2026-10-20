@@ -20,9 +20,10 @@ import org.junit.jupiter.api.Test;
  */
 class MixedShardBatchWireTest {
 
+  /** The gateway's own body: code, message and id, no data (RequestHandler.batchShardErrorBody). */
   private static final String WRONG_SHARD = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,"
-      + "\"message\":\"Invalid params\",\"data\":{\"reason\":\"invalid_request\","
-      + "\"detail\":\"wrong_shard\",\"retryable\":false}},\"id\":1}";
+      + "\"message\":\"stateIds belong to more than one shard; send one request per shard\"},"
+      + "\"id\":1}";
   private static final String MALFORMED = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,"
       + "\"message\":\"Invalid params\",\"data\":{\"reason\":\"invalid_request\","
       + "\"detail\":\"malformed_params\",\"retryable\":false}},\"id\":1}";
@@ -56,7 +57,7 @@ class MixedShardBatchWireTest {
 
     assertEquals(BatchProofException.Kind.REJECTED, failure.getKind());
     assertEquals(-32602, failure.getCode());
-    assertEquals("wrong_shard", failure.getDetail());
+    org.junit.jupiter.api.Assertions.assertNull(failure.getDetail());
     assertFalse(failure.isRetryable());
     assertEquals(1, failure.getRequests());
     assertEquals(1, server.getRequestCount(), "not the retry-without-waitMs case");
@@ -69,7 +70,7 @@ class MixedShardBatchWireTest {
         WireTestSupport.failure(WireTestSupport.client(server, http, 1)
             .getInclusionProofs(ids(), BatchRequestOptions.latest().withWaitMillis(5_000))));
     assertEquals(BatchProofException.Kind.REJECTED, failure.getKind());
-    assertEquals("wrong_shard", failure.getDetail());
+    org.junit.jupiter.api.Assertions.assertNull(failure.getDetail());
     assertEquals(1, server.getRequestCount());
   }
 
