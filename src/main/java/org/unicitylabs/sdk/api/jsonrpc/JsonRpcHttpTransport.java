@@ -393,15 +393,77 @@ public class JsonRpcHttpTransport {
     };
   }
 
-  private static final java.util.List<java.time.format.DateTimeFormatter> HTTP_DATES =
-          java.util.List.of(
-                  java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME,
-                  java.time.format.DateTimeFormatter.ofPattern(
-                          "EEEE, dd-MMM-yy HH:mm:ss 'GMT'", java.util.Locale.US)
-                          .withZone(java.time.ZoneOffset.UTC),
-                  java.time.format.DateTimeFormatter.ofPattern(
-                          "EEE MMM ppd HH:mm:ss yyyy", java.util.Locale.US)
-                          .withZone(java.time.ZoneOffset.UTC));
+  /** Strict: an impossible date (31 February) or a weekday that does not fit is rejected, not clamped. */
+  private static java.time.format.DateTimeFormatter strictDate(String pattern) {
+    return java.time.format.DateTimeFormatter.ofPattern(pattern, java.util.Locale.US)
+            .withResolverStyle(java.time.format.ResolverStyle.STRICT)
+            .withZone(java.time.ZoneOffset.UTC);
+  }
+
+  private static final java.time.format.DateTimeFormatter IMF_FIXDATE =
+          strictDate("EEE, d MMM uuuu HH:mm:ss 'GMT'");
+  private static final java.time.format.DateTimeFormatter RFC850_DATE =
+          strictDate("EEEE, dd-MMM-uuuu HH:mm:ss 'GMT'");
+  private static final java.time.format.DateTimeFormatter ASCTIME_DATE =
+          strictDate("EEE MMM ppd HH:mm:ss uuuu");
+  private static final java.util.regex.Pattern RFC850_SHAPE = java.util.regex.Pattern.compile(
+          "([A-Za-z]+, \\d{2}-[A-Za-z]{3}-)(\\d{2})( \\d{2}:\\d{2}:\\d{2} GMT)");
+  /** The RFC 850 date without its weekday, to decide the year before the weekday is checked. */
+  private static final java.time.format.DateTimeFormatter RFC850_NO_WEEKDAY =
+          strictDate("'x, 'dd-MMM-uuuu HH:mm:ss 'GMT'");
+  /** Years an HTTP-date may have: from the epoch, and the four digits the formats carry. */
+  private static final int MIN_DATE_YEAR = 1970;
+  private static final int MAX_DATE_YEAR = 9999;
+
+  /**
+   * An HTTP-date (RFC 9110, 5.6.7) in any of its three forms, resolved strictly and bounded to the
+   * years 1970 to 9999; null if it is none of them. The two-digit year of the RFC 850 form is the
+   * most recent such year that is not more than 50 years after {@code now}.
+   */
+  private static Instant parseHttpDate(String value, Instant now) {
+    Instant date = parseStrict(IMF_FIXDATE, value);
+    if (date == null) {
+      date = parseStrict(ASCTIME_DATE, value);
+    }
+    if (date == null) {
+      java.util.regex.Matcher shape = RFC850_SHAPE.matcher(value);
+      if (shape.matches()) {
+        java.time.ZonedDateTime utcNow = java.time.ZonedDateTime.ofInstant(now, java.time.ZoneOffset.UTC);
+        Instant limit = utcNow.plusYears(50).toInstant();
+        String dayMonth = shape.group(1).substring(shape.group(1).indexOf(", ") + 2);
+        // RFC 9110 5.6.7: a date that appears more than 50 years ahead is the most recent past year
+        // with the same two digits, so the year is the latest one with them that is not after
+        // now + 50 years (the window is now - 49 years up to now + 50 years); the weekday then has
+        // to agree with that year
+        int year = limit.atZone(java.time.ZoneOffset.UTC).getYear() / 100 * 100
+                + Integer.parseInt(shape.group(2));
+        for (int tries = 0; tries < 3 && year >= MIN_DATE_YEAR - 100; tries++, year -= 100) {
+          Instant candidate = parseStrict(RFC850_NO_WEEKDAY, "x, " + dayMonth + year + shape.group(3));
+          if (candidate == null) {
+            break;
+          }
+          if (!candidate.isAfter(limit)) {
+            date = parseStrict(RFC850_DATE,
+                    shape.group(0).replaceFirst("-\\d{2} ", "-" + year + " "));
+            break;
+          }
+        }
+      }
+    }
+    if (date == null) {
+      return null;
+    }
+    int year = java.time.ZonedDateTime.ofInstant(date, java.time.ZoneOffset.UTC).getYear();
+    return year < MIN_DATE_YEAR || year > MAX_DATE_YEAR ? null : date;
+  }
+
+  private static Instant parseStrict(java.time.format.DateTimeFormatter format, String value) {
+    try {
+      return Instant.from(format.parse(value));
+    } catch (java.time.DateTimeException e) {
+      return null;
+    }
+  }
 
   /**
    * The Retry-After header as seconds (RFC 9110, 10.2.3): delay-seconds, or an HTTP-date as the
@@ -434,17 +496,10 @@ public class JsonRpcHttpTransport {
       }
       return seconds;
     }
-    for (java.time.format.DateTimeFormatter format : HTTP_DATES) {
-      try {
-        Instant date = Instant.from(format.parse(value));
-        long millis = date.toEpochMilli() - now.toEpochMilli();
-        if (millis <= 0) {
-          return 0L;
-        }
-        return Math.min(MAX_RETRY_AFTER_SECONDS, (millis + 999) / 1000);
-      } catch (java.time.DateTimeException e) {
-        // another form
-      }
+    Instant date = parseHttpDate(value, now);
+    if (date != null) {
+      long millis = date.toEpochMilli() - now.toEpochMilli();
+      return millis <= 0 ? 0L : Math.min(MAX_RETRY_AFTER_SECONDS, (millis + 999) / 1000);
     }
     return null;
   }

@@ -585,4 +585,78 @@ class JsonRpcHttpTransportTest {
     assertEquals(503, error.getStatus());
     assertEquals(5L, error.getRetryAfterSeconds());
   }
+
+  private static final java.time.Instant NOW = java.time.Instant.parse("2026-10-21T07:28:00Z");
+
+  @Test
+  void anImpossibleHttpDateIsRejectedNotClamped() {
+    // 31 February in each form, a day that is not in the month, a non-leap 29 February
+    assertNull(JsonRpcHttpTransport.retryAfter("Mon, 31 Feb 1994 08:49:37 GMT", NOW));
+    assertNull(JsonRpcHttpTransport.retryAfter("Thu, 31 Feb 2030 08:49:37 GMT", NOW));
+    assertNull(JsonRpcHttpTransport.retryAfter("Sunday, 31-Feb-30 08:49:37 GMT", NOW));
+    assertNull(JsonRpcHttpTransport.retryAfter("Thu Feb 31 08:49:37 2030", NOW));
+    assertNull(JsonRpcHttpTransport.retryAfter("Sun, 31 Apr 2027 08:49:37 GMT", NOW));
+    assertNull(JsonRpcHttpTransport.retryAfter("Fri, 29 Feb 2030 08:49:37 GMT", NOW));
+    assertNull(JsonRpcHttpTransport.retryAfter("Wed, 21 Oct 2026 24:00:00 GMT", NOW));
+    // a leap day that exists is fine
+    java.time.Instant leap = java.time.Instant.parse("2028-02-29T00:00:00Z");
+    assertEquals(5L, JsonRpcHttpTransport.retryAfter("Tue, 29 Feb 2028 00:00:05 GMT", leap));
+  }
+
+  @Test
+  void httpDateYearsAreBoundedTo1970Through9999InEveryForm() {
+    // the epoch is the first year
+    assertEquals(0L, JsonRpcHttpTransport.retryAfter("Thu, 01 Jan 1970 00:00:00 GMT", NOW));
+    assertEquals(0L, JsonRpcHttpTransport.retryAfter("Thu Jan  1 00:00:00 1970", NOW));
+    assertNull(JsonRpcHttpTransport.retryAfter("Wed, 31 Dec 1969 23:59:59 GMT", NOW));
+    assertNull(JsonRpcHttpTransport.retryAfter("Wed Dec 31 23:59:59 1969", NOW));
+    assertNull(JsonRpcHttpTransport.retryAfter("Wednesday, 31-Dec-1969 23:59:59 GMT", NOW));
+    // 9999 is the last (a date that far away is the 60 s cap)
+    assertEquals(60L, JsonRpcHttpTransport.retryAfter("Fri, 31 Dec 9999 23:59:59 GMT", NOW));
+    assertEquals(60L, JsonRpcHttpTransport.retryAfter("Fri Dec 31 23:59:59 9999", NOW));
+    // more than four digits are no year of these formats: far-future repro headers
+    assertNull(JsonRpcHttpTransport.retryAfter("Sat, 01 Jan 10000 00:00:00 GMT", NOW));
+    assertNull(JsonRpcHttpTransport.retryAfter("Fri, 31 Dec 275760 23:59:59 GMT", NOW));
+    assertNull(JsonRpcHttpTransport.retryAfter("Sat, 01 Jan 292278994 00:00:00 GMT", NOW));
+    assertNull(JsonRpcHttpTransport.retryAfter("Sat Jan  1 00:00:00 10000", NOW));
+    assertNull(JsonRpcHttpTransport.retryAfter("Sat Jan  1 00:00:00 292278994", NOW));
+    // the two headers of the Rust repro
+    assertNull(JsonRpcHttpTransport.retryAfter("Sunday, 06-Nov-9223372036854775807 08:49:37 GMT", NOW));
+    assertNull(JsonRpcHttpTransport.retryAfter("Sun Nov  6 08:49:37 99999999999999", NOW));
+    assertNull(JsonRpcHttpTransport.retryAfter("Sat, 01 Jan +10000 00:00:00 GMT", NOW));
+  }
+
+  @Test
+  void theTwoDigitYearOfRfc850IsReadByTheFiftyYearRule() {
+    // 2026-10-21: 50 years ahead is 2076-10-21. "76" is still 2076, "77" and up is the past century.
+    // 1 Jan 2076 is a Wednesday, 1 Jan 1977 a Saturday, 6 Nov 2026 a Friday, 6 Nov 1994 a Sunday.
+    assertEquals(60L, JsonRpcHttpTransport.retryAfter("Wednesday, 01-Jan-76 00:00:00 GMT", NOW),
+        "2076 is not more than 50 years ahead");
+    assertEquals(0L, JsonRpcHttpTransport.retryAfter("Saturday, 01-Jan-77 00:00:00 GMT", NOW),
+        "1977 is the most recent year that is not more than 50 years ahead");
+    // the weekday decides nothing about the century: it has to fit the one the rule chose
+    assertNull(JsonRpcHttpTransport.retryAfter("Saturday, 01-Jan-76 00:00:00 GMT", NOW));
+    assertNull(JsonRpcHttpTransport.retryAfter("Wednesday, 01-Jan-77 00:00:00 GMT", NOW));
+    // the classic example of RFC 850 reads as 1994 and is long past; a near date is read as 20xx
+    assertEquals(0L, JsonRpcHttpTransport.retryAfter("Sunday, 06-Nov-94 08:49:37 GMT", NOW));
+    assertEquals(30L, JsonRpcHttpTransport.retryAfter("Wednesday, 21-Oct-26 07:28:30 GMT", NOW));
+    // the same two digits are another year when the clock is another: in December 1999 "00" is
+    // 2000 (a second ahead), not 1900
+    java.time.Instant earlier = java.time.Instant.parse("1999-12-31T23:59:30Z");
+    assertEquals(30L, JsonRpcHttpTransport.retryAfter("Saturday, 01-Jan-00 00:00:00 GMT", earlier));
+    assertEquals(29L, JsonRpcHttpTransport.retryAfter("Friday, 31-Dec-99 23:59:59 GMT", earlier));
+    assertNull(JsonRpcHttpTransport.retryAfter("Sunday, 01-Jan-00 00:00:00 GMT", earlier),
+        "1 January 1900 was a Monday: the rule picks 2000, the weekday has to fit it");
+    // exactly 50 years ahead is still that year; one year more is the past century
+    assertEquals(60L, JsonRpcHttpTransport.retryAfter("Wednesday, 21-Oct-76 07:28:00 GMT", NOW));
+    assertEquals(0L, JsonRpcHttpTransport.retryAfter("Friday, 21-Oct-77 07:28:00 GMT", NOW),
+        "21 October 2077 is more than 50 years ahead: 1977");
+    assertNull(JsonRpcHttpTransport.retryAfter("Thursday, 21-Oct-77 07:28:00 GMT", NOW),
+        "Thursday is 2077, which the rule does not pick");
+    // a moment after the limit is the past century, the limit itself is not
+    assertEquals(60L, JsonRpcHttpTransport.retryAfter("Wednesday, 21-Oct-76 07:28:00 GMT", NOW));
+    assertEquals(0L, JsonRpcHttpTransport.retryAfter("Friday, 21-Oct-77 07:28:01 GMT", NOW));
+    // two digits, a year of four digits, and a year before 1970 are not accepted by this form's year
+    assertNull(JsonRpcHttpTransport.retryAfter("Wednesday, 21-Oct-6 07:28:30 GMT", NOW));
+  }
 }
