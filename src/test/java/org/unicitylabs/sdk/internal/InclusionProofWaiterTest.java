@@ -815,4 +815,60 @@ class InclusionProofWaiterTest {
     fail(gone);
     assertSame(gone, failure(await(WaitOptions.defaults())));
   }
+
+  // Transport failures of a proof read inside a wait are inconclusive.
+
+  @Test
+  void aTransportFailureOfAReadIsInconclusiveAndTheWaitPollsOnWithPlainReads() {
+    fail(new java.net.ConnectException("Connection refused"));
+    fail(new java.io.IOException("unexpected end of stream"));
+    answer(certified, 0);
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
+    assertEquals(13_000L, seen.get(0).waitMillis);
+    assertEquals(List.of(1000L), pauses);
+    firePause();
+    assertNull(seen.get(1).waitMillis, "plain reads after a transport failure");
+    assertEquals(List.of(1000L, 1000L), pauses);
+    firePause();
+    assertTrue(result.isDone());
+    assertEquals(3, seen.size());
+    assertEquals(1, deadlines.size(), "the budget is not restarted");
+  }
+
+  @Test
+  void aTransportFailureThatDoesNotFitFailsWithinTheBudgetNamingIt() {
+    script.add(new Reply(null, new java.net.SocketException("Connection reset"), 14_500));
+    Throwable failure = failure(await(WaitOptions.defaults().longPoll(false)));
+    assertInstanceOf(TimeoutException.class, failure);
+    assertInstanceOf(java.net.SocketException.class, failure.getCause());
+    assertTrue(failure.getMessage().contains("Transport failure"), failure.getMessage());
+    assertEquals(1, seen.size());
+  }
+
+  @Test
+  void certificateAndHostnameValidationFailuresStayTerminal() {
+    javax.net.ssl.SSLPeerUnverifiedException hostname =
+        new javax.net.ssl.SSLPeerUnverifiedException("Hostname not verified");
+    fail(hostname);
+    assertSame(hostname, failure(await(WaitOptions.defaults())));
+    seen.clear();
+    javax.net.ssl.SSLHandshakeException untrusted = new javax.net.ssl.SSLHandshakeException("PKIX");
+    untrusted.initCause(new java.security.cert.CertificateException("untrusted"));
+    fail(untrusted);
+    assertSame(untrusted, failure(await(WaitOptions.defaults())));
+    assertEquals(1, seen.size());
+  }
+
+  @Test
+  void cancellationAndInvalidUrlsStayTerminalDuringATransportFailureWait() {
+    fail(new java.net.ConnectException("Connection refused"));
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
+    result.cancel(true);
+    assertTrue(scheduledCancelled.get(0).get(), "the pause is cancelled");
+    assertEquals(1, seen.size());
+    seen.clear();
+    IllegalArgumentException invalid = new IllegalArgumentException("unexpected url");
+    fail(invalid);
+    assertSame(invalid, failure(await(WaitOptions.defaults())));
+  }
 }

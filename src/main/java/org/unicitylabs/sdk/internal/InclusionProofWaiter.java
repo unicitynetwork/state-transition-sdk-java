@@ -352,6 +352,13 @@ public final class InclusionProofWaiter {
       next(Math.max(interval, LongPoll.MIN_POLL_GAP_MILLIS));
       return;
     }
+    // A transport failure of one read (connection refused or reset, a stale pooled connection, a
+    // truncated response, a timeout of this call) says nothing about the state: poll on, plain
+    // reads, within the budget. Certificate and hostname validation failures stay terminal.
+    if (cause instanceof java.io.IOException && !isTlsValidationFailure(cause)) {
+      onTransportFailure(cause, interval);
+      return;
+    }
     // A missing proof is the expected "not certified yet" answer: -32021 (certification pending)
     // always keeps polling. HTTP 404 and -32020 (no proof known for the state) are the legacy
     // "unknown" answer and follow the hint grace. Anything else ends the wait.
@@ -426,6 +433,38 @@ public final class InclusionProofWaiter {
     }
     JsonNode retryable = rpc.getData() == null ? null : rpc.getData().get("retryable");
     return retryable != null && retryable.isBoolean() && retryable.booleanValue();
+  }
+
+  private static boolean isTlsValidationFailure(Throwable cause) {
+    for (Throwable t = cause; t != null; t = t.getCause()) {
+      if (t instanceof javax.net.ssl.SSLPeerUnverifiedException
+          || t instanceof java.security.cert.CertificateException) {
+        return true;
+      }
+      if (t.getCause() == t) {
+        break;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * A transport failure of a read is inconclusive: pause the interval and keep polling without the
+   * wait. A pause that does not fit in the time left ends the wait now with a timeout that names
+   * the failure.
+   */
+  private void onTransportFailure(Throwable cause, long interval) {
+    long left = operation.remaining().toMillis();
+    if (interval > left) {
+      TimeoutException timeout = new TimeoutException("Transport failure (" + cause
+          + "); the " + interval + " ms pause does not fit in the " + left
+          + " ms left for the inclusion proof");
+      timeout.initCause(cause);
+      fail(timeout);
+      return;
+    }
+    longPolling = false;
+    next(interval);
   }
 
   /**

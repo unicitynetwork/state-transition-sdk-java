@@ -558,4 +558,31 @@ class JsonRpcHttpTransportTest {
             RequestOptions.none().withOperation(operation))));
     assertEquals(502, failure.getStatus());
   }
+
+  @Test
+  void theKeptRetryAfterCannotBeSuppliedByTheServer() {
+    server.enqueue(new MockResponse().setResponseCode(503)
+        .setHeader("X-Unicity-Retry-After", "60").setBody("busy"));
+    assertNull(assertInstanceOf(JsonRpcNetworkException.class, failure(call())).getRetryAfterSeconds());
+    server.enqueue(new MockResponse().setResponseCode(503)
+        .setHeader("X-Unicity-Retry-After", "0").setHeader("Retry-After", "5").setBody("busy"));
+    assertEquals(5L, assertInstanceOf(JsonRpcNetworkException.class, failure(call()))
+        .getRetryAfterSeconds());
+  }
+
+  @Test
+  void aResponseAnApplicationInterceptorBuildsKeepsItsOwnRetryAfter() {
+    OkHttpClient synthetic = http.newBuilder().addInterceptor(chain ->
+        new okhttp3.Response.Builder().request(chain.request())
+            .protocol(okhttp3.Protocol.HTTP_1_1).code(503).message("Service Unavailable")
+            .header("Retry-After", "5")
+            .body(okhttp3.ResponseBody.create("busy", okhttp3.MediaType.get("text/plain")))
+            .build()).build();
+    JsonRpcHttpTransport tested = TestTransports.withIds(server.url("/").toString(), synthetic,
+        1024, () -> IntNode.valueOf(7));
+    JsonRpcNetworkException error = assertInstanceOf(JsonRpcNetworkException.class,
+        failure(tested.call("m", Map.of(), Map.of(), RequestOptions.none())));
+    assertEquals(503, error.getStatus());
+    assertEquals(5L, error.getRetryAfterSeconds());
+  }
 }

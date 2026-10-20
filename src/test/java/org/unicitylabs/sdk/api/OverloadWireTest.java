@@ -205,4 +205,62 @@ class OverloadWireTest {
     assertTrue(System.nanoTime() - started < Duration.ofSeconds(3).toNanos(),
         "no budget extension beyond the original deadline");
   }
+
+  /** Transport failures of reads inside a wait are ridden out; the proof still arrives. */
+  @Test
+  void aWaitRidesOutDroppedConnectionsOnReads() throws Exception {
+    String hex = WireTestSupport.MAPPER.readTree(java.nio.file.Files.readAllBytes(
+        java.nio.file.Paths.get("src/test/resources/shared/uc-consolidation/v1/shards-1/responses.json")))
+        .get("master").get("result").get("proofs").get(0).asText();
+    server.enqueue(new MockResponse().setSocketPolicy(
+        okhttp3.mockwebserver.SocketPolicy.DISCONNECT_AT_START));
+    server.enqueue(new MockResponse().setSocketPolicy(
+        okhttp3.mockwebserver.SocketPolicy.DISCONNECT_AFTER_REQUEST));
+    server.enqueue(new MockResponse().setBody("{\"jsonrpc\":\"2.0\",\"result\":\"" + hex + "\",\"id\":1}"));
+
+    long started = System.nanoTime();
+    CompletableFuture<InclusionProof> wait = InclusionProofWaiter.await(smallBodies(), stateId(),
+        proof -> { }, WaitOptions.defaults().interval(Duration.ofMillis(100)));
+    assertNotNull(wait.get(10, java.util.concurrent.TimeUnit.SECONDS));
+    assertTrue(System.nanoTime() - started >= Duration.ofMillis(180).toNanos(), "paced by the interval");
+    RecordedRequest last = null;
+    for (RecordedRequest taken = server.takeRequest(200, java.util.concurrent.TimeUnit.MILLISECONDS);
+        taken != null; taken = server.takeRequest(200, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+      last = taken;
+    }
+    assertNotNull(last);
+    assertFalse(params(last).toString().contains("wait"), "plain reads after a transport failure");
+  }
+
+  @Test
+  void aSubmissionIsNeverReplayedAfterADroppedConnectionAndSubmitAndWaitDoesNotResubmit()
+      throws Exception {
+    AtomicInteger submissions = new AtomicInteger();
+    server.setDispatcher(new Dispatcher() {
+      @Override
+      public MockResponse dispatch(RecordedRequest request) {
+        submissions.incrementAndGet();
+        return new MockResponse().setSocketPolicy(
+            okhttp3.mockwebserver.SocketPolicy.DISCONNECT_AFTER_REQUEST);
+      }
+    });
+    MintTransaction transaction = MintTransaction.builder(NetworkId.LOCAL,
+        SignaturePredicate.fromSigningService(SigningService.generate())).build();
+    Throwable failure = WireTestSupport.failure(new StateTransitionClient(smallBodies()).submitAndWait(
+        transaction, CertificationData.fromMintTransaction(transaction), 3,
+        TestAggregatorClient.create().getTrustBase(), PredicateVerifierService.create(),
+        WaitOptions.defaults().interval(Duration.ofMillis(30)).timeout(Duration.ofSeconds(2))));
+    assertInstanceOf(java.io.IOException.class, failure);
+    assertEquals(1, submissions.get(), "one submission, no replay, no resubmission");
+  }
+
+  @Test
+  void aOneShotReadStillSurfacesTheTransportError() {
+    server.enqueue(new MockResponse().setSocketPolicy(
+        okhttp3.mockwebserver.SocketPolicy.DISCONNECT_AFTER_REQUEST));
+    server.enqueue(new MockResponse().setBody("{}"));
+    Throwable failure = WireTestSupport.failure(smallBodies().getInclusionProof(stateId()));
+    assertInstanceOf(java.io.IOException.class, failure);
+    assertEquals(1, server.getRequestCount());
+  }
 }

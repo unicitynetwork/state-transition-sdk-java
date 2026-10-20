@@ -361,7 +361,11 @@ public class JsonRpcHttpTransport {
 
   /** The Retry-After the server sent, as seconds, from the kept header. */
   private static Long retryAfterOf(Response response) {
-    return retryAfter(response.header(RETRY_AFTER_KEPT));
+    String kept = response.header(RETRY_AFTER_KEPT);
+    // a response an application interceptor built itself never passed the network interceptor:
+    // its own Retry-After is then the server's (a copy of the kept header from a server never
+    // reaches here, the network interceptor drops it)
+    return retryAfter(kept != null ? kept : response.header("Retry-After"));
   }
 
   /** A body that is sent once and never again: OkHttp does not replay a one-shot request. */
