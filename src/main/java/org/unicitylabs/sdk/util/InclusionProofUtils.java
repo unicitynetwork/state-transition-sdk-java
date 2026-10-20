@@ -62,6 +62,8 @@ public class InclusionProofUtils {
    * @param transaction       Transaction to wait Inclusion proof for
    * @param timeout           Maximum duration to wait for the inclusion proof
    * @param interval          Interval between checks for the inclusion proof
+   * @throws IllegalArgumentException if the timeout is not positive or is above
+   *     {@link WaitOptions#MAX_TIMEOUT} (10 minutes)
    * @return Completable future with inclusion proof
    */
   public static CompletableFuture<InclusionProof> waitInclusionProof(

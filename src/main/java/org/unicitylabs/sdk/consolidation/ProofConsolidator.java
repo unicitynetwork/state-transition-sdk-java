@@ -291,9 +291,7 @@ public final class ProofConsolidator {
       if (t instanceof ConsolidationException) {
         result.completeExceptionally(t);
       } else {
-        result.completeExceptionally(new ConsolidationException(
-            ConsolidationException.Kind.INVALID_RESPONSE,
-            "Unexpected failure: " + t, ConsolidationOutcome.INVALID_INPUT, null, false, null, t));
+        result.completeExceptionally(ConsolidationException.ofUnexpected(t));
       }
       cancelAttempt();
     }

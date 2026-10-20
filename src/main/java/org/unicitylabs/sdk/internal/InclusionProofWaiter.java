@@ -1,5 +1,6 @@
 package org.unicitylabs.sdk.internal;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import org.unicitylabs.sdk.api.AggregatorClient;
 import org.unicitylabs.sdk.api.InclusionProof;
 import org.unicitylabs.sdk.api.InclusionProofResponse;
@@ -94,6 +95,11 @@ public final class InclusionProofWaiter {
       return thread;
     };
   }
+
+  /** JSON-RPC code of the aggregator's concurrency limit ("busy"). */
+  private static final int OVERLOAD_CODE = -32006;
+  /** Longest Retry-After honored, in seconds. */
+  private static final long MAX_RETRY_AFTER_SECONDS = 60;
 
   private final AggregatorClient client;
   private final StateId stateId;
@@ -237,6 +243,10 @@ public final class InclusionProofWaiter {
     boolean longPollConfigured = options.isLongPoll() && client instanceof StatusAwareAggregatorClient;
     long waitMillis = longPolling
         ? LongPoll.window(options.getWindow(), options.getMargin(), operation.remaining()) : 0;
+    // the call timeout is the wait plus the margin and never above the limit of one call: the
+    // wait gives way, the margin stays
+    waitMillis = Math.min(waitMillis,
+        Math.max(0, RequestOptions.MAX_CALL_TIMEOUT.minus(options.getMargin()).toMillis()));
     long callStarted = nanoClock.getAsLong();
 
     CompletableFuture<InclusionProofResponse> call;
@@ -247,8 +257,13 @@ public final class InclusionProofWaiter {
         if (waitMillis > 0) {
           Duration callTimeout = Duration.ofMillis(waitMillis).plus(options.getMargin());
           Duration left = operation.remaining();
-          request = request.withWaitMillis(waitMillis)
-              .withCallTimeout(left.compareTo(callTimeout) < 0 ? left : callTimeout);
+          if (left.compareTo(callTimeout) < 0) {
+            callTimeout = left;
+          }
+          if (callTimeout.compareTo(RequestOptions.MAX_CALL_TIMEOUT) > 0) {
+            callTimeout = RequestOptions.MAX_CALL_TIMEOUT;
+          }
+          request = request.withWaitMillis(waitMillis).withCallTimeout(callTimeout);
         }
         call = ((StatusAwareAggregatorClient) client).getInclusionProof(stateId, request);
       } else {
@@ -337,6 +352,13 @@ public final class InclusionProofWaiter {
       next(Math.max(interval, LongPoll.MIN_POLL_GAP_MILLIS));
       return;
     }
+    // A transport failure of one read (connection refused or reset, a stale pooled connection, a
+    // truncated response, a timeout of this call) says nothing about the state: poll on, plain
+    // reads, within the budget. Certificate and hostname validation failures stay terminal.
+    if (cause instanceof java.io.IOException && !isTlsValidationFailure(cause)) {
+      onTransportFailure(cause, interval);
+      return;
+    }
     // A missing proof is the expected "not certified yet" answer: -32021 (certification pending)
     // always keeps polling. HTTP 404 and -32020 (no proof known for the state) are the legacy
     // "unknown" answer and follow the hint grace. Anything else ends the wait.
@@ -352,11 +374,23 @@ public final class InclusionProofWaiter {
     }
     if (rpc != null) {
       if (!rpc.isIdMatched()) {
-        // an error that carries no id of this request is no "pending" or "unknown" answer of ours
-        fail(cause);
+        // An error that carries no id of this request is no "pending" or "unknown" answer of ours.
+        // The one exception is the server-wide busy answer, sent before the request is parsed, with
+        // a null id: -32006 or data.retryable is an overload whoever it answers.
+        if (isOverload(cause, rpc)) {
+          onOverload(cause, interval);
+        } else {
+          fail(cause);
+        }
         return;
       }
       code = rpc.getCode();
+    }
+    // An overload answer is decided before pending, unknown and the other statuses: a retryable
+    // -32020 or -32021 is an overload, and a retryable unknown never ends the wait or resubmits.
+    if (isOverload(cause, rpc)) {
+      onOverload(cause, interval);
+      return;
     }
     boolean pending = code == -32021;
     boolean unknown = notFound || code == -32020;
@@ -374,6 +408,99 @@ public final class InclusionProofWaiter {
       longPolling = false;
     }
     next(longPollConfigured ? Math.max(interval, LongPoll.MIN_POLL_GAP_MILLIS) : interval);
+  }
+
+  /**
+   * The inconclusive answer of a proof read: HTTP 503 or 429 (overload), 502 or 504 (an
+   * intermediary's error), JSON-RPC -32006, or any JSON-RPC error whose data says
+   * {@code retryable: true}.
+   */
+  private static boolean isOverload(Throwable cause, JsonRpcDataException rpc) {
+    if (!(cause instanceof JsonRpcDataException)
+        && cause instanceof JsonRpcNetworkException) {
+      int status = ((JsonRpcNetworkException) cause).getStatus();
+      // 503 and 429 are overload; 502 and 504 are an intermediary (gateway, load balancer) that
+      // gave up on a request: the aggregator may well be fine. All four are inconclusive in a wait.
+      if (status == 503 || status == 429 || status == 502 || status == 504) {
+        return true;
+      }
+    }
+    if (rpc == null) {
+      return false;
+    }
+    if (rpc.getCode() == OVERLOAD_CODE) {
+      return true;
+    }
+    JsonNode retryable = rpc.getData() == null ? null : rpc.getData().get("retryable");
+    return retryable != null && retryable.isBoolean() && retryable.booleanValue();
+  }
+
+  private static boolean isTlsValidationFailure(Throwable cause) {
+    for (Throwable t = cause; t != null; t = t.getCause()) {
+      if (t instanceof javax.net.ssl.SSLPeerUnverifiedException
+          || t instanceof java.security.cert.CertificateException) {
+        return true;
+      }
+      if (t.getCause() == t) {
+        break;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * A transport failure of a read is inconclusive: pause the interval and keep polling without the
+   * wait. A pause that does not fit in the time left ends the wait now with a timeout that names
+   * the failure.
+   */
+  private void onTransportFailure(Throwable cause, long interval) {
+    long left = operation.remaining().toMillis();
+    if (interval > left) {
+      TimeoutException timeout = new TimeoutException("Transport failure (" + cause
+          + "); the " + interval + " ms pause does not fit in the " + left
+          + " ms left for the inclusion proof");
+      timeout.initCause(cause);
+      fail(timeout);
+      return;
+    }
+    longPolling = false;
+    next(interval);
+  }
+
+  /**
+   * An overload answer is inconclusive: pause {@code max(interval, Retry-After)} and keep polling
+   * without the wait for the rest of the call. A pause that does not fit in the time left ends the
+   * wait now with a timeout that names the overload.
+   */
+  private void onOverload(Throwable cause, long interval) {
+    long retryAfterMillis = 0;
+    if (cause instanceof JsonRpcNetworkException) {
+      Long seconds = ((JsonRpcNetworkException) cause).getRetryAfterSeconds();
+      if (seconds != null) {
+        retryAfterMillis = Math.min(seconds, MAX_RETRY_AFTER_SECONDS) * 1000;
+      }
+    }
+    boolean hinted = retryAfterMillis > 0;
+    long pause = Math.max(interval, retryAfterMillis);
+    long left = operation.remaining().toMillis();
+    if (pause > left) {
+      String answer = cause instanceof JsonRpcDataException
+          ? "JSON-RPC error " + ((JsonRpcDataException) cause).getCode()
+          : "HTTP " + ((JsonRpcNetworkException) cause).getStatus();
+      boolean intermediary = !(cause instanceof JsonRpcDataException)
+          && (((JsonRpcNetworkException) cause).getStatus() == 502
+          || ((JsonRpcNetworkException) cause).getStatus() == 504);
+      TimeoutException timeout = new TimeoutException(
+          (intermediary ? "Intermediary error (" : "Aggregator overloaded (") + answer + "), "
+              + (hinted ? "retry-after " + (retryAfterMillis / 1000) + " s" : "no retry-after was given")
+              + "; the " + pause + " ms pause does not fit in the " + left
+              + " ms left for the inclusion proof");
+      timeout.initCause(cause);
+      fail(timeout);
+      return;
+    }
+    longPolling = false;
+    next(pause);
   }
 
   private void verify(InclusionProof proof) {

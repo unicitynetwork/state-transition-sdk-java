@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 import org.unicitylabs.sdk.api.bft.verification.SealAuthenticator;
+import org.unicitylabs.sdk.api.bft.verification.SealVerificationBusyException;
 import org.unicitylabs.sdk.api.bft.verification.SealVerificationSession;
 import org.unicitylabs.sdk.api.bft.verification.rule.UnicitySealHashMatchesWithRootHashRule;
 import org.unicitylabs.sdk.crypto.hash.DataHasher;
@@ -98,6 +99,9 @@ public final class PartitionViewAuthenticator {
    * @param enclosing the certificate whose commitment covers the view
    * @return authenticated view
    * @throws PartitionViewException with the failing reason; nothing is retained on failure
+   * @throws SealVerificationBusyException if the seal session already runs as many distinct seal
+   *     checks as it allows. That is a resource limit, not a rejection of the view: nothing is
+   *     known about it, and the call can be repeated later
    */
   public AuthenticatedPartitionView authenticate(PartitionView view, UnicityCertificate enclosing) {
     Objects.requireNonNull(view, "view cannot be null");
@@ -133,6 +137,8 @@ public final class PartitionViewAuthenticator {
    * @param enclosingBytes enclosing unicity certificate
    * @return authenticated view
    * @throws PartitionViewException with the failing reason
+   * @throws SealVerificationBusyException as for {@link #authenticate(PartitionView,
+   *     UnicityCertificate)}
    */
   public AuthenticatedPartitionView authenticate(byte[] viewBytes, byte[] enclosingBytes) {
     return authenticate(PartitionView.fromCbor(viewBytes), decodeEnclosing(enclosingBytes));

@@ -550,4 +550,325 @@ class InclusionProofWaiterTest {
     assertTrue(seen.get(0).operation.isCancelled());
     assertFalse(second.isDone());
   }
+
+  // Overload answers of a proof read (spec-wait-overload): inconclusive, paced, never a failure.
+
+  @Test
+  void anOverloadedReadIsInconclusiveThenTheCallPollsWithoutTheWait() {
+    fail(new JsonRpcNetworkException(503, "Service Overloaded"));
+    answer(pending.withStatusHint(ProofStatusHint.PENDING), 0);
+    answer(certified, 0);
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
+    assertFalse(result.isDone());
+    assertEquals(13_000L, seen.get(0).waitMillis, "the first request long polls");
+    assertEquals(List.of(1000L), pauses, "the pause is the interval when there is no Retry-After");
+    firePause();
+    assertNull(seen.get(1).waitMillis, "the rest of the call polls without the wait");
+    assertEquals(List.of(1000L, 1000L), pauses);
+    firePause();
+    assertTrue(result.isDone());
+    assertEquals(3, seen.size(), "no extra requests");
+  }
+
+  @Test
+  void aBusyAnswerAndAnyRetryableErrorAreOverloadToo() {
+    fail(new JsonRpcDataException(-32006, "Concurrency limit exceeded", null, true));
+    com.fasterxml.jackson.databind.node.ObjectNode data =
+        com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+    data.put("retryable", true);
+    fail(new JsonRpcDataException(-32099, "try again", data, true));
+    answer(certified, 0);
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
+    firePause();
+    firePause();
+    assertTrue(result.isDone());
+    assertEquals(3, seen.size());
+    assertNull(seen.get(1).waitMillis);
+    assertNull(seen.get(2).waitMillis);
+    assertEquals(List.of(1000L, 1000L), pauses);
+  }
+
+  @Test
+  void tooManyRequestsWithRetryAfterPausesLongerThanTheInterval() {
+    fail(new JsonRpcNetworkException(429, "slow down", null, 4L));
+    answer(certified, 0);
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
+    assertEquals(List.of(4000L), pauses, "max(interval, Retry-After)");
+    firePause();
+    assertTrue(result.isDone());
+    assertEquals(2, seen.size());
+  }
+
+  @Test
+  void aRetryAfterAboveTheCapIsCappedAtSixtySecondsAndMustFit() {
+    fail(new JsonRpcNetworkException(503, "overloaded", null, 3_600L));
+    JsonRpcNetworkException overload = (JsonRpcNetworkException) script.peek().error;
+    Throwable failure = failure(await(WaitOptions.defaults().timeout(Duration.ofSeconds(30))));
+    assertInstanceOf(TimeoutException.class, failure);
+    assertSame(overload, failure.getCause());
+    assertTrue(failure.getMessage().contains("overloaded"));
+    assertTrue(failure.getMessage().contains("retry-after 60 s"), failure.getMessage());
+    assertEquals(1, seen.size(), "it fails at once, with the budget unused");
+    assertTrue(pauses.isEmpty());
+  }
+
+  @Test
+  void aRetryAfterBeyondTheRemainingBudgetFailsFastWithTheOverloadAsCause() {
+    // 5 s asked, 3 s of the 15 s budget left
+    answer(pending.withStatusHint(ProofStatusHint.PENDING), 12_000);
+    fail(new JsonRpcNetworkException(503, "overloaded", null, 5L));
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults().longPoll(false));
+    firePause();
+    nanos.addAndGet(TimeUnit.SECONDS.toNanos(11));
+    Throwable failure = failure(result);
+    assertInstanceOf(TimeoutException.class, failure);
+    assertInstanceOf(JsonRpcNetworkException.class, failure.getCause());
+    assertTrue(failure.getMessage().contains("retry-after 5 s"), failure.getMessage());
+  }
+
+  @Test
+  void aRetryAfterThatIsNotNumericIsIgnoredByTheTransportAndTheIntervalApplies() {
+    fail(new JsonRpcNetworkException(503, "overloaded", null, null));
+    answer(certified, 0);
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
+    assertEquals(List.of(1000L), pauses);
+    firePause();
+    assertTrue(result.isDone());
+  }
+
+  @Test
+  void aNonRetryableErrorStillEndsTheWaitAtOnce() {
+    JsonRpcNetworkException bad = new JsonRpcNetworkException(500, "boom");
+    fail(bad);
+    assertSame(bad, failure(await(WaitOptions.defaults())));
+    seen.clear();
+    com.fasterxml.jackson.databind.node.ObjectNode data =
+        com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+    data.put("retryable", false);
+    JsonRpcDataException refused = new JsonRpcDataException(-32099, "no", data, true);
+    fail(refused);
+    assertSame(refused, failure(await(WaitOptions.defaults())));
+    assertEquals(1, seen.size());
+    assertTrue(pauses.isEmpty());
+  }
+
+  @Test
+  void aNullIdBusyAnswerIsAnOverloadAndAnyOtherUnmatchedErrorStaysTerminal() {
+    // the server-wide busy answer is sent before the request is parsed: id null
+    fail(new JsonRpcDataException(-32006, "Concurrency limit exceeded", null, false));
+    fail(new JsonRpcDataException(-32099, "try again", retryableData(), false));
+    answer(certified, 0);
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
+    firePause();
+    firePause();
+    assertTrue(result.isDone());
+    assertEquals(3, seen.size());
+    assertNull(seen.get(1).waitMillis);
+
+    seen.clear();
+    JsonRpcDataException other = new JsonRpcDataException(-32603, "db down", null, false);
+    fail(other);
+    assertSame(other, failure(await(WaitOptions.defaults())));
+    assertEquals(1, seen.size());
+    // an unmatched pending answer is still no pending answer of ours
+    seen.clear();
+    JsonRpcDataException pendingUnmatched = new JsonRpcDataException(-32021, "pending", null, false);
+    fail(pendingUnmatched);
+    assertSame(pendingUnmatched, failure(await(WaitOptions.defaults())));
+  }
+
+  private static com.fasterxml.jackson.databind.node.ObjectNode retryableData() {
+    com.fasterxml.jackson.databind.node.ObjectNode data =
+        com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+    data.put("retryable", true);
+    return data;
+  }
+
+  @Test
+  void aRetryableUnknownAfterTheGraceIsAnOverloadNotAnUnknownEnd() {
+    // the grace is two intervals; the third answer arrives after it
+    fail(new JsonRpcDataException(-32020, "unknown", null, true));
+    fail(new JsonRpcDataException(-32020, "unknown", null, true));
+    fail(new JsonRpcDataException(-32020, "unknown", retryableData(), true));
+    answer(certified, 0);
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults().longPoll(false));
+    firePause();
+    assertFalse(result.isDone());
+    nanos.addAndGet(TimeUnit.SECONDS.toNanos(5));
+    firePause();
+    assertFalse(result.isDone(), "the retryable answer past the grace is paced, not terminal");
+    firePause();
+    assertTrue(result.isDone(), "the retryable answer past the grace did not end the wait");
+    assertSame(certified.getInclusionProof(), result.join());
+    assertEquals(4, seen.size());
+  }
+
+  @Test
+  void anHttpOverloadCarryingAPendingErrorStillPausesForTheRetryAfter() {
+    JsonRpcDataException pendingError = new JsonRpcDataException(-32021, "pending", null, true);
+    fail(new JsonRpcNetworkException(503, "overloaded", pendingError, 5L));
+    answer(certified, 0);
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
+    assertEquals(List.of(5000L), pauses, "the Retry-After of the 503, not the interval");
+    firePause();
+    assertTrue(result.isDone());
+    assertNull(seen.get(1).waitMillis);
+  }
+
+  @Test
+  void aRetryablePendingAnswerIsAnOverloadWithItsOwnRetryAfter() {
+    fail(new JsonRpcDataException(-32021, "pending", retryableData(), true, 7L));
+    answer(certified, 0);
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
+    assertEquals(List.of(7000L), pauses);
+    firePause();
+    assertTrue(result.isDone());
+  }
+
+  @Test
+  void theFailFastMessageSaysWhenNoRetryAfterWasGiven() {
+    // 0.5 s of the budget left, a 1 s interval, an overload without any Retry-After
+    script.add(new Reply(null, new JsonRpcNetworkException(503, "overloaded"), 14_500));
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults().longPoll(false));
+    Throwable failure = failure(result);
+    assertInstanceOf(TimeoutException.class, failure);
+    assertTrue(failure.getMessage().contains("overloaded"), failure.getMessage());
+    assertTrue(failure.getMessage().contains("HTTP 503"), failure.getMessage());
+    assertTrue(failure.getMessage().contains("no retry-after was given"), failure.getMessage());
+    assertFalse(failure.getMessage().contains("retry-after 0"), failure.getMessage());
+    assertTrue(failure.getMessage().contains("1000 ms pause"), failure.getMessage());
+  }
+
+  @Test
+  void aValidLongWindowIsClampedToTheCallLimitWithTheMarginKept() {
+    answer(certified, 0);
+    // 2 minutes of budget and a 60 s window: valid options, nothing may throw
+    CompletableFuture<InclusionProof> result = await(
+        WaitOptions.defaults().timeout(Duration.ofMinutes(2)).window(Duration.ofSeconds(60)));
+    assertTrue(result.isDone());
+    assertEquals(1, seen.size());
+    assertEquals(58_000L, seen.get(0).waitMillis, "the wait gives way, the 2 s margin stays");
+    assertEquals(Duration.ofSeconds(60), seen.get(0).callTimeout);
+  }
+
+  // Intermediary errors (502/504) inside a wait: inconclusive, same budget, no resubmission.
+
+  @Test
+  void anIntermediaryErrorOnTheHeldReadAndThenOnAPlainReadIsPacedAndTheBudgetIsNotRestarted() {
+    fail(new JsonRpcNetworkException(502, "<html>Bad Gateway</html>"));
+    fail(new JsonRpcNetworkException(504, "gateway timeout"));
+    answer(certified, 0);
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
+    assertEquals(13_000L, seen.get(0).waitMillis, "the first read is held");
+    assertEquals(List.of(1000L), pauses);
+    firePause();
+    assertNull(seen.get(1).waitMillis, "no wait is asked for after the 502");
+    assertEquals(List.of(1000L, 1000L), pauses, "paced at the interval");
+    firePause();
+    assertTrue(result.isDone());
+    assertNull(seen.get(2).waitMillis, "nor after the 504 of a plain read");
+    assertEquals(3, seen.size());
+    assertEquals(1, deadlines.size(), "one deadline for the whole wait: the budget is not restarted");
+    assertTrue(deadlinesCancelled.get(0).get());
+  }
+
+  @Test
+  void anIntermediaryErrorHonoursALongerRetryAfterIncludingTheDateForm() {
+    fail(new JsonRpcNetworkException(504, "gateway timeout", null, 4L));
+    answer(certified, 0);
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
+    assertEquals(List.of(4000L), pauses);
+    firePause();
+    assertTrue(result.isDone());
+  }
+
+  @Test
+  void anIntermediaryErrorThatDoesNotFitFailsWithinTheBudgetAndNamesTheIntermediary() {
+    script.add(new Reply(null, new JsonRpcNetworkException(502, "bad gateway"), 14_500));
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults().longPoll(false));
+    Throwable failure = failure(result);
+    assertInstanceOf(TimeoutException.class, failure);
+    assertInstanceOf(JsonRpcNetworkException.class, failure.getCause());
+    assertEquals(502, ((JsonRpcNetworkException) failure.getCause()).getStatus());
+    assertTrue(failure.getMessage().contains("Intermediary error (HTTP 502)"), failure.getMessage());
+    assertTrue(failure.getMessage().contains("no retry-after was given"), failure.getMessage());
+    assertEquals(1, seen.size());
+  }
+
+  @Test
+  void cancellingDuringTheIntermediaryPauseStopsTheWaitAndSendsNothingMore() {
+    fail(new JsonRpcNetworkException(502, "bad gateway"));
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
+    assertFalse(result.isDone());
+    result.cancel(true);
+    assertTrue(scheduledCancelled.get(0).get(), "the pending pause is cancelled");
+    assertEquals(1, seen.size());
+  }
+
+  @Test
+  void otherServerErrorsAreStillTerminal() {
+    JsonRpcNetworkException internal = new JsonRpcNetworkException(500, "boom");
+    fail(internal);
+    assertSame(internal, failure(await(WaitOptions.defaults())));
+    seen.clear();
+    JsonRpcNetworkException gone = new JsonRpcNetworkException(501, "not implemented");
+    fail(gone);
+    assertSame(gone, failure(await(WaitOptions.defaults())));
+  }
+
+  // Transport failures of a proof read inside a wait are inconclusive.
+
+  @Test
+  void aTransportFailureOfAReadIsInconclusiveAndTheWaitPollsOnWithPlainReads() {
+    fail(new java.net.ConnectException("Connection refused"));
+    fail(new java.io.IOException("unexpected end of stream"));
+    answer(certified, 0);
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
+    assertEquals(13_000L, seen.get(0).waitMillis);
+    assertEquals(List.of(1000L), pauses);
+    firePause();
+    assertNull(seen.get(1).waitMillis, "plain reads after a transport failure");
+    assertEquals(List.of(1000L, 1000L), pauses);
+    firePause();
+    assertTrue(result.isDone());
+    assertEquals(3, seen.size());
+    assertEquals(1, deadlines.size(), "the budget is not restarted");
+  }
+
+  @Test
+  void aTransportFailureThatDoesNotFitFailsWithinTheBudgetNamingIt() {
+    script.add(new Reply(null, new java.net.SocketException("Connection reset"), 14_500));
+    Throwable failure = failure(await(WaitOptions.defaults().longPoll(false)));
+    assertInstanceOf(TimeoutException.class, failure);
+    assertInstanceOf(java.net.SocketException.class, failure.getCause());
+    assertTrue(failure.getMessage().contains("Transport failure"), failure.getMessage());
+    assertEquals(1, seen.size());
+  }
+
+  @Test
+  void certificateAndHostnameValidationFailuresStayTerminal() {
+    javax.net.ssl.SSLPeerUnverifiedException hostname =
+        new javax.net.ssl.SSLPeerUnverifiedException("Hostname not verified");
+    fail(hostname);
+    assertSame(hostname, failure(await(WaitOptions.defaults())));
+    seen.clear();
+    javax.net.ssl.SSLHandshakeException untrusted = new javax.net.ssl.SSLHandshakeException("PKIX");
+    untrusted.initCause(new java.security.cert.CertificateException("untrusted"));
+    fail(untrusted);
+    assertSame(untrusted, failure(await(WaitOptions.defaults())));
+    assertEquals(1, seen.size());
+  }
+
+  @Test
+  void cancellationAndInvalidUrlsStayTerminalDuringATransportFailureWait() {
+    fail(new java.net.ConnectException("Connection refused"));
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
+    result.cancel(true);
+    assertTrue(scheduledCancelled.get(0).get(), "the pause is cancelled");
+    assertEquals(1, seen.size());
+    seen.clear();
+    IllegalArgumentException invalid = new IllegalArgumentException("unexpected url");
+    fail(invalid);
+    assertSame(invalid, failure(await(WaitOptions.defaults())));
+  }
 }

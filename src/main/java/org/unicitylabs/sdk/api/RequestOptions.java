@@ -12,6 +12,13 @@ import org.unicitylabs.sdk.internal.OperationContext;
  */
 public final class RequestOptions {
 
+  /**
+   * Longest time one HTTP call may take: 60 s. The aggregator holds a long-poll request for at most
+   * 20 s, so a longer call is no use. A time left in an operation budget is clipped to it.
+   */
+  public static final Duration MAX_CALL_TIMEOUT = Duration.ofSeconds(60);
+
+
   private static final RequestOptions NONE = new RequestOptions(null, null, false, null);
 
   private final Long waitMillis;
@@ -79,14 +86,18 @@ public final class RequestOptions {
    * aggregator needs a timeout of its wait plus a response margin, because the HTTP client's own
    * read timeout is shorter.
    *
-   * @param callTimeout positive duration
+   * @param callTimeout positive duration, at most {@link #MAX_CALL_TIMEOUT}
    * @return new options
-   * @throws IllegalArgumentException if the duration is not positive
+   * @throws IllegalArgumentException if the duration is not positive or above the limit
    */
   public RequestOptions withCallTimeout(Duration callTimeout) {
     Objects.requireNonNull(callTimeout, "callTimeout cannot be null");
     if (callTimeout.isNegative() || callTimeout.isZero()) {
       throw new IllegalArgumentException("callTimeout must be positive");
+    }
+    if (callTimeout.compareTo(MAX_CALL_TIMEOUT) > 0) {
+      throw new IllegalArgumentException("callTimeout must not exceed " + MAX_CALL_TIMEOUT.getSeconds()
+          + " s (MAX_CALL_TIMEOUT); the aggregator holds a request for at most 20 s.");
     }
     return new RequestOptions(waitMillis, operation, statusHint, callTimeout);
   }

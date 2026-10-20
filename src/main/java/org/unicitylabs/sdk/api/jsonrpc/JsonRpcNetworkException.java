@@ -18,6 +18,11 @@ public class JsonRpcNetworkException extends Exception {
    * The service's own error, when the body is a matching JSON-RPC error envelope.
    */
   private final transient JsonRpcDataException rpcError;
+  /**
+   * The {@code Retry-After} header of the response in seconds, null if absent or not a number of
+   * seconds.
+   */
+  private final Long retryAfterSeconds;
 
   /**
    * Create exception from http code and error message.
@@ -38,10 +43,35 @@ public class JsonRpcNetworkException extends Exception {
    *                 this very request, null otherwise
    */
   public JsonRpcNetworkException(int status, String message, JsonRpcDataException rpcError) {
+    this(status, message, rpcError, null);
+  }
+
+  /**
+   * Create exception of a non-success HTTP status with the server's retry hint.
+   *
+   * @param status   status code
+   * @param message  body of the response
+   * @param rpcError the service's own error when the body is a complete JSON-RPC error envelope for
+   *                 this very request, null otherwise
+   * @param retryAfterSeconds the {@code Retry-After} header in seconds, null if there is none
+   */
+  public JsonRpcNetworkException(int status, String message, JsonRpcDataException rpcError,
+      Long retryAfterSeconds) {
     super(String.format("Network error [%s] occurred: %s", status, message));
     this.status = status;
     this.errorMessage = message;
     this.rpcError = rpcError;
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+
+  /**
+   * The {@code Retry-After} header of the response, in seconds. Unauthenticated, like the rest of
+   * the response; a client only uses it to pace a retry.
+   *
+   * @return seconds, null if the header was absent or not a non-negative number of seconds
+   */
+  public Long getRetryAfterSeconds() {
+    return this.retryAfterSeconds;
   }
 
   /**

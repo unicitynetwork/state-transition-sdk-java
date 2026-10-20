@@ -348,4 +348,89 @@ class PartitionViewAuthenticatorTest {
       pool.shutdownNow();
     }
   }
+
+  /**
+   * Guard: the partition of the enclosing certificate is the partition of the view. A seal that
+   * commits to partitions 7 and 8 must not authenticate the view of partition 8 as a view of
+   * partition 7.
+   */
+  @Test
+  void aViewOfAnotherPartitionUnderTheSameSealIsNotRelabelled() {
+    List<PartitionViewLeaf> leaves7 = TestChain.fourShards(3, NOW);
+    List<PartitionViewLeaf> leaves8 = List.of(TestChain.leaf("0", 4, NOW, 11),
+        TestChain.leaf("1", 4, NOW, 12));
+    ShardTree tree7 = ShardTree.create(leaves7);
+    ShardTree tree8 = ShardTree.create(leaves8);
+    byte[] leafHash7 = TestChain.unicityRoot(7, tree7.rootHash(), List.of());
+    byte[] leafHash8 = TestChain.unicityRoot(8, tree8.rootHash(), List.of());
+    // the one node that joins the two partitions has the key 7: smaller keys fold to its left
+    List<UnicityTreeCertificate.HashStep> steps7 =
+        List.of(new UnicityTreeCertificate.HashStep(7, leafHash8));
+    List<UnicityTreeCertificate.HashStep> steps8 =
+        List.of(new UnicityTreeCertificate.HashStep(7, leafHash7));
+    byte[] root = TestChain.unicityRoot(7, tree7.rootHash(), steps7);
+    org.junit.jupiter.api.Assertions.assertArrayEquals(root,
+        TestChain.unicityRoot(8, tree8.rootHash(), steps8), "one seal commits to both partitions");
+    UnicitySeal seal = AUTHORITY.seal(9, root);
+
+    UnicityTreeCertificate utc7 = new UnicityTreeCertificate(7, steps7);
+    UnicityTreeCertificate utc8 = new UnicityTreeCertificate(8, steps8);
+    PartitionViewLeaf first7 = leaves7.get(0);
+    PartitionViewLeaf first8 = leaves8.get(0);
+    UnicityCertificate certificate7 = new UnicityCertificate(first7.getInputRecord(),
+        first7.getTechnicalRecordHash(), first7.getShardConfigurationHash(),
+        tree7.certificate(first7.getShardId()), utc7, seal);
+    UnicityCertificate certificate8 = new UnicityCertificate(first8.getInputRecord(),
+        first8.getTechnicalRecordHash(), first8.getShardConfigurationHash(),
+        tree8.certificate(first8.getShardId()), utc8, seal);
+
+    PartitionViewAuthenticator authenticator = authenticator(PartitionViewPolicy.none());
+    // control: the view of partition 7 authenticates with its own certificate
+    assertEquals(7, authenticator.authenticate(PartitionView.of(7, leaves7), certificate7)
+        .getPartitionId());
+
+    // partition 8's leaves, presented as partition 7's view, with partition 8's certificate
+    PartitionViewException relabelled = assertThrows(PartitionViewException.class,
+        () -> authenticator.authenticate(PartitionView.of(7, leaves8), certificate8));
+    assertEquals(Reason.COMMITMENT, relabelled.getReason());
+    assertTrue(relabelled.getMessage().contains("partition 8"), relabelled.getMessage());
+  }
+
+  /**
+   * A session that already runs as many distinct seal checks as it allows reports a resource
+   * limit, not a rejection of the view: the documented SealVerificationBusyException, never a
+   * PartitionViewException.
+   */
+  @Test
+  void aBusySealSessionIsAResourceLimitNotAViewRejection() throws Exception {
+    BlockingTrustBase blocking = BlockingTrustBase.copyOf(AUTHORITY.trustBase());
+    PartitionViewAuthenticator limited = new PartitionViewAuthenticator(
+        SealVerificationSession.create(blocking, 8, 1), PartitionViewPolicy.none());
+    TestChain.Sealed first = TestChain.seal(AUTHORITY, 7, 9, TestChain.fourShards(3, NOW));
+    TestChain.Sealed second = TestChain.seal(AUTHORITY, 7, 10, TestChain.fourShards(4, NOW));
+
+    blocking.arm();
+    java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newSingleThreadExecutor();
+    try {
+      java.util.concurrent.Future<AuthenticatedPartitionView> held = pool.submit(
+          () -> limited.authenticate(first.view, first.certificate("00")));
+      for (int i = 0; i < 500 && blocking.entered() == 0; i++) {
+        Thread.sleep(10);
+      }
+      assertEquals(1, blocking.entered(), "the first check is in flight");
+
+      org.unicitylabs.sdk.api.bft.verification.SealVerificationBusyException busy =
+          assertThrows(org.unicitylabs.sdk.api.bft.verification.SealVerificationBusyException.class,
+              () -> limited.authenticate(second.view, second.certificate("00")));
+      assertEquals(1, busy.getMaxInFlight());
+
+      blocking.release();
+      assertEquals(7, held.get(10, java.util.concurrent.TimeUnit.SECONDS).getPartitionId());
+      // nothing was remembered about the refused one: it authenticates once there is room
+      assertEquals(7, limited.authenticate(second.view, second.certificate("00")).getPartitionId());
+    } finally {
+      blocking.release();
+      pool.shutdownNow();
+    }
+  }
 }

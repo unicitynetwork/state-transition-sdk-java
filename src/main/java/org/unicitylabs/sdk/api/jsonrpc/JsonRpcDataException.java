@@ -24,7 +24,22 @@ public class JsonRpcDataException extends JsonRpcNetworkException {
    * @param idMatched true if the response carried the id of the request
    */
   public JsonRpcDataException(int code, String message, JsonNode data, boolean idMatched) {
-    super(code, message);
+    this(code, message, data, idMatched, null);
+  }
+
+  /**
+   * Creates the exception with the server's retry hint.
+   *
+   * @param code JSON-RPC error code
+   * @param message error message
+   * @param data error data, null if none
+   * @param idMatched true if the response carried the id of the request
+   * @param retryAfterSeconds the {@code Retry-After} header of the HTTP response in seconds, null
+   *     if there was none
+   */
+  public JsonRpcDataException(int code, String message, JsonNode data, boolean idMatched,
+      Long retryAfterSeconds) {
+    super(code, message, null, retryAfterSeconds);
     this.data = data;
     this.idMatched = idMatched;
   }

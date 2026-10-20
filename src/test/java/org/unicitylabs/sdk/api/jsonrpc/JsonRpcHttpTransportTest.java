@@ -299,4 +299,290 @@ class JsonRpcHttpTransportTest {
     assertInstanceOf(java.io.IOException.class, failure(t.call("m", Map.of(), Map.of(),
         RequestOptions.none())));
   }
+
+  @Test
+  void aRetryAfterHeaderIsCarriedInSecondsAndAnythingElseIsIgnored() {
+    server.enqueue(new MockResponse().setResponseCode(503).setHeader("Retry-After", "2").setBody("busy"));
+    JsonRpcNetworkException seconds = assertInstanceOf(JsonRpcNetworkException.class, failure(call()));
+    assertEquals(503, seconds.getStatus());
+    assertEquals(2L, seconds.getRetryAfterSeconds());
+
+    server.enqueue(new MockResponse().setResponseCode(429)
+        .setHeader("Retry-After", "tomorrow, maybe").setBody("slow down"));
+    assertNull(assertInstanceOf(JsonRpcNetworkException.class, failure(call())).getRetryAfterSeconds());
+
+    server.enqueue(new MockResponse().setResponseCode(503).setHeader("Retry-After", "-5").setBody("busy"));
+    assertNull(assertInstanceOf(JsonRpcNetworkException.class, failure(call())).getRetryAfterSeconds());
+
+    server.enqueue(new MockResponse().setResponseCode(503).setBody("busy"));
+    assertNull(assertInstanceOf(JsonRpcNetworkException.class, failure(call())).getRetryAfterSeconds());
+  }
+
+  @Test
+  void aCallTimeoutAboveTheLimitIsRejectedWithTheLimitNamed() {
+    IllegalArgumentException refused = assertThrows(IllegalArgumentException.class,
+        () -> RequestOptions.none().withCallTimeout(Duration.ofSeconds(61)));
+    assertTrue(refused.getMessage().contains("60 s"), refused.getMessage());
+    assertTrue(refused.getMessage().contains("MAX_CALL_TIMEOUT"), refused.getMessage());
+    assertThrows(IllegalArgumentException.class,
+        () -> RequestOptions.none().withCallTimeout(Duration.ofDays(2)));
+    assertEquals(Duration.ofSeconds(60),
+        RequestOptions.none().withCallTimeout(RequestOptions.MAX_CALL_TIMEOUT).getCallTimeout());
+  }
+
+  @Test
+  void everyCallIsBoundedByTheLimitWhateverTheBudgetOrWaitLeft() throws Exception {
+    java.util.List<Integer> readTimeouts = new java.util.concurrent.CopyOnWriteArrayList<>();
+    // a caller client that disables its timeouts: only the SDK's own limit can bound the call
+    OkHttpClient spying = new OkHttpClient.Builder().readTimeout(Duration.ZERO)
+        .addInterceptor(chain -> {
+          readTimeouts.add(chain.readTimeoutMillis());
+          return chain.proceed(chain.request());
+        }).build();
+    JsonRpcHttpTransport tested = TestTransports.withIds(server.url("/").toString(), spying, 1024,
+        () -> IntNode.valueOf(7));
+    String ok = "{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":1}";
+
+    // the budget left is 10 minutes
+    server.enqueue(new MockResponse().setBody(ok));
+    tested.call("m", Map.of(), Map.of(), RequestOptions.none()
+        .withOperation(OperationContext.withBudget(Duration.ofMinutes(10)))).get(5, TimeUnit.SECONDS);
+    // an unbounded operation
+    server.enqueue(new MockResponse().setBody(ok));
+    tested.call("m", Map.of(), Map.of(), RequestOptions.none()
+        .withOperation(OperationContext.unbounded())).get(5, TimeUnit.SECONDS);
+    // a budget of a month (internal contexts are not limited): clipped, never "no timeout"
+    server.enqueue(new MockResponse().setBody(ok));
+    tested.call("m", Map.of(), Map.of(), RequestOptions.none()
+        .withOperation(OperationContext.withBudget(Duration.ofDays(30)))).get(5, TimeUnit.SECONDS);
+    // the largest wait the wire carries
+    server.enqueue(new MockResponse().setBody(ok));
+    tested.call("m", Map.of(), Map.of(), RequestOptions.none()
+        .withWaitMillis(org.unicitylabs.sdk.api.WaitOptions.MAX_WAIT_MILLIS)).get(5, TimeUnit.SECONDS);
+
+    assertEquals(java.util.List.of(60_000, 60_000, 60_000, 60_000), readTimeouts);
+  }
+
+  @Test
+  void aRetryAfterOnAnHttp200JsonRpcErrorIsCarried() {
+    server.enqueue(new MockResponse().setHeader("Retry-After", "5").setBody(
+        "{\"jsonrpc\":\"2.0\",\"id\":7,\"error\":{\"code\":-32006,\"message\":\"busy\"}}"));
+    JsonRpcDataException busy = assertInstanceOf(JsonRpcDataException.class, failure(call()));
+    assertEquals(-32006, busy.getCode());
+    assertEquals(5L, busy.getRetryAfterSeconds());
+
+    server.enqueue(new MockResponse().setBody(
+        "{\"jsonrpc\":\"2.0\",\"id\":7,\"error\":{\"code\":-32006,\"message\":\"busy\"}}"));
+    assertNull(assertInstanceOf(JsonRpcDataException.class, failure(call())).getRetryAfterSeconds());
+  }
+
+  @Test
+  void retryAfterValuesSaturateAtSixtyAndMalformedOnesAreIgnored() {
+    assertEquals(60L, JsonRpcHttpTransport.retryAfter("1000000000"));
+    assertEquals(60L, JsonRpcHttpTransport.retryAfter("99999999999999999999999999999999"));
+    assertEquals(60L, JsonRpcHttpTransport.retryAfter("000000000000000000000000000000090"));
+    assertEquals(7L, JsonRpcHttpTransport.retryAfter("0000000000000000000000007"));
+    assertEquals(0L, JsonRpcHttpTransport.retryAfter("0"));
+    assertEquals(12L, JsonRpcHttpTransport.retryAfter(" 12 "));
+    assertNull(JsonRpcHttpTransport.retryAfter(null));
+    assertNull(JsonRpcHttpTransport.retryAfter(""));
+    assertNull(JsonRpcHttpTransport.retryAfter("5.5"));
+    assertNull(JsonRpcHttpTransport.retryAfter("-1"));
+    assertNull(JsonRpcHttpTransport.retryAfter("+5"));
+    assertNull(JsonRpcHttpTransport.retryAfter("tomorrow, maybe"));
+    assertNull(JsonRpcHttpTransport.retryAfter("1e3"));
+    // large values also reach the caller through the HTTP error
+    server.enqueue(new MockResponse().setResponseCode(503).setHeader("Retry-After", "1000000000000")
+        .setBody("busy"));
+    assertEquals(60L, assertInstanceOf(JsonRpcNetworkException.class, failure(call()))
+        .getRetryAfterSeconds());
+  }
+
+  @Test
+  void aCallWithNoOptionsIsBoundedToo() throws Exception {
+    String ok = "{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":1}";
+    java.util.List<String> seen = new java.util.concurrent.CopyOnWriteArrayList<>();
+    java.util.function.Function<OkHttpClient.Builder, OkHttpClient> spy = builder ->
+        builder.addInterceptor(chain -> {
+          seen.add((chain.call().timeout().timeoutNanos() / 1_000_000) + "/" + chain.readTimeoutMillis());
+          return chain.proceed(chain.request());
+        }).build();
+    // timeouts disabled: the limit applies
+    JsonRpcHttpTransport disabled = TestTransports.withIds(server.url("/").toString(),
+        spy.apply(new OkHttpClient.Builder().readTimeout(Duration.ZERO).callTimeout(Duration.ZERO)),
+        1024, () -> IntNode.valueOf(7));
+    server.enqueue(new MockResponse().setBody(ok));
+    disabled.call("m", Map.of(), Map.of(), RequestOptions.none()).get(5, TimeUnit.SECONDS);
+    // shorter timeouts of the caller are kept
+    JsonRpcHttpTransport shorter = TestTransports.withIds(server.url("/").toString(),
+        spy.apply(new OkHttpClient.Builder().readTimeout(Duration.ofSeconds(3))
+            .callTimeout(Duration.ofSeconds(5))), 1024, () -> IntNode.valueOf(7));
+    server.enqueue(new MockResponse().setBody(ok));
+    shorter.call("m", Map.of(), Map.of(), RequestOptions.none()).get(5, TimeUnit.SECONDS);
+    // longer ones come down to the limit
+    JsonRpcHttpTransport longer = TestTransports.withIds(server.url("/").toString(),
+        spy.apply(new OkHttpClient.Builder().readTimeout(Duration.ofMinutes(10))
+            .callTimeout(Duration.ofHours(1))), 1024, () -> IntNode.valueOf(7));
+    server.enqueue(new MockResponse().setBody(ok));
+    longer.call("m", Map.of(), Map.of(), RequestOptions.none()).get(5, TimeUnit.SECONDS);
+
+    assertEquals(java.util.List.of("60000/60000", "5000/3000", "60000/60000"), seen);
+  }
+
+  @Test
+  void theStatusOfAFailureSurvivesANonJsonOrOversizedBody() {
+    JsonRpcHttpTransport small = transport(64);
+    server.enqueue(new MockResponse().setResponseCode(502).setBody("<html>Bad Gateway</html>"));
+    JsonRpcNetworkException html = assertInstanceOf(JsonRpcNetworkException.class,
+        failure(small.call("m", Map.of(), Map.of(), RequestOptions.none())));
+    assertEquals(502, html.getStatus());
+    assertNull(html.getRpcError());
+
+    // larger than the bounded reader: still the status, never a response failure
+    server.enqueue(new MockResponse().setResponseCode(504).setBody("x".repeat(5000)));
+    JsonRpcNetworkException oversized = assertInstanceOf(JsonRpcNetworkException.class,
+        failure(small.call("m", Map.of(), Map.of(), RequestOptions.none())));
+    assertEquals(504, oversized.getStatus());
+    assertTrue(oversized.getErrorMessage().contains("exceeds"), oversized.getErrorMessage());
+    assertNull(oversized.getRpcError());
+
+    // an oversized body of a success is still a response failure
+    server.enqueue(new MockResponse().setBody("{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":\""
+        + "x".repeat(5000) + "\"}"));
+    assertInstanceOf(JsonRpcResponseException.class,
+        failure(small.call("m", Map.of(), Map.of(), RequestOptions.none())));
+  }
+
+  @Test
+  void aTruncatedErrorBodyStillReportsTheStatus() {
+    server.enqueue(new MockResponse().setResponseCode(502).setBody("partial body that is cut")
+        .setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.DISCONNECT_DURING_RESPONSE_BODY));
+    Throwable failure = failure(call());
+    if (failure instanceof JsonRpcNetworkException) {
+      assertEquals(502, ((JsonRpcNetworkException) failure).getStatus());
+    }
+  }
+
+  @Test
+  void retryAfterAcceptsTheHttpDateFormsAsTheDelayFromNow() {
+    java.time.Instant now = java.time.Instant.parse("2026-10-21T07:28:00Z");
+    // IMF-fixdate (the preferred form)
+    assertEquals(5L, JsonRpcHttpTransport.retryAfter("Wed, 21 Oct 2026 07:28:05 GMT", now));
+    // a fraction of a second rounds up
+    assertEquals(1L, JsonRpcHttpTransport.retryAfter("Wed, 21 Oct 2026 07:28:00 GMT",
+        now.minusMillis(500)));
+    // capped at 60 s, floored at 0
+    assertEquals(60L, JsonRpcHttpTransport.retryAfter("Wed, 21 Oct 2026 08:28:00 GMT", now));
+    assertEquals(0L, JsonRpcHttpTransport.retryAfter("Wed, 21 Oct 2026 07:27:00 GMT", now));
+    // the two obsolete forms
+    assertEquals(30L, JsonRpcHttpTransport.retryAfter("Wednesday, 21-Oct-26 07:28:30 GMT", now));
+    assertEquals(12L, JsonRpcHttpTransport.retryAfter("Wed Oct 21 07:28:12 2026", now));
+    // anything else is ignored
+    assertNull(JsonRpcHttpTransport.retryAfter("Wed, 32 Oct 2026 07:28:05 GMT", now));
+    assertNull(JsonRpcHttpTransport.retryAfter("tomorrow", now));
+    assertNull(JsonRpcHttpTransport.retryAfter("2026-10-21T07:28:05Z", now));
+    // seconds still work
+    assertEquals(9L, JsonRpcHttpTransport.retryAfter("9", now));
+  }
+
+  @Test
+  void aSingleLookupStillExposesAnIntermediaryErrorToTheCaller() {
+    // the one-shot API has no retry policy: only the wait helpers do
+    server.enqueue(new MockResponse().setResponseCode(502).setBody("<html>Bad Gateway</html>"));
+    JsonRpcNetworkException failure = assertInstanceOf(JsonRpcNetworkException.class, failure(call()));
+    assertEquals(502, failure.getStatus());
+    assertEquals(1, server.getRequestCount());
+  }
+
+  /** A source that reports when the body is being read, so a test can act in the middle of it. */
+  private static OkHttpClient observing(OkHttpClient base, Runnable onRead, Runnable onEnd) {
+    return base.newBuilder().addInterceptor(chain -> {
+      okhttp3.Response response = chain.proceed(chain.request());
+      okhttp3.ResponseBody original = response.body();
+      okio.BufferedSource source = okio.Okio.buffer(new okio.ForwardingSource(original.source()) {
+        @Override
+        public long read(okio.Buffer sink, long count) throws java.io.IOException {
+          onRead.run();
+          long n = super.read(sink, count);
+          if (n == -1) {
+            onEnd.run();
+          }
+          return n;
+        }
+      });
+      return response.newBuilder().body(new okhttp3.ResponseBody() {
+        @Override public okhttp3.MediaType contentType() { return original.contentType(); }
+        @Override public long contentLength() { return original.contentLength(); }
+        @Override public okio.BufferedSource source() { return source; }
+      }).build();
+    }).build();
+  }
+
+  @Test
+  void aCancellationWhileAnErrorBodyIsReadStaysACancellation() throws Exception {
+    java.util.concurrent.CountDownLatch reading = new java.util.concurrent.CountDownLatch(1);
+    OkHttpClient observed = observing(http, reading::countDown, () -> { });
+    JsonRpcHttpTransport tested = TestTransports.withIds(server.url("/").toString(), observed, 1024,
+        () -> IntNode.valueOf(7));
+    server.enqueue(new MockResponse().setResponseCode(502).setBody("slow proxy page")
+        .setBodyDelay(2, TimeUnit.SECONDS));
+    OperationContext operation = OperationContext.unbounded();
+    CompletableFuture<JsonNode> future = tested.call("m", Map.of(), Map.of(),
+        RequestOptions.none().withOperation(operation));
+    assertTrue(reading.await(2, TimeUnit.SECONDS), "the error body is being read");
+    operation.cancel();
+    assertInstanceOf(CancellationException.class, failure(future));
+    Awaitility.await().atMost(Duration.ofSeconds(2))
+        .until(() -> http.dispatcher().runningCallsCount() == 0);
+  }
+
+  @Test
+  void aDeadlineThatPassesWhileAnErrorBodyIsReadStaysATimeout() {
+    AtomicLong nanos = new AtomicLong();
+    OperationContext operation = OperationContext.withBudget(Duration.ofSeconds(10), nanos::get);
+    OkHttpClient advancing = observing(http, () -> { },
+        () -> nanos.set(TimeUnit.SECONDS.toNanos(11)));
+    JsonRpcHttpTransport tested = TestTransports.withIds(server.url("/").toString(), advancing, 1024,
+        () -> IntNode.valueOf(7));
+    server.enqueue(new MockResponse().setResponseCode(504).setBody("timeout page"));
+    assertInstanceOf(TimeoutException.class, failure(tested.call("m", Map.of(), Map.of(),
+        RequestOptions.none().withOperation(operation))));
+  }
+
+  @Test
+  void anOrdinaryBodyProblemKeepsTheStatusWhileTheOperationIsLive() {
+    OperationContext operation = OperationContext.unbounded();
+    server.enqueue(new MockResponse().setResponseCode(502).setBody("x".repeat(5000)));
+    JsonRpcNetworkException failure = assertInstanceOf(JsonRpcNetworkException.class,
+        failure(transport(64).call("m", Map.of(), Map.of(),
+            RequestOptions.none().withOperation(operation))));
+    assertEquals(502, failure.getStatus());
+  }
+
+  @Test
+  void theKeptRetryAfterCannotBeSuppliedByTheServer() {
+    server.enqueue(new MockResponse().setResponseCode(503)
+        .setHeader("X-Unicity-Retry-After", "60").setBody("busy"));
+    assertNull(assertInstanceOf(JsonRpcNetworkException.class, failure(call())).getRetryAfterSeconds());
+    server.enqueue(new MockResponse().setResponseCode(503)
+        .setHeader("X-Unicity-Retry-After", "0").setHeader("Retry-After", "5").setBody("busy"));
+    assertEquals(5L, assertInstanceOf(JsonRpcNetworkException.class, failure(call()))
+        .getRetryAfterSeconds());
+  }
+
+  @Test
+  void aResponseAnApplicationInterceptorBuildsKeepsItsOwnRetryAfter() {
+    OkHttpClient synthetic = http.newBuilder().addInterceptor(chain ->
+        new okhttp3.Response.Builder().request(chain.request())
+            .protocol(okhttp3.Protocol.HTTP_1_1).code(503).message("Service Unavailable")
+            .header("Retry-After", "5")
+            .body(okhttp3.ResponseBody.create("busy", okhttp3.MediaType.get("text/plain")))
+            .build()).build();
+    JsonRpcHttpTransport tested = TestTransports.withIds(server.url("/").toString(), synthetic,
+        1024, () -> IntNode.valueOf(7));
+    JsonRpcNetworkException error = assertInstanceOf(JsonRpcNetworkException.class,
+        failure(tested.call("m", Map.of(), Map.of(), RequestOptions.none())));
+    assertEquals(503, error.getStatus());
+    assertEquals(5L, error.getRetryAfterSeconds());
+  }
 }

@@ -74,4 +74,16 @@ class RequestOptionsTest {
     assertEquals(Duration.ofSeconds(15), WaitOptions.DEFAULT_TIMEOUT);
     assertEquals(Duration.ofSeconds(15), WaitOptions.defaults().getTimeout());
   }
+
+  @Test
+  void aWaitBudgetAboveTenMinutesIsRejectedWithTheLimitNamed() {
+    IllegalArgumentException refused = assertThrows(IllegalArgumentException.class,
+        () -> WaitOptions.defaults().timeout(Duration.ofMinutes(10).plusMillis(1)));
+    org.junit.jupiter.api.Assertions.assertTrue(refused.getMessage().contains("10 minutes"),
+        refused.getMessage());
+    assertThrows(IllegalArgumentException.class,
+        () -> WaitOptions.defaults().timeout(Duration.ofDays(30)));
+    assertEquals(Duration.ofMinutes(10),
+        WaitOptions.defaults().timeout(WaitOptions.MAX_TIMEOUT).getTimeout());
+  }
 }

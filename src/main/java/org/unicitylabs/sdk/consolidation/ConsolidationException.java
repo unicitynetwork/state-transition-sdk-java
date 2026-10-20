@@ -1,6 +1,8 @@
 package org.unicitylabs.sdk.consolidation;
 
 import java.util.Objects;
+import java.util.concurrent.RejectedExecutionException;
+import org.unicitylabs.sdk.api.bft.verification.SealVerificationBusyException;
 import org.unicitylabs.sdk.api.bft.ShardId;
 
 /**
@@ -16,6 +18,12 @@ public class ConsolidationException extends RuntimeException {
 
   /** Why a consolidation attempt did not produce a token. */
   public enum Kind {
+    /**
+     * The verification capacity of the operation was used up: too many distinct seals were being
+     * verified at once ({@code SealVerificationBusyException}). Nothing is known about the material;
+     * retryable.
+     */
+    BUSY,
     /** The caller cancelled the attempt. Never retryable by the SDK. */
     CANCELLED,
     /** The token or the configuration cannot be consolidated as given. */
@@ -78,6 +86,28 @@ public class ConsolidationException extends RuntimeException {
   }
 
   /**
+   * Classifies a failure that no stage of an attempt anticipated: a resource limit of the
+   * verification is {@link Kind#BUSY} and retryable, an executor that refuses the work is an
+   * {@link Kind#INPUT} failure of the configuration, anything else is a malformed response.
+   *
+   * @param failure the failure, already unwrapped from completion wrappers
+   * @return the typed exception
+   */
+  static ConsolidationException ofUnexpected(Throwable failure) {
+    if (failure instanceof SealVerificationBusyException) {
+      return new ConsolidationException(Kind.BUSY, String.valueOf(failure.getMessage()), null,
+          null, true, null, failure);
+    }
+    if (failure instanceof RejectedExecutionException) {
+      return new ConsolidationException(Kind.INPUT,
+          "The configured executor rejected the work: " + failure.getMessage(),
+          ConsolidationOutcome.INVALID_INPUT, null, false, null, failure);
+    }
+    return new ConsolidationException(Kind.INVALID_RESPONSE, "Unexpected failure: " + failure,
+        ConsolidationOutcome.INVALID_INPUT, null, false, null, failure);
+  }
+
+  /**
    * Classification.
    *
    * @return kind
@@ -105,8 +135,8 @@ public class ConsolidationException extends RuntimeException {
   }
 
   /**
-   * Whether a new attempt may succeed (transport failures and deadlines only; never a
-   * cancellation).
+   * Whether a new attempt may succeed (transport failures, deadlines and a busy verification only;
+   * never a cancellation).
    *
    * @return retryable
    */

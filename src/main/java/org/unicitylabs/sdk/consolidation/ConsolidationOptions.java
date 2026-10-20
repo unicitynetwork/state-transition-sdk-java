@@ -20,8 +20,8 @@ public final class ConsolidationOptions {
   public static final int DEFAULT_MAX_PARALLEL = 4;
   /** Default total deadline of an attempt. */
   public static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(10);
-  /** Longest total deadline an attempt accepts: 2^31-1 milliseconds. */
-  public static final Duration MAX_TIMEOUT = Duration.ofMillis(Integer.MAX_VALUE);
+  /** Longest total deadline an attempt accepts: 10 minutes. */
+  public static final Duration MAX_TIMEOUT = Duration.ofMinutes(10);
 
   private static final ConsolidationOptions DEFAULTS =
       new ConsolidationOptions(null, false, WaitOptions.DEFAULT_WINDOW, WaitOptions.DEFAULT_MARGIN,
@@ -129,7 +129,8 @@ public final class ConsolidationOptions {
   public ConsolidationOptions withTimeout(Duration timeout) {
     if (timeout == null || timeout.isNegative() || timeout.isZero()
         || timeout.compareTo(MAX_TIMEOUT) > 0) {
-      throw new IllegalArgumentException("timeout must be in (0, 2^31-1] milliseconds.");
+      throw new IllegalArgumentException(
+          "timeout must be positive and at most 10 minutes (ConsolidationOptions.MAX_TIMEOUT).");
     }
     return new ConsolidationOptions(master, masterLongPoll, window, margin, maxParallel, timeout,
         operation, executor);

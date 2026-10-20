@@ -63,7 +63,7 @@ The default `new TokenIssuanceVerifierService()` rejects every token whose type 
 
 ### HTTP client and timeouts
 
-The default client uses OkHttp defaults (10 s connect, read and write timeouts, no call timeout) and does not follow redirects. To change them, pass your own `OkHttpClient`; the SDK shares its connection pool and dispatcher, never shuts the dispatcher down, and switches redirect following off on the requests it makes.
+The transport never replays a request: it sends each JSON-RPC POST once, also when your own `OkHttpClient` would retry (after a dropped connection, on a 408, or on a 503 with `Retry-After: 0`), because a replayed submission has an uncertain outcome. Retrying reads is the job of the wait helpers. The default client uses OkHttp defaults (10 s connect, read and write timeouts, no call timeout) and does not follow redirects. To change them, pass your own `OkHttpClient`; the SDK shares its connection pool and dispatcher, never shuts the dispatcher down, and switches redirect following off on the requests it makes.
 
 ```java
 var http = new OkHttpClient.Builder()
@@ -80,6 +80,14 @@ return client.getInclusionProof(stateId,
 ```
 
 Waiting for a proof has its own total budget, see [section 7](#7-waiting-for-inclusion-proofs). The response body is limited to 8 MiB.
+
+**Limits.** No call and no operation is unbounded, and a value above a limit is refused at once with an `IllegalArgumentException` that names the limit:
+
+| What | Limit |
+| --- | --- |
+| One HTTP call: `RequestOptions.withCallTimeout` (`RequestOptions.MAX_CALL_TIMEOUT`) | 60 s. The aggregator holds a request for at most 20 s. A call that would get a longer timeout from its wait or from the time left in an operation is clipped to 60 s, and a call with no options gets the limit when your `OkHttpClient` has its timeouts disabled or longer; shorter timeouts of your client are kept. The long-poll wait of a wait operation is reduced to fit, keeping its response margin. |
+| Total time of a wait: `WaitOptions.timeout` (`WaitOptions.MAX_TIMEOUT`) | 10 minutes. |
+| Total time of a consolidation: `ConsolidationOptions.withTimeout` (`ConsolidationOptions.MAX_TIMEOUT`) | 10 minutes. |
 
 ## 2. Keys, Signing and Predicates
 
@@ -432,9 +440,15 @@ The hint is unauthenticated and only for control flow and user feedback. `unknow
 
 ### Failures
 
+An overload answer to a proof read is not a failure of the wait. It is HTTP 503 or 429, JSON-RPC `-32006`, or any JSON-RPC error whose data says `retryable: true`. An answer is classified as an overload before it is treated as pending or unknown, so a retryable `-32020` or `-32021`, or a 503 that carries a pending error, is an overload and a retryable unknown never ends the wait or causes a resubmission. The wait pauses for the larger of the interval and the `Retry-After` header and then polls without the long-poll wait for the rest of the call; the budget and the interval are unchanged. If that pause does not fit in the time left, the wait ends at once with `TimeoutException`, whose message names the overload and says whether a retry-after was given, and whose cause is the overload error. `Retry-After` is read from the HTTP response whatever its status, also on a JSON-RPC error in an HTTP 200 response (`JsonRpcNetworkException.getRetryAfterSeconds()`); both forms of RFC 9110 count: decimal seconds (a value of any length saturates at 60 s) and an HTTP-date, which is the time from now to that date (never below 0, at most 60 s). Anything else is ignored. Any other error still ends the wait.
+
+An HTTP 502 or 504 on a proof read inside a wait is inconclusive in the same way: a gateway or load balancer gave up on that request, not necessarily the aggregator. The wait stops asking for the long-poll wait, pauses the interval (or a longer `Retry-After`) and keeps reading with plain reads within the original budget. It does not resubmit, does not restart the budget and does not infer any status from the intermediary's page. The HTTP status counts even when the body is not JSON or is larger than the response limit; only a matching JSON-RPC error body adds meaning. If the pause does not fit in the time left, the wait ends within the budget with `TimeoutException` (message "Intermediary error (HTTP 502)", cause the HTTP error). Only the wait helpers (`waitInclusionProof`, `submitAndWait`) do this: a single `getInclusionProof` call, a batch or any other one-shot call still reports 502, 503, 504 and 429 as errors.
+
+A transport failure of a proof read inside a wait (connection refused or reset, a stale pooled connection, a truncated response, a timeout of that one call) is inconclusive too: the wait pauses the interval and keeps reading with plain reads within the original budget, and a pause that does not fit ends it with `TimeoutException` (message "Transport failure", cause the I/O error). Certificate and hostname validation failures, an invalid URL and cancellation stay terminal. A submission is never replayed by the transport, and `submitAndWait` does not resubmit after a transport error; a one-shot call such as a single `getInclusionProof` still reports the error.
+
 A wait completes exceptionally with the exceptions of [section 8](#8-errors). One deadline covers a whole operation, a wait or a `submitAndWait` with all its submissions and waits. When it passes, the future completes with `TimeoutException`, the active HTTP call and pause are cancelled, and a response or verification that finishes late is discarded.
 
-`JsonRpcAggregatorClient` checks every response before interpreting it: a bounded body, one complete JSON object, version `2.0`, exactly one of `result` and `error`, and the id of the request, also on errors. An error with a null id is kept for diagnostics (`isIdMatched() == false`) and is never taken as an acknowledgement or a status.
+`JsonRpcAggregatorClient` checks every response before interpreting it: a bounded body, one complete JSON object, version `2.0`, exactly one of `result` and `error`, and the id of the request, also on errors. An error with a null id is kept for diagnostics (`isIdMatched() == false`) and is never taken as an acknowledgement or a status. The one exception is the aggregator's server-wide busy answer, which it sends before it parses the request, as HTTP 200 with `-32006` and an explicit `"id": null` (an error without any `id` member is a `JsonRpcResponseException`): during a wait that is an overload answer, like any null-id error whose data says `retryable: true`. An error with another non-null id is a `JsonRpcResponseException`.
 
 ### Cancellation
 
@@ -513,19 +527,29 @@ try {
 | --- | --- | --- |
 | `CertificationResponse` status other than `SUCCESS` | The aggregator refused a submission (not an exception). | `STATE_ID_EXISTS`, `ALREADY_SUBMITTED`, `STATE_ID_QUEUED`: the state ID is already known, not necessarily with your request; use `resubmitCertificationRequest` and the proof to find out. `REQUEST_EXPIRED`: the request deadline passed; create a new transaction. `SERVICE_NOT_READY`: retry later. Other statuses (`SIGNATURE_VERIFICATION_FAILED`, `INVALID_*`, `STATE_ID_MISMATCH`, `UNSUPPORTED_ALGORITHM`, `INVALID_SHARD`) are defects in the request; do not retry. |
 | `CertificationRejectedException` | `resubmitCertificationRequest` or `submitAndWait` got a refusal other than a duplicate. `getStatus()`. | As for the status above. |
-| `TimeoutException` | The total time of an operation is used up. | The transaction may still be certified later. Resume from the persisted transaction: deserialize it and call `submitAndWait` again ([Crash recovery](#crash-recovery)). Do not rebuild it. |
+| `TimeoutException` | The total time of an operation is used up, or a proof read was answered with an overload (503, 429, busy) or an intermediary error (502, 504) and the pause does not fit in the time left (the cause is that error). | The transaction may still be certified later. Resume from the persisted transaction: deserialize it and call `submitAndWait` again ([Crash recovery](#crash-recovery)). Do not rebuild it. |
 | `InclusionProofWaitException.Expired` / `.Unknown` | An unauthenticated hint ended the wait. `isResubmittable()` is true. | Submit the same request again (`submitAndWait` does). |
 | `InclusionProofWaitException.Conflict` | Another request was certified for this state. Authenticated. | The state is spent by something else; do not resubmit. |
 | `VerificationException` | A proof, token or certified transaction did not verify. `getVerificationResult()`. | Do not accept the data. Never resubmitted for. |
 | `JsonRpcNetworkException`, `JsonRpcDataException` | The service answered with an HTTP status or JSON-RPC error (`getStatus()`, `getRpcError()`), or the transport failed. Checked exceptions; they only appear as the cause of a failed future. | Retry transient failures with your own policy. |
-| `JsonRpcResponseException` | The response is not a valid answer. | Treat as a faulty or malicious service. |
+| `JsonRpcResponseException` | The response is not a valid answer: a body over the size limit, an id that is not the request's, a 200 body that is not a JSON-RPC response. Unchecked. | Treat as a faulty or malicious service. |
 | `BatchProofException` | A batch lookup failed. `getKind()`: `UNAVAILABLE`, `UNSUPPORTED`, `REJECTED`, `LIMIT_EXCEEDED`, `SERVER`, `TRANSPORT`, `INVALID_RESPONSE`. | `isRetryable()` tells whether a new attempt may succeed. |
 | `NonInclusionProofException` | A non-inclusion lookup failed. `getKind()`: `UNAVAILABLE`, `BUSY`, `REJECTED`, `SERVER`, `TRANSPORT`, `TIMEOUT`, `CANCELLED`, `INVALID_RESPONSE`. | `isRetryable()`. |
-| `ConsolidationException` | Consolidation failed. `getKind()`: `CANCELLED`, `INPUT`, `INTEGRITY`, `INVALID_RESPONSE`, `REJECTED`, `SERVER`, `TIMEOUT`, `TRANSPORT`. | `isRetryable()`; `INTEGRITY` means the material was refused. |
+| `ConsolidationException` | Consolidation failed. `getKind()`: `BUSY`, `CANCELLED`, `INPUT`, `INTEGRITY`, `INVALID_RESPONSE`, `REJECTED`, `SERVER`, `TIMEOUT`, `TRANSPORT`. | `isRetryable()`; `INTEGRITY` means the material was refused. `BUSY` is retryable (too many seal checks in flight at once); `INPUT` includes an executor that refuses the work. |
+| `SealVerificationBusyException` | A verification session already runs as many distinct seal checks as it allows. Nothing is known about the material. Unchecked. Directly from `PartitionViewAuthenticator.authenticate`; consolidation reports it as `ConsolidationException` kind `BUSY`. | Try again later. |
 | `DuplicateSplitTokenIdException` | `TokenSplit.split` found two outputs with the same token ID (a reused salt). Unchecked; thrown by the call, not through a future. | Use a distinct salt for every output. |
 | `LeafExistsException` | Declared by `TokenSplit.split` (checked). Cannot occur once the token IDs are distinct. | Catch or declare it to compile. |
 | `IllegalArgumentException`, `NullPointerException` | A builder or factory got invalid input (sizes, ranges, null). | Fix the call. |
 | `CancellationException` | The caller cancelled the future. | None. |
+
+Compatibility, behaviour changes:
+
+- **Waits ride out intermediary errors.** A wait helper that used to fail at once with an HTTP 502 or 504 now keeps waiting, with plain reads, and succeeds or ends at the original deadline (`TimeoutException` with the HTTP error as cause). Code that relied on the immediate failure, for example to switch to another endpoint, should set a shorter `WaitOptions.timeout`. One-shot calls are unchanged.
+- **A mixed-shard batch is answered with HTTP 400.** The gateway rejects a batch that spans several shards with HTTP 400 and the unchanged JSON-RPC `-32602` body and id, where it used to answer 200. The batch calls report it as before (`BatchProofException`, kind `REJECTED`); the SDK reads the JSON-RPC error behind the status. Code written against the transport directly sees a `JsonRpcNetworkException` with status 400 (its `getRpcError()` holds the JSON-RPC error) instead of a `JsonRpcDataException`. Raw integrations and status-based monitoring see the 400 too.
+
+Compatibility: the limits of [section 1](#1-setup) are enforced when an option is built. The long-standing overload `InclusionProofUtils.waitInclusionProof(client, trustBase, predicateVerifier, transaction, timeout, interval)` used to accept any timeout; with a timeout above 10 minutes it now throws `IllegalArgumentException` at once, naming the limit, instead of returning a future that waits that long. Wait in steps of at most 10 minutes where a longer wait is really wanted.
+
+An oversize response body, a response id that is not the request's, and a 200 body that is not JSON now fail with `JsonRpcResponseException`, which is unchecked. Earlier versions threw `IOException` (the first and the last) and `IllegalArgumentException` (the id mismatch). A `catch (IOException e)` that treated these as retryable transport failures no longer matches them, and a `catch (IllegalArgumentException e)` neither; catch `JsonRpcResponseException` where it matters.
 
 Checked versus unchecked: `JsonRpcNetworkException` (and its subclass `JsonRpcDataException`) are checked, but only ever appear as the cause of a failed future, so they need no `throws` clause. `LeafExistsException` is the one checked exception a call declares directly (`TokenSplit.split`); it cannot occur in practice. Every other domain error is unchecked and typed.
 
@@ -541,7 +565,7 @@ Every application verification path requires the authenticated unicity certifica
 
 A `PartitionView` is the complete shard-leaf vector of a partition under one unicity seal, decoded from untrusted bytes. `PartitionViewAuthenticator.authenticate` validates it, rebuilds the shard tree, follows the enclosing certificate to the seal hash and authenticates the seal under the caller's `RootTrustBase`. Only then does it return an immutable `AuthenticatedPartitionView`, from which ordinary unicity certificates are derived for every shard, all carrying the same seal. The seal commits to every leaf's configuration hash; independently pinned shard configurations (`PartitionViewPolicy`) are an optional stricter policy. The authority is never taken from a response.
 
-Within one verification operation (for example one `token.verify(context)`), each distinct seal is authenticated once and then reused; the network, epoch and partition checks, paths, reference times, predicates and application rules still run for every proof. Seal reuse does not change token size or format. The details are in the Javadoc of `SealVerificationSession` and `OperationUnicityCertificateVerifier`.
+Within one verification operation (for example one `token.verify(context)`), each distinct seal is authenticated once and then reused; the network, epoch and partition checks, paths, reference times, predicates and application rules still run for every proof. Seal reuse does not change token size or format. `PartitionViewAuthenticator.authenticate` throws `PartitionViewException` for a view it rejects, and `SealVerificationBusyException` when its seal session is full, which is a resource limit and not a verdict on the view. The details are in the Javadoc of `SealVerificationSession` and `OperationUnicityCertificateVerifier`.
 
 ### 9.3 Proof Consolidation
 
@@ -558,7 +582,7 @@ return new TokenProofClient(routing, context).consolidate(token);
 - It needs no signing key and never submits or resubmits a transaction.
 - Token format and size do not change. Proofs nested in signed mint justifications or split and burn dependencies stay byte-identical and may still need their own seals; the summary reports outer-history and whole-verification checks separately.
 
-An attempt asks the master shard (the one with the newest authenticated evidence) for its latest batch and partition view, authenticates it under the caller's trust base and configured topology, then fetches the exact roots named by the authenticated view from the other participating shards in bounded parallel. All requests run under one operation budget (`ConsolidationOptions.withTimeout`, default 10 s) and one cancellation. The batch call is the optional `BatchAggregatorClient` capability, never emulated. Waiting is opt-in (`withMasterLongPoll`) and applies only to the master's latest request.
+An attempt asks the master shard (the one with the newest authenticated evidence) for its latest batch and partition view, authenticates it under the caller's trust base and configured topology, then fetches the exact roots named by the authenticated view from the other participating shards in bounded parallel. All requests run under one operation budget (`ConsolidationOptions.withTimeout`, default 10 s, at most 10 minutes) and one cancellation. The batch call is the optional `BatchAggregatorClient` capability, never emulated. Waiting is opt-in (`withMasterLongPoll`) and applies only to the master's latest request.
 
 Results: `getStatus()` is `CONSOLIDATED` (`getToken()`, `getSummary()`) or `UNAVAILABLE` (`getUnavailability()` with a reason and whether another attempt may help: a missing capability, a view that is not retained or not yet published, a busy service). Integrity failures, transport and server failures, timeouts and cancellation complete the future exceptionally with `ConsolidationException`. The original token is unchanged.
 
