@@ -135,13 +135,19 @@ public final class TokenProofClient {
 
     void start() {
       Deadlines.scheduleFor(this::deadline, outer.remaining().toNanos(), result);
-      executor.execute(() -> {
-        try {
-          verifyAndPlan();
-        } catch (Throwable t) {
-          fail(t);
-        }
-      });
+      try {
+        executor.execute(() -> {
+          try {
+            verifyAndPlan();
+          } catch (Throwable t) {
+            fail(t);
+          }
+        });
+      } catch (RuntimeException e) {
+        // an executor that refuses the work ends the attempt now, typed; completing the future
+        // releases the deadline timer
+        fail(e);
+      }
     }
 
     private ConsolidationException cancelled() {
@@ -188,9 +194,7 @@ public final class TokenProofClient {
       if (t instanceof ConsolidationException) {
         result.completeExceptionally(t);
       } else {
-        result.completeExceptionally(new ConsolidationException(
-            ConsolidationException.Kind.INVALID_RESPONSE, "Unexpected failure: " + t,
-            ConsolidationOutcome.INVALID_INPUT, null, false, null, t));
+        result.completeExceptionally(ConsolidationException.ofUnexpected(t));
       }
     }
 
@@ -261,18 +265,29 @@ public final class TokenProofClient {
       }
       ConsolidationOptions attemptOptions = options.withOperation(outer)
           .withTimeout(left.compareTo(Duration.ofMillis(1)) < 0 ? Duration.ofMillis(1) : left);
-      consolidator.consolidate(items, attemptOptions).whenCompleteAsync((attempt, error) -> {
-        try {
-          if (error != null) {
-            fail(error);
-            return;
+      try {
+        consolidator.consolidate(items, attemptOptions).whenCompleteAsync((attempt, error) -> {
+          try {
+            if (error != null) {
+              fail(error);
+              return;
+            }
+            rebuild(attempt, items, tokenContext, operation, trustBase, originalSeals,
+                evidenceQuorumChecks);
+          } catch (Throwable t) {
+            fail(t);
           }
-          rebuild(attempt, items, tokenContext, operation, trustBase, originalSeals,
-              evidenceQuorumChecks);
-        } catch (Throwable t) {
-          fail(t);
-        }
-      }, executor);
+        }, executor)
+            // a callback the executor refuses completes this stage, not the callback: report it now
+            // instead of leaving the attempt to its deadline
+            .whenComplete((ignored, rejected) -> {
+              if (rejected != null) {
+                fail(rejected);
+              }
+            });
+      } catch (RuntimeException e) {
+        fail(e);
+      }
     }
 
     private void rebuild(ConsolidationAttempt attempt, List<ConsolidationItem> items,

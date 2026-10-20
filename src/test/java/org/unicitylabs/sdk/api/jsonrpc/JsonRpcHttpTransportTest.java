@@ -299,4 +299,67 @@ class JsonRpcHttpTransportTest {
     assertInstanceOf(java.io.IOException.class, failure(t.call("m", Map.of(), Map.of(),
         RequestOptions.none())));
   }
+
+  @Test
+  void aRetryAfterHeaderIsCarriedInSecondsAndAnythingElseIsIgnored() {
+    server.enqueue(new MockResponse().setResponseCode(503).setHeader("Retry-After", "2").setBody("busy"));
+    JsonRpcNetworkException seconds = assertInstanceOf(JsonRpcNetworkException.class, failure(call()));
+    assertEquals(503, seconds.getStatus());
+    assertEquals(2L, seconds.getRetryAfterSeconds());
+
+    server.enqueue(new MockResponse().setResponseCode(429)
+        .setHeader("Retry-After", "Wed, 21 Oct 2026 07:28:00 GMT").setBody("slow down"));
+    assertNull(assertInstanceOf(JsonRpcNetworkException.class, failure(call())).getRetryAfterSeconds());
+
+    server.enqueue(new MockResponse().setResponseCode(503).setHeader("Retry-After", "-5").setBody("busy"));
+    assertNull(assertInstanceOf(JsonRpcNetworkException.class, failure(call())).getRetryAfterSeconds());
+
+    server.enqueue(new MockResponse().setResponseCode(503).setBody("busy"));
+    assertNull(assertInstanceOf(JsonRpcNetworkException.class, failure(call())).getRetryAfterSeconds());
+  }
+
+  @Test
+  void aCallTimeoutAboveTheLimitIsRejectedWithTheLimitNamed() {
+    IllegalArgumentException refused = assertThrows(IllegalArgumentException.class,
+        () -> RequestOptions.none().withCallTimeout(Duration.ofSeconds(61)));
+    assertTrue(refused.getMessage().contains("60 s"), refused.getMessage());
+    assertTrue(refused.getMessage().contains("MAX_CALL_TIMEOUT"), refused.getMessage());
+    assertThrows(IllegalArgumentException.class,
+        () -> RequestOptions.none().withCallTimeout(Duration.ofDays(2)));
+    assertEquals(Duration.ofSeconds(60),
+        RequestOptions.none().withCallTimeout(RequestOptions.MAX_CALL_TIMEOUT).getCallTimeout());
+  }
+
+  @Test
+  void everyCallIsBoundedByTheLimitWhateverTheBudgetOrWaitLeft() throws Exception {
+    java.util.List<Integer> readTimeouts = new java.util.concurrent.CopyOnWriteArrayList<>();
+    // a caller client that disables its timeouts: only the SDK's own limit can bound the call
+    OkHttpClient spying = new OkHttpClient.Builder().readTimeout(Duration.ZERO)
+        .addInterceptor(chain -> {
+          readTimeouts.add(chain.readTimeoutMillis());
+          return chain.proceed(chain.request());
+        }).build();
+    JsonRpcHttpTransport tested = TestTransports.withIds(server.url("/").toString(), spying, 1024,
+        () -> IntNode.valueOf(7));
+    String ok = "{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":1}";
+
+    // the budget left is 10 minutes
+    server.enqueue(new MockResponse().setBody(ok));
+    tested.call("m", Map.of(), Map.of(), RequestOptions.none()
+        .withOperation(OperationContext.withBudget(Duration.ofMinutes(10)))).get(5, TimeUnit.SECONDS);
+    // an unbounded operation
+    server.enqueue(new MockResponse().setBody(ok));
+    tested.call("m", Map.of(), Map.of(), RequestOptions.none()
+        .withOperation(OperationContext.unbounded())).get(5, TimeUnit.SECONDS);
+    // a budget of a month (internal contexts are not limited): clipped, never "no timeout"
+    server.enqueue(new MockResponse().setBody(ok));
+    tested.call("m", Map.of(), Map.of(), RequestOptions.none()
+        .withOperation(OperationContext.withBudget(Duration.ofDays(30)))).get(5, TimeUnit.SECONDS);
+    // the largest wait the wire carries
+    server.enqueue(new MockResponse().setBody(ok));
+    tested.call("m", Map.of(), Map.of(), RequestOptions.none()
+        .withWaitMillis(org.unicitylabs.sdk.api.WaitOptions.MAX_WAIT_MILLIS)).get(5, TimeUnit.SECONDS);
+
+    assertEquals(java.util.List.of(60_000, 60_000, 60_000, 60_000), readTimeouts);
+  }
 }

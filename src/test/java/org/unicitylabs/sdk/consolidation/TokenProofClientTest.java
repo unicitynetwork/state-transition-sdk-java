@@ -378,6 +378,11 @@ class TokenProofClientTest {
         () -> ConsolidationOptions.defaults().withTimeout(Duration.ZERO));
     assertThrows(IllegalArgumentException.class,
         () -> ConsolidationOptions.defaults().withTimeout(Duration.ofDays(30)));
+    IllegalArgumentException limit = assertThrows(IllegalArgumentException.class,
+        () -> ConsolidationOptions.defaults().withTimeout(Duration.ofMinutes(10).plusMillis(1)));
+    assertTrue(limit.getMessage().contains("10 minutes"), limit.getMessage());
+    assertEquals(Duration.ofMinutes(10),
+        ConsolidationOptions.defaults().withTimeout(Duration.ofMinutes(10)).getTimeout());
     assertThrows(IllegalArgumentException.class,
         () -> ConsolidationOptions.defaults().withMasterLongPoll(Duration.ofSeconds(-1),
             Duration.ofSeconds(2)));

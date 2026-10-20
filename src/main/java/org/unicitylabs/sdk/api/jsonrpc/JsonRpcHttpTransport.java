@@ -292,7 +292,8 @@ public class JsonRpcHttpTransport {
                 rpcError = JsonRpcHttpTransport.errorOf(envelope.get("error"), true, false);
               }
               future.completeExceptionally(
-                      new JsonRpcNetworkException(response.code(), bodyString, rpcError));
+                      new JsonRpcNetworkException(response.code(), bodyString, rpcError,
+                              JsonRpcHttpTransport.retryAfter(response.header("Retry-After"))));
               return;
             }
             JsonNode result = JsonRpcHttpTransport.result(envelope, requestId);
@@ -310,6 +311,23 @@ public class JsonRpcHttpTransport {
       return CompletableFuture.failedFuture(e);
     }
     return future;
+  }
+
+  /** The Retry-After header as seconds; only the delta-seconds form counts, anything else is null. */
+  private static Long retryAfter(String header) {
+    if (header == null) {
+      return null;
+    }
+    String value = header.trim();
+    if (value.isEmpty() || value.length() > 9) {
+      return null;
+    }
+    for (int i = 0; i < value.length(); i++) {
+      if (value.charAt(i) < '0' || value.charAt(i) > '9') {
+        return null;
+      }
+    }
+    return Long.parseLong(value);
   }
 
   /** Parses the whole body as one JSON object; trailing data after the value is not a valid response. */
@@ -399,8 +417,12 @@ public class JsonRpcHttpTransport {
         timeout = remaining;
       }
     }
-    if (timeout == null || timeout.compareTo(Duration.ofDays(1)) > 0) {
+    if (timeout == null) {
       return this.httpClient;
+    }
+    // no call outlives the limit: a time left in a long budget is clipped to it
+    if (timeout.compareTo(RequestOptions.MAX_CALL_TIMEOUT) > 0) {
+      timeout = RequestOptions.MAX_CALL_TIMEOUT;
     }
     // zero means "no timeout" to OkHttp: never let an exhausted budget become unbounded
     Duration bounded = timeout.isZero() ? Duration.ofMillis(1) : timeout;

@@ -1,5 +1,6 @@
 package org.unicitylabs.sdk.internal;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import org.unicitylabs.sdk.api.AggregatorClient;
 import org.unicitylabs.sdk.api.InclusionProof;
 import org.unicitylabs.sdk.api.InclusionProofResponse;
@@ -94,6 +95,11 @@ public final class InclusionProofWaiter {
       return thread;
     };
   }
+
+  /** JSON-RPC code of the aggregator's concurrency limit ("busy"). */
+  private static final int OVERLOAD_CODE = -32006;
+  /** Longest Retry-After honored, in seconds. */
+  private static final long MAX_RETRY_AFTER_SECONDS = 60;
 
   private final AggregatorClient client;
   private final StateId stateId;
@@ -361,7 +367,11 @@ public final class InclusionProofWaiter {
     boolean pending = code == -32021;
     boolean unknown = notFound || code == -32020;
     if (!pending && !unknown) {
-      fail(cause);
+      if (isOverload(cause, rpc)) {
+        onOverload(cause, interval);
+      } else {
+        fail(cause);
+      }
       return;
     }
     if (unknown && client instanceof StatusAwareAggregatorClient
@@ -374,6 +384,54 @@ public final class InclusionProofWaiter {
       longPolling = false;
     }
     next(longPollConfigured ? Math.max(interval, LongPoll.MIN_POLL_GAP_MILLIS) : interval);
+  }
+
+  /**
+   * The retryable overload answer of a proof read: HTTP 503 or 429, JSON-RPC -32006, or any
+   * JSON-RPC error whose data says {@code retryable: true}.
+   */
+  private static boolean isOverload(Throwable cause, JsonRpcDataException rpc) {
+    if (!(cause instanceof JsonRpcDataException)
+        && cause instanceof JsonRpcNetworkException) {
+      int status = ((JsonRpcNetworkException) cause).getStatus();
+      if (status == 503 || status == 429) {
+        return true;
+      }
+    }
+    if (rpc == null) {
+      return false;
+    }
+    if (rpc.getCode() == OVERLOAD_CODE) {
+      return true;
+    }
+    JsonNode retryable = rpc.getData() == null ? null : rpc.getData().get("retryable");
+    return retryable != null && retryable.isBoolean() && retryable.booleanValue();
+  }
+
+  /**
+   * An overload answer is inconclusive: pause {@code max(interval, Retry-After)} and keep polling
+   * without the wait for the rest of the call. A pause that does not fit in the time left ends the
+   * wait now with a timeout that names the overload.
+   */
+  private void onOverload(Throwable cause, long interval) {
+    long retryAfterMillis = 0;
+    if (cause instanceof JsonRpcNetworkException) {
+      Long seconds = ((JsonRpcNetworkException) cause).getRetryAfterSeconds();
+      if (seconds != null) {
+        retryAfterMillis = Math.min(seconds, MAX_RETRY_AFTER_SECONDS) * 1000;
+      }
+    }
+    long pause = Math.max(interval, retryAfterMillis);
+    if (pause > operation.remaining().toMillis()) {
+      TimeoutException timeout = new TimeoutException(
+          "Aggregator overloaded, retry-after " + (retryAfterMillis / 1000)
+              + " s does not fit in the time left for the inclusion proof");
+      timeout.initCause(cause);
+      fail(timeout);
+      return;
+    }
+    longPolling = false;
+    next(pause);
   }
 
   private void verify(InclusionProof proof) {

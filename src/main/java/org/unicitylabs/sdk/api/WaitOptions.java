@@ -25,6 +25,8 @@ public final class WaitOptions {
   public static final Duration DEFAULT_WINDOW = Duration.ofSeconds(20);
   /** Default margin between the end of a server wait and the end of the time left. */
   public static final Duration DEFAULT_MARGIN = Duration.ofSeconds(2);
+  /** Longest total time of a wait: 10 minutes. */
+  public static final Duration MAX_TIMEOUT = Duration.ofMinutes(10);
   /** Largest wait the wire carries, in milliseconds (2^53 - 1). */
   public static final long MAX_WAIT_MILLIS = 9007199254740991L;
 
@@ -56,11 +58,17 @@ public final class WaitOptions {
   /**
    * Sets the total time of the wait.
    *
-   * @param timeout positive duration
+   * @param timeout positive duration, at most {@link #MAX_TIMEOUT} (10 minutes)
    * @return new options
+   * @throws IllegalArgumentException if the duration is not positive or above the limit
    */
   public WaitOptions timeout(Duration timeout) {
-    return new WaitOptions(positive(timeout, "timeout"), interval, longPoll, window, margin);
+    positive(timeout, "timeout");
+    if (timeout.compareTo(MAX_TIMEOUT) > 0) {
+      throw new IllegalArgumentException("timeout must not exceed " + MAX_TIMEOUT.toMinutes()
+          + " minutes (WaitOptions.MAX_TIMEOUT).");
+    }
+    return new WaitOptions(timeout, interval, longPoll, window, margin);
   }
 
   /**

@@ -550,4 +550,112 @@ class InclusionProofWaiterTest {
     assertTrue(seen.get(0).operation.isCancelled());
     assertFalse(second.isDone());
   }
+
+  // Overload answers of a proof read (spec-wait-overload): inconclusive, paced, never a failure.
+
+  @Test
+  void anOverloadedReadIsInconclusiveThenTheCallPollsWithoutTheWait() {
+    fail(new JsonRpcNetworkException(503, "Service Overloaded"));
+    answer(pending.withStatusHint(ProofStatusHint.PENDING), 0);
+    answer(certified, 0);
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
+    assertFalse(result.isDone());
+    assertEquals(13_000L, seen.get(0).waitMillis, "the first request long polls");
+    assertEquals(List.of(1000L), pauses, "the pause is the interval when there is no Retry-After");
+    firePause();
+    assertNull(seen.get(1).waitMillis, "the rest of the call polls without the wait");
+    assertEquals(List.of(1000L, 1000L), pauses);
+    firePause();
+    assertTrue(result.isDone());
+    assertEquals(3, seen.size(), "no extra requests");
+  }
+
+  @Test
+  void aBusyAnswerAndAnyRetryableErrorAreOverloadToo() {
+    fail(new JsonRpcDataException(-32006, "Concurrency limit exceeded", null, true));
+    com.fasterxml.jackson.databind.node.ObjectNode data =
+        com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+    data.put("retryable", true);
+    fail(new JsonRpcDataException(-32099, "try again", data, true));
+    answer(certified, 0);
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
+    firePause();
+    firePause();
+    assertTrue(result.isDone());
+    assertEquals(3, seen.size());
+    assertNull(seen.get(1).waitMillis);
+    assertNull(seen.get(2).waitMillis);
+    assertEquals(List.of(1000L, 1000L), pauses);
+  }
+
+  @Test
+  void tooManyRequestsWithRetryAfterPausesLongerThanTheInterval() {
+    fail(new JsonRpcNetworkException(429, "slow down", null, 4L));
+    answer(certified, 0);
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
+    assertEquals(List.of(4000L), pauses, "max(interval, Retry-After)");
+    firePause();
+    assertTrue(result.isDone());
+    assertEquals(2, seen.size());
+  }
+
+  @Test
+  void aRetryAfterAboveTheCapIsCappedAtSixtySecondsAndMustFit() {
+    fail(new JsonRpcNetworkException(503, "overloaded", null, 3_600L));
+    JsonRpcNetworkException overload = (JsonRpcNetworkException) script.peek().error;
+    Throwable failure = failure(await(WaitOptions.defaults().timeout(Duration.ofSeconds(30))));
+    assertInstanceOf(TimeoutException.class, failure);
+    assertSame(overload, failure.getCause());
+    assertTrue(failure.getMessage().contains("overloaded"));
+    assertTrue(failure.getMessage().contains("retry-after 60 s"), failure.getMessage());
+    assertEquals(1, seen.size(), "it fails at once, with the budget unused");
+    assertTrue(pauses.isEmpty());
+  }
+
+  @Test
+  void aRetryAfterBeyondTheRemainingBudgetFailsFastWithTheOverloadAsCause() {
+    // 5 s asked, 3 s of the 15 s budget left
+    answer(pending.withStatusHint(ProofStatusHint.PENDING), 12_000);
+    fail(new JsonRpcNetworkException(503, "overloaded", null, 5L));
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults().longPoll(false));
+    firePause();
+    nanos.addAndGet(TimeUnit.SECONDS.toNanos(11));
+    Throwable failure = failure(result);
+    assertInstanceOf(TimeoutException.class, failure);
+    assertInstanceOf(JsonRpcNetworkException.class, failure.getCause());
+    assertTrue(failure.getMessage().contains("retry-after 5 s"), failure.getMessage());
+  }
+
+  @Test
+  void aRetryAfterThatIsNotNumericIsIgnoredByTheTransportAndTheIntervalApplies() {
+    fail(new JsonRpcNetworkException(503, "overloaded", null, null));
+    answer(certified, 0);
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
+    assertEquals(List.of(1000L), pauses);
+    firePause();
+    assertTrue(result.isDone());
+  }
+
+  @Test
+  void aNonRetryableErrorStillEndsTheWaitAtOnce() {
+    JsonRpcNetworkException bad = new JsonRpcNetworkException(500, "boom");
+    fail(bad);
+    assertSame(bad, failure(await(WaitOptions.defaults())));
+    seen.clear();
+    com.fasterxml.jackson.databind.node.ObjectNode data =
+        com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+    data.put("retryable", false);
+    JsonRpcDataException refused = new JsonRpcDataException(-32099, "no", data, true);
+    fail(refused);
+    assertSame(refused, failure(await(WaitOptions.defaults())));
+    assertEquals(1, seen.size());
+    assertTrue(pauses.isEmpty());
+  }
+
+  @Test
+  void anOverloadErrorThatCarriesNoIdOfOursIsNotAnOverloadAnswer() {
+    JsonRpcDataException unmatched = new JsonRpcDataException(-32006, "busy", null, false);
+    fail(unmatched);
+    assertSame(unmatched, failure(await(WaitOptions.defaults())));
+  }
 }
