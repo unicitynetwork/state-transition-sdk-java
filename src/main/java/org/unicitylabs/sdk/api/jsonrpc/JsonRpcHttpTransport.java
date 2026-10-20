@@ -45,6 +45,8 @@ public class JsonRpcHttpTransport {
   /** A timeout this close to the end of the budget is the deadline of the operation. */
   private static final Duration DEADLINE_SLACK = Duration.ofMillis(100);
 
+  /** The most seconds of a Retry-After the transport reports; a larger value saturates here. */
+  public static final long MAX_RETRY_AFTER_SECONDS = 60;
   private static final MediaType MEDIA_TYPE_JSON = MediaType.get("application/json; charset=utf-8");
 
   private static final OkHttpClient DEFAULT_HTTP_CLIENT = new OkHttpClient.Builder()
@@ -117,6 +119,7 @@ public class JsonRpcHttpTransport {
             .newBuilder()
             .followRedirects(false)
             .followSslRedirects(false)
+            .addNetworkInterceptor(JsonRpcHttpTransport::saturateRetryAfter)
             .build();
     this.maxResponseBytes = maxResponseBytes;
   }
@@ -289,14 +292,15 @@ public class JsonRpcHttpTransport {
               if (envelope != null && "2.0".equals(envelope.path("jsonrpc").asText(null))
                       && envelope.has("error") && envelope.get("error").isObject() && !envelope.has("result")
                       && requestId.equals(envelope.get("id"))) {
-                rpcError = JsonRpcHttpTransport.errorOf(envelope.get("error"), true, false);
+                rpcError = JsonRpcHttpTransport.errorOf(envelope.get("error"), true, false, null);
               }
               future.completeExceptionally(
                       new JsonRpcNetworkException(response.code(), bodyString, rpcError,
                               JsonRpcHttpTransport.retryAfter(response.header("Retry-After"))));
               return;
             }
-            JsonNode result = JsonRpcHttpTransport.result(envelope, requestId);
+            JsonNode result = JsonRpcHttpTransport.result(envelope, requestId,
+                    JsonRpcHttpTransport.retryAfter(response.header("Retry-After")));
             if (operation != null && operation.isExpired()) {
               future.completeExceptionally(new TimeoutException("Operation deadline expired."));
               return;
@@ -313,21 +317,42 @@ public class JsonRpcHttpTransport {
     return future;
   }
 
-  /** The Retry-After header as seconds; only the delta-seconds form counts, anything else is null. */
-  private static Long retryAfter(String header) {
+  /**
+   * Rewrites a decimal Retry-After to its saturated value before OkHttp's own retry logic reads it:
+   * OkHttp parses the header of a 503 as an {@code int} and fails the call on a longer number.
+   */
+  private static okhttp3.Response saturateRetryAfter(okhttp3.Interceptor.Chain chain)
+          throws IOException {
+    okhttp3.Response response = chain.proceed(chain.request());
+    String header = response.header("Retry-After");
+    Long seconds = retryAfter(header);
+    if (seconds != null && !String.valueOf(seconds).equals(header)) {
+      return response.newBuilder().header("Retry-After", String.valueOf(seconds)).build();
+    }
+    return response;
+  }
+
+  /**
+   * The Retry-After header as seconds. Only the decimal delta-seconds form counts: a value of any
+   * length saturates at {@link #MAX_RETRY_AFTER_SECONDS}, a malformed or date-form value is null.
+   */
+  static Long retryAfter(String header) {
     if (header == null) {
       return null;
     }
     String value = header.trim();
-    if (value.isEmpty() || value.length() > 9) {
+    if (value.isEmpty()) {
       return null;
     }
+    long seconds = 0;
     for (int i = 0; i < value.length(); i++) {
-      if (value.charAt(i) < '0' || value.charAt(i) > '9') {
+      char digit = value.charAt(i);
+      if (digit < '0' || digit > '9') {
         return null;
       }
+      seconds = Math.min(MAX_RETRY_AFTER_SECONDS, seconds * 10 + (digit - '0'));
     }
-    return Long.parseLong(value);
+    return seconds;
   }
 
   /** Parses the whole body as one JSON object; trailing data after the value is not a valid response. */
@@ -344,7 +369,7 @@ public class JsonRpcHttpTransport {
     }
   }
 
-  private static JsonNode result(JsonNode envelope, JsonNode requestId)
+  private static JsonNode result(JsonNode envelope, JsonNode requestId, Long retryAfter)
           throws JsonRpcDataException {
     if (envelope == null) {
       throw new JsonRpcResponseException("JSON-RPC response is not a valid JSON object.");
@@ -371,7 +396,7 @@ public class JsonRpcHttpTransport {
         throw new JsonRpcResponseException("JSON-RPC response id mismatch: expected " + requestId
                 + ", got " + id + ".");
       }
-      throw errorOf(envelope.get("error"), matched, true);
+      throw errorOf(envelope.get("error"), matched, true, retryAfter);
     }
     if (!requestId.equals(id)) {
       throw new JsonRpcResponseException("JSON-RPC response id mismatch: expected " + requestId
@@ -385,7 +410,8 @@ public class JsonRpcHttpTransport {
   }
 
   /** Builds the typed error of an error object; a malformed object is a response failure. */
-  private static JsonRpcDataException errorOf(JsonNode error, boolean matched, boolean strict) {
+  private static JsonRpcDataException errorOf(JsonNode error, boolean matched, boolean strict,
+          Long retryAfter) {
     JsonNode code = error.get("code");
     JsonNode message = error.get("message");
     if (code == null || !code.isIntegralNumber() || !code.canConvertToInt()
@@ -397,7 +423,7 @@ public class JsonRpcHttpTransport {
       return null;
     }
     return new JsonRpcDataException(code.intValue(), message.textValue(), error.get("data"),
-            matched);
+            matched, retryAfter);
   }
 
   /**
@@ -418,7 +444,22 @@ public class JsonRpcHttpTransport {
       }
     }
     if (timeout == null) {
-      return this.httpClient;
+      // no timeout asked for: the caller's client keeps its own, shorter ones; a disabled or longer
+      // one is brought down to the limit, so no call is unbounded
+      long limit = RequestOptions.MAX_CALL_TIMEOUT.toMillis();
+      int call = this.httpClient.callTimeoutMillis();
+      int read = this.httpClient.readTimeoutMillis();
+      if (call > 0 && call <= limit && read > 0 && read <= limit) {
+        return this.httpClient;
+      }
+      OkHttpClient.Builder builder = this.httpClient.newBuilder();
+      if (call <= 0 || call > limit) {
+        builder.callTimeout(RequestOptions.MAX_CALL_TIMEOUT);
+      }
+      if (read <= 0 || read > limit) {
+        builder.readTimeout(RequestOptions.MAX_CALL_TIMEOUT);
+      }
+      return builder.build();
     }
     // no call outlives the limit: a time left in a long budget is clipped to it
     if (timeout.compareTo(RequestOptions.MAX_CALL_TIMEOUT) > 0) {

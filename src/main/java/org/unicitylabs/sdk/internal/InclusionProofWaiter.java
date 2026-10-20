@@ -243,6 +243,10 @@ public final class InclusionProofWaiter {
     boolean longPollConfigured = options.isLongPoll() && client instanceof StatusAwareAggregatorClient;
     long waitMillis = longPolling
         ? LongPoll.window(options.getWindow(), options.getMargin(), operation.remaining()) : 0;
+    // the call timeout is the wait plus the margin and never above the limit of one call: the
+    // wait gives way, the margin stays
+    waitMillis = Math.min(waitMillis,
+        Math.max(0, RequestOptions.MAX_CALL_TIMEOUT.minus(options.getMargin()).toMillis()));
     long callStarted = nanoClock.getAsLong();
 
     CompletableFuture<InclusionProofResponse> call;
@@ -253,8 +257,13 @@ public final class InclusionProofWaiter {
         if (waitMillis > 0) {
           Duration callTimeout = Duration.ofMillis(waitMillis).plus(options.getMargin());
           Duration left = operation.remaining();
-          request = request.withWaitMillis(waitMillis)
-              .withCallTimeout(left.compareTo(callTimeout) < 0 ? left : callTimeout);
+          if (left.compareTo(callTimeout) < 0) {
+            callTimeout = left;
+          }
+          if (callTimeout.compareTo(RequestOptions.MAX_CALL_TIMEOUT) > 0) {
+            callTimeout = RequestOptions.MAX_CALL_TIMEOUT;
+          }
+          request = request.withWaitMillis(waitMillis).withCallTimeout(callTimeout);
         }
         call = ((StatusAwareAggregatorClient) client).getInclusionProof(stateId, request);
       } else {
@@ -358,20 +367,28 @@ public final class InclusionProofWaiter {
     }
     if (rpc != null) {
       if (!rpc.isIdMatched()) {
-        // an error that carries no id of this request is no "pending" or "unknown" answer of ours
-        fail(cause);
+        // An error that carries no id of this request is no "pending" or "unknown" answer of ours.
+        // The one exception is the server-wide busy answer, sent before the request is parsed, with
+        // a null id: -32006 or data.retryable is an overload whoever it answers.
+        if (isOverload(cause, rpc)) {
+          onOverload(cause, interval);
+        } else {
+          fail(cause);
+        }
         return;
       }
       code = rpc.getCode();
     }
+    // An overload answer is decided before pending, unknown and the other statuses: a retryable
+    // -32020 or -32021 is an overload, and a retryable unknown never ends the wait or resubmits.
+    if (isOverload(cause, rpc)) {
+      onOverload(cause, interval);
+      return;
+    }
     boolean pending = code == -32021;
     boolean unknown = notFound || code == -32020;
     if (!pending && !unknown) {
-      if (isOverload(cause, rpc)) {
-        onOverload(cause, interval);
-      } else {
-        fail(cause);
-      }
+      fail(cause);
       return;
     }
     if (unknown && client instanceof StatusAwareAggregatorClient
@@ -421,11 +438,18 @@ public final class InclusionProofWaiter {
         retryAfterMillis = Math.min(seconds, MAX_RETRY_AFTER_SECONDS) * 1000;
       }
     }
+    boolean hinted = retryAfterMillis > 0;
     long pause = Math.max(interval, retryAfterMillis);
-    if (pause > operation.remaining().toMillis()) {
+    long left = operation.remaining().toMillis();
+    if (pause > left) {
+      String answer = cause instanceof JsonRpcDataException
+          ? "JSON-RPC error " + ((JsonRpcDataException) cause).getCode()
+          : "HTTP " + ((JsonRpcNetworkException) cause).getStatus();
       TimeoutException timeout = new TimeoutException(
-          "Aggregator overloaded, retry-after " + (retryAfterMillis / 1000)
-              + " s does not fit in the time left for the inclusion proof");
+          "Aggregator overloaded (" + answer + "), "
+              + (hinted ? "retry-after " + (retryAfterMillis / 1000) + " s" : "no retry-after was given")
+              + "; the " + pause + " ms pause does not fit in the " + left
+              + " ms left for the inclusion proof");
       timeout.initCause(cause);
       fail(timeout);
       return;

@@ -653,9 +653,101 @@ class InclusionProofWaiterTest {
   }
 
   @Test
-  void anOverloadErrorThatCarriesNoIdOfOursIsNotAnOverloadAnswer() {
-    JsonRpcDataException unmatched = new JsonRpcDataException(-32006, "busy", null, false);
-    fail(unmatched);
-    assertSame(unmatched, failure(await(WaitOptions.defaults())));
+  void aNullIdBusyAnswerIsAnOverloadAndAnyOtherUnmatchedErrorStaysTerminal() {
+    // the server-wide busy answer is sent before the request is parsed: id null
+    fail(new JsonRpcDataException(-32006, "Concurrency limit exceeded", null, false));
+    fail(new JsonRpcDataException(-32099, "try again", retryableData(), false));
+    answer(certified, 0);
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
+    firePause();
+    firePause();
+    assertTrue(result.isDone());
+    assertEquals(3, seen.size());
+    assertNull(seen.get(1).waitMillis);
+
+    seen.clear();
+    JsonRpcDataException other = new JsonRpcDataException(-32603, "db down", null, false);
+    fail(other);
+    assertSame(other, failure(await(WaitOptions.defaults())));
+    assertEquals(1, seen.size());
+    // an unmatched pending answer is still no pending answer of ours
+    seen.clear();
+    JsonRpcDataException pendingUnmatched = new JsonRpcDataException(-32021, "pending", null, false);
+    fail(pendingUnmatched);
+    assertSame(pendingUnmatched, failure(await(WaitOptions.defaults())));
+  }
+
+  private static com.fasterxml.jackson.databind.node.ObjectNode retryableData() {
+    com.fasterxml.jackson.databind.node.ObjectNode data =
+        com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+    data.put("retryable", true);
+    return data;
+  }
+
+  @Test
+  void aRetryableUnknownAfterTheGraceIsAnOverloadNotAnUnknownEnd() {
+    // the grace is two intervals; the third answer arrives after it
+    fail(new JsonRpcDataException(-32020, "unknown", null, true));
+    fail(new JsonRpcDataException(-32020, "unknown", null, true));
+    fail(new JsonRpcDataException(-32020, "unknown", retryableData(), true));
+    answer(certified, 0);
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults().longPoll(false));
+    firePause();
+    assertFalse(result.isDone());
+    nanos.addAndGet(TimeUnit.SECONDS.toNanos(5));
+    firePause();
+    assertFalse(result.isDone(), "the retryable answer past the grace is paced, not terminal");
+    firePause();
+    assertTrue(result.isDone(), "the retryable answer past the grace did not end the wait");
+    assertSame(certified.getInclusionProof(), result.join());
+    assertEquals(4, seen.size());
+  }
+
+  @Test
+  void anHttpOverloadCarryingAPendingErrorStillPausesForTheRetryAfter() {
+    JsonRpcDataException pendingError = new JsonRpcDataException(-32021, "pending", null, true);
+    fail(new JsonRpcNetworkException(503, "overloaded", pendingError, 5L));
+    answer(certified, 0);
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
+    assertEquals(List.of(5000L), pauses, "the Retry-After of the 503, not the interval");
+    firePause();
+    assertTrue(result.isDone());
+    assertNull(seen.get(1).waitMillis);
+  }
+
+  @Test
+  void aRetryablePendingAnswerIsAnOverloadWithItsOwnRetryAfter() {
+    fail(new JsonRpcDataException(-32021, "pending", retryableData(), true, 7L));
+    answer(certified, 0);
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
+    assertEquals(List.of(7000L), pauses);
+    firePause();
+    assertTrue(result.isDone());
+  }
+
+  @Test
+  void theFailFastMessageSaysWhenNoRetryAfterWasGiven() {
+    // 0.5 s of the budget left, a 1 s interval, an overload without any Retry-After
+    script.add(new Reply(null, new JsonRpcNetworkException(503, "overloaded"), 14_500));
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults().longPoll(false));
+    Throwable failure = failure(result);
+    assertInstanceOf(TimeoutException.class, failure);
+    assertTrue(failure.getMessage().contains("overloaded"), failure.getMessage());
+    assertTrue(failure.getMessage().contains("HTTP 503"), failure.getMessage());
+    assertTrue(failure.getMessage().contains("no retry-after was given"), failure.getMessage());
+    assertFalse(failure.getMessage().contains("retry-after 0"), failure.getMessage());
+    assertTrue(failure.getMessage().contains("1000 ms pause"), failure.getMessage());
+  }
+
+  @Test
+  void aValidLongWindowIsClampedToTheCallLimitWithTheMarginKept() {
+    answer(certified, 0);
+    // 2 minutes of budget and a 60 s window: valid options, nothing may throw
+    CompletableFuture<InclusionProof> result = await(
+        WaitOptions.defaults().timeout(Duration.ofMinutes(2)).window(Duration.ofSeconds(60)));
+    assertTrue(result.isDone());
+    assertEquals(1, seen.size());
+    assertEquals(58_000L, seen.get(0).waitMillis, "the wait gives way, the 2 s margin stays");
+    assertEquals(Duration.ofSeconds(60), seen.get(0).callTimeout);
   }
 }

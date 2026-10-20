@@ -85,7 +85,7 @@ Waiting for a proof has its own total budget, see [section 7](#7-waiting-for-inc
 
 | What | Limit |
 | --- | --- |
-| One HTTP call: `RequestOptions.withCallTimeout` (`RequestOptions.MAX_CALL_TIMEOUT`) | 60 s. The aggregator holds a request for at most 20 s. A call that would get a longer timeout from its wait or from the time left in an operation is clipped to 60 s. |
+| One HTTP call: `RequestOptions.withCallTimeout` (`RequestOptions.MAX_CALL_TIMEOUT`) | 60 s. The aggregator holds a request for at most 20 s. A call that would get a longer timeout from its wait or from the time left in an operation is clipped to 60 s, and a call with no options gets the limit when your `OkHttpClient` has its timeouts disabled or longer; shorter timeouts of your client are kept. The long-poll wait of a wait operation is reduced to fit, keeping its response margin. |
 | Total time of a wait: `WaitOptions.timeout` (`WaitOptions.MAX_TIMEOUT`) | 10 minutes. |
 | Total time of a consolidation: `ConsolidationOptions.withTimeout` (`ConsolidationOptions.MAX_TIMEOUT`) | 10 minutes. |
 
@@ -440,11 +440,11 @@ The hint is unauthenticated and only for control flow and user feedback. `unknow
 
 ### Failures
 
-An overload answer to a proof read is not a failure of the wait. It is HTTP 503 or 429, JSON-RPC `-32006`, or any JSON-RPC error whose data says `retryable: true`. The wait pauses for the larger of the interval and the `Retry-After` header (in seconds, at most 60 s) and then polls without the long-poll wait for the rest of the call; the budget and the interval are unchanged. If that pause does not fit in the time left, the wait ends at once with `TimeoutException`, whose message names the overload and the retry-after and whose cause is the overload error. Any other error still ends the wait.
+An overload answer to a proof read is not a failure of the wait. It is HTTP 503 or 429, JSON-RPC `-32006`, or any JSON-RPC error whose data says `retryable: true`. An answer is classified as an overload before it is treated as pending or unknown, so a retryable `-32020` or `-32021`, or a 503 that carries a pending error, is an overload and a retryable unknown never ends the wait or causes a resubmission. The wait pauses for the larger of the interval and the `Retry-After` header and then polls without the long-poll wait for the rest of the call; the budget and the interval are unchanged. If that pause does not fit in the time left, the wait ends at once with `TimeoutException`, whose message names the overload and says whether a retry-after was given, and whose cause is the overload error. `Retry-After` is read from the HTTP response whatever its status, also on a JSON-RPC error in an HTTP 200 response (`JsonRpcNetworkException.getRetryAfterSeconds()`); only the decimal seconds form counts, a value of any length saturates at 60 s, and a malformed or date value is ignored. Any other error still ends the wait.
 
 A wait completes exceptionally with the exceptions of [section 8](#8-errors). One deadline covers a whole operation, a wait or a `submitAndWait` with all its submissions and waits. When it passes, the future completes with `TimeoutException`, the active HTTP call and pause are cancelled, and a response or verification that finishes late is discarded.
 
-`JsonRpcAggregatorClient` checks every response before interpreting it: a bounded body, one complete JSON object, version `2.0`, exactly one of `result` and `error`, and the id of the request, also on errors. An error with a null id is kept for diagnostics (`isIdMatched() == false`) and is never taken as an acknowledgement or a status.
+`JsonRpcAggregatorClient` checks every response before interpreting it: a bounded body, one complete JSON object, version `2.0`, exactly one of `result` and `error`, and the id of the request, also on errors. An error with a null id is kept for diagnostics (`isIdMatched() == false`) and is never taken as an acknowledgement or a status. The one exception is the aggregator's server-wide busy answer, which it sends before it parses the request, as HTTP 200 with `-32006` and a null id: during a wait that is an overload answer, like any null-id error whose data says `retryable: true`. An error with another non-null id is a `JsonRpcResponseException`.
 
 ### Cancellation
 
@@ -538,7 +538,9 @@ try {
 | `IllegalArgumentException`, `NullPointerException` | A builder or factory got invalid input (sizes, ranges, null). | Fix the call. |
 | `CancellationException` | The caller cancelled the future. | None. |
 
-Compatibility: an oversize response body, a response id that is not the request's, and a 200 body that is not JSON now fail with `JsonRpcResponseException`, which is unchecked. Earlier versions threw `IOException` (the first and the last) and `IllegalArgumentException` (the id mismatch). A `catch (IOException e)` that treated these as retryable transport failures no longer matches them, and a `catch (IllegalArgumentException e)` neither; catch `JsonRpcResponseException` where it matters.
+Compatibility: the limits of [section 1](#1-setup) are enforced when an option is built. The long-standing overload `InclusionProofUtils.waitInclusionProof(client, trustBase, predicateVerifier, transaction, timeout, interval)` used to accept any timeout; with a timeout above 10 minutes it now throws `IllegalArgumentException` at once, naming the limit, instead of returning a future that waits that long. Wait in steps of at most 10 minutes where a longer wait is really wanted.
+
+An oversize response body, a response id that is not the request's, and a 200 body that is not JSON now fail with `JsonRpcResponseException`, which is unchecked. Earlier versions threw `IOException` (the first and the last) and `IllegalArgumentException` (the id mismatch). A `catch (IOException e)` that treated these as retryable transport failures no longer matches them, and a `catch (IllegalArgumentException e)` neither; catch `JsonRpcResponseException` where it matters.
 
 Checked versus unchecked: `JsonRpcNetworkException` (and its subclass `JsonRpcDataException`) are checked, but only ever appear as the cause of a failed future, so they need no `throws` clause. `LeafExistsException` is the one checked exception a call declares directly (`TokenSplit.split`); it cannot occur in practice. Every other domain error is unchecked and typed.
 

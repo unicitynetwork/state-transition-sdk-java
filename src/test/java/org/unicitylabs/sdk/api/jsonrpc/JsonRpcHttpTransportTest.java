@@ -362,4 +362,70 @@ class JsonRpcHttpTransportTest {
 
     assertEquals(java.util.List.of(60_000, 60_000, 60_000, 60_000), readTimeouts);
   }
+
+  @Test
+  void aRetryAfterOnAnHttp200JsonRpcErrorIsCarried() {
+    server.enqueue(new MockResponse().setHeader("Retry-After", "5").setBody(
+        "{\"jsonrpc\":\"2.0\",\"id\":7,\"error\":{\"code\":-32006,\"message\":\"busy\"}}"));
+    JsonRpcDataException busy = assertInstanceOf(JsonRpcDataException.class, failure(call()));
+    assertEquals(-32006, busy.getCode());
+    assertEquals(5L, busy.getRetryAfterSeconds());
+
+    server.enqueue(new MockResponse().setBody(
+        "{\"jsonrpc\":\"2.0\",\"id\":7,\"error\":{\"code\":-32006,\"message\":\"busy\"}}"));
+    assertNull(assertInstanceOf(JsonRpcDataException.class, failure(call())).getRetryAfterSeconds());
+  }
+
+  @Test
+  void retryAfterValuesSaturateAtSixtyAndMalformedOnesAreIgnored() {
+    assertEquals(60L, JsonRpcHttpTransport.retryAfter("1000000000"));
+    assertEquals(60L, JsonRpcHttpTransport.retryAfter("99999999999999999999999999999999"));
+    assertEquals(60L, JsonRpcHttpTransport.retryAfter("000000000000000000000000000000090"));
+    assertEquals(7L, JsonRpcHttpTransport.retryAfter("0000000000000000000000007"));
+    assertEquals(0L, JsonRpcHttpTransport.retryAfter("0"));
+    assertEquals(12L, JsonRpcHttpTransport.retryAfter(" 12 "));
+    assertNull(JsonRpcHttpTransport.retryAfter(null));
+    assertNull(JsonRpcHttpTransport.retryAfter(""));
+    assertNull(JsonRpcHttpTransport.retryAfter("5.5"));
+    assertNull(JsonRpcHttpTransport.retryAfter("-1"));
+    assertNull(JsonRpcHttpTransport.retryAfter("+5"));
+    assertNull(JsonRpcHttpTransport.retryAfter("Wed, 21 Oct 2026 07:28:00 GMT"));
+    assertNull(JsonRpcHttpTransport.retryAfter("1e3"));
+    // large values also reach the caller through the HTTP error
+    server.enqueue(new MockResponse().setResponseCode(503).setHeader("Retry-After", "1000000000000")
+        .setBody("busy"));
+    assertEquals(60L, assertInstanceOf(JsonRpcNetworkException.class, failure(call()))
+        .getRetryAfterSeconds());
+  }
+
+  @Test
+  void aCallWithNoOptionsIsBoundedToo() throws Exception {
+    String ok = "{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":1}";
+    java.util.List<String> seen = new java.util.concurrent.CopyOnWriteArrayList<>();
+    java.util.function.Function<OkHttpClient.Builder, OkHttpClient> spy = builder ->
+        builder.addInterceptor(chain -> {
+          seen.add((chain.call().timeout().timeoutNanos() / 1_000_000) + "/" + chain.readTimeoutMillis());
+          return chain.proceed(chain.request());
+        }).build();
+    // timeouts disabled: the limit applies
+    JsonRpcHttpTransport disabled = TestTransports.withIds(server.url("/").toString(),
+        spy.apply(new OkHttpClient.Builder().readTimeout(Duration.ZERO).callTimeout(Duration.ZERO)),
+        1024, () -> IntNode.valueOf(7));
+    server.enqueue(new MockResponse().setBody(ok));
+    disabled.call("m", Map.of(), Map.of(), RequestOptions.none()).get(5, TimeUnit.SECONDS);
+    // shorter timeouts of the caller are kept
+    JsonRpcHttpTransport shorter = TestTransports.withIds(server.url("/").toString(),
+        spy.apply(new OkHttpClient.Builder().readTimeout(Duration.ofSeconds(3))
+            .callTimeout(Duration.ofSeconds(5))), 1024, () -> IntNode.valueOf(7));
+    server.enqueue(new MockResponse().setBody(ok));
+    shorter.call("m", Map.of(), Map.of(), RequestOptions.none()).get(5, TimeUnit.SECONDS);
+    // longer ones come down to the limit
+    JsonRpcHttpTransport longer = TestTransports.withIds(server.url("/").toString(),
+        spy.apply(new OkHttpClient.Builder().readTimeout(Duration.ofMinutes(10))
+            .callTimeout(Duration.ofHours(1))), 1024, () -> IntNode.valueOf(7));
+    server.enqueue(new MockResponse().setBody(ok));
+    longer.call("m", Map.of(), Map.of(), RequestOptions.none()).get(5, TimeUnit.SECONDS);
+
+    assertEquals(java.util.List.of("60000/60000", "5000/3000", "60000/60000"), seen);
+  }
 }

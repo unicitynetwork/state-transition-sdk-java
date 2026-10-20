@@ -425,4 +425,62 @@ class StateTransitionClientTest {
         PredicateVerifierService.create(), fast()));
     assertEquals(0, aggregator.submissions.get(), "nothing was submitted");
   }
+
+  /** A retryable "unknown" is an overload answer: the wait goes on past the grace and never resubmits. */
+  @Test
+  void aRetryableUnknownAnswerNeverEndsTheWaitOrResubmits() throws Exception {
+    com.fasterxml.jackson.databind.node.ObjectNode retryable =
+        com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+    retryable.put("retryable", true);
+    AtomicInteger failing = new AtomicInteger(25);
+    StatusAwareAggregatorClient overloaded = new StatusAwareAggregatorClient() {
+      @Override
+      public CompletableFuture<CertificationResponse> submitCertificationRequest(
+          CertificationData d) {
+        return aggregator.submitCertificationRequest(d);
+      }
+
+      @Override
+      public CompletableFuture<CertificationResponse> submitCertificationRequest(
+          CertificationData d, RequestOptions options) {
+        return aggregator.submitCertificationRequest(d);
+      }
+
+      @Override
+      public CompletableFuture<InclusionProofResponse> getInclusionProof(StateId id) {
+        return aggregator.getInclusionProof(id);
+      }
+
+      @Override
+      public CompletableFuture<InclusionProofResponse> getInclusionProof(StateId id,
+          RequestOptions options) {
+        if (failing.getAndDecrement() > 0) {
+          return CompletableFuture.failedFuture(
+              new JsonRpcDataException(-32020, "unknown", retryable, true));
+        }
+        return aggregator.getInclusionProof(id, options);
+      }
+
+      @Override
+      public CompletableFuture<Long> getLatestBlockNumber() {
+        return aggregator.getLatestBlockNumber();
+      }
+    };
+    InclusionProof proof = new StateTransitionClient(overloaded).submitAndWait(transaction, data, 3,
+        aggregator.inner.getTrustBase(), PredicateVerifierService.create(), fast())
+        .get(10, TimeUnit.SECONDS);
+    assertNotNull(proof);
+    assertEquals(1, aggregator.submissions.get(), "a retryable unknown is no reason to resubmit");
+    assertTrue(failing.get() < 0, "the wait polled through all the overload answers");
+  }
+
+  /** Documented behaviour change: the old (timeout, interval) overload now has the 10 minute limit. */
+  @Test
+  void theLegacyTimeoutIntervalOverloadRejectsMoreThanTenMinutesAtOnce() {
+    IllegalArgumentException refused = org.junit.jupiter.api.Assertions.assertThrows(
+        IllegalArgumentException.class, () -> InclusionProofUtils.waitInclusionProof(client,
+            aggregator.inner.getTrustBase(), PredicateVerifierService.create(), transaction,
+            java.time.Duration.ofMinutes(30), java.time.Duration.ofSeconds(1)));
+    assertTrue(refused.getMessage().contains("10 minutes"), refused.getMessage());
+  }
 }
