@@ -1,192 +1,170 @@
-# Unicity Java State Transition SDK
+# Unicity State Transition SDK — Java
 
-A Java SDK for interacting with the Unicity network, enabling state transitions and token operations
-with cross-platform support for JVM and Android 12+.
+Build applications that mint, transfer, and verify digital assets on the Unicity Network. This Java SDK gives you control over tokens, ownership rules, and payments, with cryptographic verification built in.
 
-## Features
+Unicity combines private, off-chain token transactions with network-backed protection against double-spending. Token data stays with the parties you share it with, while unicity proofs let recipients verify that assets are spent only once. The network is designed to scale horizontally as demand grows.
 
-- **Token Operations**: Mint, transfer, and manage fungible tokens
-- **State Transitions**: Submit and verify state transitions on the Unicity network
-- **Cross-Platform**: Works on standard JVM and Android 12+ (API level 31+)
-- **Type-Safe**: Strongly typed API with comprehensive error handling
-- **CBOR Support**: Built-in CBOR encoding/decoding using Jackson
-- **Async Operations**: All network operations return `CompletableFuture` for non-blocking execution
-
-## Requirements
-
-- Java 11 or higher
-- Android 12+ (API level 31+) for Android platform
-- Gradle 8.8 or higher
+- **Create digital assets:** mint tokens with your own types and application data payload.
+- **Move value:** transfer tokens and split fungible tokens for payments.
+- **Verify locally:** validate token history and unicity proofs against the compact trust base.
+- **Integrate with your application:** choose ownership predicates, issuance policies, storage, and delivery channels.
+- **Build for JVM and Android:** use typed SDK objects and asynchronous network operations returning `CompletableFuture`.
 
 ## Installation
 
-### Using JitPack
+Requires Java 11 or later. Android applications require Android 12+ (API level 31+) and core library desugaring.
 
-Add JitPack repository:
+To use this checkout, publish the SDK to your local Maven repository with the included Gradle wrapper:
+
+```bash
+git clone https://github.com/unicitynetwork/state-transition-sdk-java.git
+cd state-transition-sdk-java
+./gradlew publishToMavenLocal
+```
+
+Add the dependency to your application's `build.gradle`:
 
 ```groovy
 repositories {
-    maven { url 'https://jitpack.io' }
+    mavenLocal()
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.unicitylabs:java-state-transition-sdk:3.0-SNAPSHOT'
+    implementation 'com.google.guava:guava:33.0.0-jre'
 }
 ```
 
-#### For Android Projects:
+Guava must be supplied by the application. For Android, use `33.0.0-android` instead of `33.0.0-jre` and enable desugaring:
 
 ```groovy
+android {
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+        coreLibraryDesugaringEnabled true
+    }
+}
+
 dependencies {
-    implementation 'com.github.unicitynetwork:java-state-transition-sdk:1.1:android'
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
 }
 ```
 
-#### For JVM Projects:
+## Unicity Network
 
-```groovy
-dependencies {
-    implementation 'com.github.unicitynetwork:java-state-transition-sdk:1.1:jvm'
+Mainnet is live. Start with testnet2; for production, use the mainnet gateway and matching trust base.
+
+| Network | Gateway | Network ID | Trust base |
+| --- | --- | --- | --- |
+| Mainnet | `https://gateway.mainnet.unicity.network` | `1` | [JSON](https://raw.githubusercontent.com/unicitynetwork/unicity-ids/main/bft-trustbase.mainnet.json) |
+| Testnet2 | `https://gateway.testnet2.unicity.network` | `4` | [JSON](https://raw.githubusercontent.com/unicitynetwork/unicity-ids/main/bft-trustbase.testnet2.json) |
+
+Pass your gateway API key as the second argument to `JsonRpcAggregatorClient`. The public testnet2 key is `sk_ddc3cfcc001e4a28ac3fad7407f99590`. Use your own mainnet key obtained from [Sphere](https://sphere.unicity.network/) and keep it secure.
+
+### First connection
+
+Download the testnet2 trust base above as `bft-trustbase.testnet2.json` in your working directory. Add this class to your application and run it:
+
+```java
+import java.nio.file.Files;
+import java.nio.file.Path;
+import org.unicitylabs.sdk.StateTransitionClient;
+import org.unicitylabs.sdk.api.JsonRpcAggregatorClient;
+import org.unicitylabs.sdk.api.bft.RootTrustBase;
+
+public class Connect {
+    public static void main(String[] args) throws Exception {
+        var aggregator = new JsonRpcAggregatorClient(
+                "https://gateway.testnet2.unicity.network",
+                "sk_ddc3cfcc001e4a28ac3fad7407f99590"); // Public testnet2 key
+        var client = new StateTransitionClient(aggregator);
+        var trustBase = RootTrustBase.fromJson(
+                Files.readString(Path.of("bft-trustbase.testnet2.json")));
+
+        System.out.println("Network ID: " + trustBase.getNetworkId().getId());
+        System.out.println("Latest round: " + aggregator.getLatestBlockNumber().get());
+    }
 }
 ```
 
-### Using Local Maven
+The trust base identifies the Consensus Layer (BFT Core) instance. Pin a trusted copy in your application for production. Use `trustBase.getNetworkId()` when creating tokens so they match your gateway; testnet2 is network ID `4` (`NetworkId.TESTNET` is `2`).
 
-```groovy
-dependencies {
-    implementation 'org.unicitylabs:java-state-transition-sdk:1.1-SNAPSHOT'
+The example waits for the result with `.get()`. In asynchronous applications, compose the returned futures; on Android, keep blocking calls off the UI thread.
+
+## Work with tokens
+
+The SDK handles cryptography and token encoding. Your application manages keys, stores tokens, and delivers them to recipients over your chosen transport.
+
+| Task | SDK entry points | Example |
+| --- | --- | --- |
+| Mint a token | `MintTransaction.builder()`, `Token.mint()` | [Mint helper](./src/test/java/org/unicitylabs/sdk/utils/TokenUtils.java) |
+| Transfer ownership | `TransferTransaction.create()`, `token.transfer()` | [Transfer flow](./src/test/java/org/unicitylabs/sdk/common/CommonTestFlow.java) |
+| Split a fungible token | `TokenSplit.split()` | [Split flow](./src/test/java/org/unicitylabs/sdk/functional/payment/SplitBuilderTest.java) |
+| Verify a received token | `token.verify(context)` | [Receive and verify](./src/test/java/org/unicitylabs/sdk/utils/TokenUtils.java) |
+
+For minting and transfers, create the transaction, submit its `CertificationData` with `client.submitCertificationRequest()`, and check the response status. Use `InclusionProofUtils.waitInclusionProof()` to obtain the verified unicity proof, then `transaction.toCertifiedTransaction()` and `Token.mint()` or `token.transfer()` to produce the updated token. The proof type is named `InclusionProof` in the API.
+
+`waitInclusionProof()` sends its first request immediately and, by default, asks the aggregator to hold each request while the state is pending (long polling). The proof then arrives soon after certification, usually within a single request. Aggregators without long polling are polled at the interval. The default budget is 15 seconds; adjust it, the interval, and the long-poll window with `WaitOptions`. Cancelling the returned future cancels the request in flight. See the [API reference](./docs/api-reference.md#7-waiting-for-inclusion-proofs).
+
+These examples are test code with local network configuration. When adapting them to a public network, use the matching gateway, key, and trust base, and pass `trustBase.getNetworkId()` when minting.
+
+### Store, send, and receive
+
+Use `token.toCbor()` to save or send a token, and `Token.fromCbor(bytes)` to load it. Verify received tokens with your application's `VerificationContext` before accepting them:
+
+```java
+import org.unicitylabs.sdk.transaction.Token;
+import org.unicitylabs.sdk.util.verification.VerificationStatus;
+
+// Inside your receive handler; see the examples for context setup.
+var token = Token.fromCbor(bytes);
+var result = token.verify(context);
+if (result.getStatus() != VerificationStatus.OK) {
+    throw new IllegalArgumentException("Token verification failed: " + result.getStatus());
 }
 ```
 
-## Quick Start
+### Proof consolidation
 
-## Building from Source
+Each transaction in a token's history has its own unicity proof, usually certified in a different round. Verifying the history in a constrained environment, such as a smart contract (EVM) or a zkVM guest, means authenticating every one of those certificates. Proof consolidation fetches new proofs for the token's history so that they share one unicity certificate, which then has to be authenticated only once. It is optional, runs only when you call it, and never signs or submits anything. See the [API reference](./docs/api-reference.md#93-proof-consolidation).
 
-### Clone the Repository
+### Non-inclusion proofs
 
-```bash
-git clone https://github.com/unicitynetwork/java-state-transition-sdk.git
-cd java-state-transition-sdk
-```
+A non-inclusion proof shows that a state ID was absent from the aggregator's state tree at one certified snapshot. It does not show that the state is absent now or that a token can be spent. `StateTransitionClient.getNonInclusionProof()` fetches the proof and `NonInclusionVerifier.verify()` verifies it and returns the authenticated snapshot. Before relying on the result, compare the snapshot's network and round with a checkpoint your application trusts independently. See the [API reference](./docs/api-reference.md#94-non-inclusion-proofs).
 
-### Build the Project
+## Security
+
+Unicity proofs provide independently verifiable evidence of certified state transitions being unique. This protects against double-spending without publishing token data to a public ledger.
+
+Use the SDK's verification APIs with the authentic network trust base and your application's token issuance policies. A token's cryptographic validity and whether your application accepts its issuer are separate checks; register accepted token types with `TokenIssuanceVerifierService`. Keep private keys and token backups secure, and check that received tokens belong to the intended recipient.
+
+## Development
+
+From a repository checkout:
 
 ```bash
 ./gradlew build
+./gradlew test
+./gradlew checkstyleMain
 ```
 
-### Run Tests
+Run the integration tests, including Docker-based tests:
 
 ```bash
-# Run unit tests
-./gradlew test
-
-# Run integration tests (requires Docker)
 ./gradlew integrationTest
-
-# Run E2E tests against deployed aggregator
-AGGREGATOR_URL=https://gateway-test.unicity.network ./gradlew integrationTest
 ```
 
-## Platform-Specific Considerations
+The [deployed-network test](./src/test/java/org/unicitylabs/sdk/e2e/TokenE2ETest.java) is enabled by `AGGREGATOR_URL`. Its current setup loads `src/test/resources/trust-base.json` and creates a client without an API key; configure both for your target network before running it.
 
-### Android Compatibility
+## Resources
 
-The SDK is compatible with Android 12+ (API level 31+). It uses:
-
-- OkHttp for HTTP operations instead of Java 11's HttpClient
-- Android-compatible Guava version
-- Animal Sniffer plugin to ensure API compatibility
-
-### JVM Compatibility
-
-The standard JVM version uses:
-
-- Java 11 APIs
-- Full Guava JRE version
-- All Java 11 features
-
-## Architecture
-
-The SDK follows a modular architecture under `org.unicitylabs.sdk`:
-
-- **api**: Core API interfaces and aggregator client
-- **address**: Address schemes and implementations (DirectAddress, ProxyAddress)
-- **bft**: BFT layer data, trustbase, certificates, seals
-- **hash**: Cryptographic hashing (SHA256, SHA224, SHA384, SHA512, RIPEMD160)
-- **jsonrpc**: JSON-RPC transport layer
-- **`mtree`**: Merkle tree implementations
-    - `plain`: Sparse Merkle Tree (SMT)
-    - `sum`: Sparse Merkle Sum Tree (SMST)
-- **predicate**: Ownership predicates
-- **serializer**: CBOR/JSON serializer utilities
-- **signing**: Digital signature support (ECDSA secp256k1)
-- **token**: Token types
-    - `fungible`: Fungible token support with CoinId and TokenCoinData
-      **`transaction`**: Transaction types and builders
-    - `split`: Token splitting functionality with TokenSplitBuilder
-- **util**: Utilities
-- **verification**: Verification rules
-
-All certificate and transaction verification is handled internally by the SDK, requiring only the
-trustbase as input from the user.
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-### Development Guidelines
-
-- Follow Java naming conventions
-- Add unit tests for new features
-- Update documentation as needed
-- Ensure compatibility with both JVM and Android platforms
-- Run `./gradlew build` before submitting PR
-
-## Testing
-
-The SDK includes comprehensive test suites:
-
-### Unit Tests
-
-Located in `src/test/java`, these test individual components in isolation.
-
-### Integration Tests
-
-Located in `src/test/java/org/unicitylabs/sdk/`:
-
-- `integration/TokenIntegrationTest`: Tests against Docker-based local aggregator
-- `e2e/TokenE2ETest`: E2E tests using CommonTestFlow (requires `AGGREGATOR_URL` env var)
-- `e2e/BasicE2ETest`: Basic connectivity and performance tests
-
-### Running Tests
-
-```bash
-# All tests
-./gradlew test
-
-# Integration tests only
-./gradlew integrationTest
-
-# Specific test class
-./gradlew test --tests "org.unicitylabs.sdk.api.StateIdTest"
-```
+- [API reference](./docs/api-reference.md)
+- [Unicity Network](https://github.com/unicitynetwork/)
+- [Token examples](./src/test/java/org/unicitylabs/sdk/utils/TokenUtils.java)
+- [Report an issue](https://github.com/unicitynetwork/state-transition-sdk-java/issues)
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Support
-
-For issues and feature requests, please use
-the [GitHub issue tracker](https://github.com/unicitynetwork/java-state-transition-sdk/issues).
-
-For questions about the Unicity Labs, visit [unicity-labs.com](https://unicity-labs.com).
-
-## Acknowledgments
-
-- Built on the Unicity network protocol
-- Uses Jackson for CBOR encoding
-- Uses Bouncy Castle for cryptographic operations
-- Uses OkHttp for Android-compatible HTTP operations
-
+[MIT](./LICENSE)

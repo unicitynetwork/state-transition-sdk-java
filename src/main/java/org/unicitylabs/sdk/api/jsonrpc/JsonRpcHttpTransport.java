@@ -1,18 +1,39 @@
 
 package org.unicitylabs.sdk.api.jsonrpc;
 
-import okhttp3.*;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.TextNode;
+import okhttp3.Call;
+import okhttp3.Callback;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
+import org.unicitylabs.sdk.api.RequestOptions;
+import org.unicitylabs.sdk.api.WaitOptions;
+import org.unicitylabs.sdk.internal.InclusionProofWaiter;
+import org.unicitylabs.sdk.internal.OperationContext;
 import org.unicitylabs.sdk.serializer.UnicityObjectMapper;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 
 /**
  * JSON-RPC HTTP service.
@@ -22,6 +43,11 @@ public class JsonRpcHttpTransport {
   /** Default maximum response body size in bytes. */
   public static final int DEFAULT_MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 
+  /** A timeout this close to the end of the budget is the deadline of the operation. */
+  private static final Duration DEADLINE_SLACK = Duration.ofMillis(100);
+
+  /** The most seconds of a Retry-After the transport reports; a larger value saturates here. */
+  public static final long MAX_RETRY_AFTER_SECONDS = 60;
   private static final MediaType MEDIA_TYPE_JSON = MediaType.get("application/json; charset=utf-8");
 
   private static final OkHttpClient DEFAULT_HTTP_CLIENT = new OkHttpClient.Builder()
@@ -32,6 +58,7 @@ public class JsonRpcHttpTransport {
   private final String url;
   private final int maxResponseBytes;
   private final OkHttpClient httpClient;
+  private final Supplier<JsonNode> idSupplier;
 
   /**
    * JSON-RPC HTTP service constructor.
@@ -75,6 +102,15 @@ public class JsonRpcHttpTransport {
    * @param maxResponseBytes maximum response body size in bytes
    */
   public JsonRpcHttpTransport(String url, OkHttpClient httpClient, int maxResponseBytes) {
+    this(url, httpClient, maxResponseBytes, () -> TextNode.valueOf(UUID.randomUUID().toString()));
+  }
+
+  /**
+   * Constructor with an explicit request id source, for tests that replay recorded exchanges.
+   */
+  JsonRpcHttpTransport(String url, OkHttpClient httpClient, int maxResponseBytes,
+      Supplier<JsonNode> idSupplier) {
+    this.idSupplier = Objects.requireNonNull(idSupplier, "idSupplier cannot be null");
     this.url = Objects.requireNonNull(url, "url cannot be null");
     if (maxResponseBytes <= 0) {
       throw new IllegalArgumentException(
@@ -84,6 +120,13 @@ public class JsonRpcHttpTransport {
             .newBuilder()
             .followRedirects(false)
             .followSslRedirects(false)
+            // A JSON-RPC POST is never replayed by the transport: a replayed submission has an
+            // uncertain outcome, and a replayed read would hide an overload from the waiter's
+            // policy. The request body is one-shot, which stops OkHttp's replay of a sent request
+            // (a 408, a dropped connection); the 503 replay on Retry-After 0 is stopped by hiding
+            // that header, see below. Trying another route (IPv6 then IPv4) before anything was
+            // sent stays possible, so retryOnConnectionFailure is left as the caller set it.
+            .addNetworkInterceptor(JsonRpcHttpTransport::hideRetryAfter)
             .build();
     this.maxResponseBytes = maxResponseBytes;
   }
@@ -102,7 +145,7 @@ public class JsonRpcHttpTransport {
   }
 
   /**
-   * Send a JSON-RPC request with optional API key.
+   * Send a JSON-RPC request with additional headers.
    *
    * @param <T>        expected result type
    * @param method     JSON-RPC method
@@ -117,67 +160,173 @@ public class JsonRpcHttpTransport {
           Class<T> resultType,
           Map<String, List<String>> headers
   ) {
-    Objects.requireNonNull(method, "method cannot be null");
     Objects.requireNonNull(resultType, "resultType cannot be null");
+    return this.call(method, params, headers, RequestOptions.none()).thenApply(result -> {
+      try {
+        return UnicityObjectMapper.JSON.treeToValue(result, resultType);
+      } catch (JsonProcessingException e) {
+        throw new JsonRpcResponseException("Malformed result of " + method + ": "
+                + e.getOriginalMessage(), e);
+      }
+    });
+  }
+
+  /**
+   * Send a JSON-RPC request and return the raw result.
+   *
+   * <p>The response is validated before anything is interpreted: a bounded body, a JSON object
+   * with version {@code 2.0}, exactly one of result and error, and the id of this request (an
+   * error whose id is null is kept, marked as not matched). Failures: {@link
+   * JsonRpcDataException} for the service's error, {@link JsonRpcNetworkException} for an HTTP
+   * status other than success, {@link JsonRpcResponseException} for a response that is not valid,
+   * {@link IOException} for transport failures, {@link TimeoutException} when the budget of the
+   * operation ended and {@link CancellationException} when it was cancelled. Cancelling the
+   * returned future, or the operation, cancels the HTTP call.
+   *
+   * @param method  JSON-RPC method
+   * @param params  JSON-RPC parameters
+   * @param headers additional HTTP headers
+   * @param options call timeout and operation; the wait and the status hint are part of
+   *                {@code params}, the wait only sizes the default timeout
+   * @return future with the result node
+   */
+  public CompletableFuture<JsonNode> call(
+          String method,
+          Object params,
+          Map<String, List<String>> headers,
+          RequestOptions options
+  ) {
+    Objects.requireNonNull(method, "method cannot be null");
     Objects.requireNonNull(headers, "headers cannot be null");
+    Objects.requireNonNull(options, "options cannot be null");
+    OperationContext operation = options.getOperation();
 
-    CompletableFuture<T> future = new CompletableFuture<>();
+    if (operation != null) {
+      if (operation.isCancelled()) {
+        return CompletableFuture.failedFuture(new CancellationException("Operation cancelled."));
+      }
+      if (operation.isExpired()) {
+        return CompletableFuture.failedFuture(new TimeoutException("Operation deadline expired."));
+      }
+    }
 
+    CompletableFuture<JsonNode> future = new CompletableFuture<>();
     try {
-      JsonRpcRequest rpcRequest = new JsonRpcRequest(method, params);
-      UUID requestId = rpcRequest.getId();
+      JsonNode requestId = this.idSupplier.get();
+      ObjectNode envelope = UnicityObjectMapper.JSON.createObjectNode();
+      envelope.put("jsonrpc", "2.0");
+      envelope.set("id", requestId);
+      envelope.put("method", method);
+      envelope.set("params", UnicityObjectMapper.JSON.valueToTree(params));
 
       Request.Builder requestBuilder = new Request.Builder()
               .url(this.url)
-              .post(
-                      RequestBody.create(
-                              UnicityObjectMapper.JSON.writeValueAsString(rpcRequest),
-                              JsonRpcHttpTransport.MEDIA_TYPE_JSON)
-              );
-
+              .post(JsonRpcHttpTransport.oneShot(RequestBody.create(
+                      UnicityObjectMapper.JSON.writeValueAsString(envelope),
+                      JsonRpcHttpTransport.MEDIA_TYPE_JSON)));
       headers.forEach((header, values) ->
-              values.forEach(value ->
-                      requestBuilder.addHeader(header, value)));
+              values.forEach(value -> requestBuilder.addHeader(header, value)));
 
-      Request request = requestBuilder.build();
+      OkHttpClient client = this.clientFor(options);
+      Call call = client.newCall(requestBuilder.build());
+      // OkHttp also cancels a call whose own timeout expired: only our own cancellation counts as one
+      AtomicBoolean cancelledByUs = new AtomicBoolean();
+      Runnable cancelCall = () -> {
+        cancelledByUs.set(true);
+        call.cancel();
+      };
+      OperationContext.Registration registration =
+              operation == null ? null : operation.onCancel(cancelCall);
 
-      this.httpClient.newCall(request).enqueue(new Callback() {
+      // The budget governs the exposed request to its completion, not only the HTTP exchange:
+      // OkHttp's own timeout ends with the response body, an independent timer does not.
+      Runnable cancelTimer = null;
+      if (operation != null) {
+        Duration left = operation.remaining();
+        if (left.compareTo(Duration.ofDays(1)) < 0) {
+          cancelTimer = InclusionProofWaiter.scheduleOnSharedTimer(() ->
+              future.completeExceptionally(new TimeoutException("Operation deadline expired.")),
+              Math.max(0, left.toMillis()));
+        }
+      }
+      Runnable releaseTimer = cancelTimer;
+      future.whenComplete((result, error) -> {
+        if (future.isCancelled() || error instanceof TimeoutException) {
+          cancelCall.run();
+        }
+        if (registration != null) {
+          registration.remove();
+        }
+        if (releaseTimer != null) {
+          releaseTimer.run();
+        }
+      });
+
+      call.enqueue(new Callback() {
         @Override
         public void onFailure(Call call, IOException e) {
-          future.completeExceptionally(e);
+          if (cancelledByUs.get() || (operation != null && operation.isCancelled())) {
+            CancellationException cancelled = new CancellationException("Request cancelled.");
+            cancelled.initCause(e);
+            future.completeExceptionally(cancelled);
+          } else if (operation != null && (operation.isExpired()
+                  || (e instanceof java.io.InterruptedIOException
+                  && operation.remaining().compareTo(DEADLINE_SLACK) < 0))) {
+            // OkHttp's own timer, started from the remaining budget, may fire a hair before ours
+            future.completeExceptionally(
+                    (TimeoutException) new TimeoutException("Operation deadline expired.")
+                            .initCause(e));
+          } else {
+            future.completeExceptionally(e);
+          }
         }
 
         @Override
         public void onResponse(Call call, Response response) {
           try (ResponseBody body = response.body()) {
-            String bodyString = JsonRpcHttpTransport.this.readBounded(body);
+            if (operation != null && operation.isExpired()) {
+              // late: the budget ended while the response was in flight
+              future.completeExceptionally(new TimeoutException("Operation deadline expired."));
+              return;
+            }
+            // The HTTP status of a failure is kept whatever the body is: a proxy page, a body that is
+            // not JSON or one over the size limit must not turn a 502 into a response failure.
+            String bodyString = response.isSuccessful()
+                    ? JsonRpcHttpTransport.this.readBounded(body)
+                    : JsonRpcHttpTransport.this.readErrorBody(body);
+            // A cancellation or a deadline that came while the body was read is the failure, never a
+            // retryable HTTP status built from whatever was left of the body.
+            if (cancelledByUs.get() || (operation != null && operation.isCancelled())) {
+              future.completeExceptionally(new CancellationException("Request cancelled."));
+              return;
+            }
+            if (operation != null && operation.isExpired()) {
+              future.completeExceptionally(new TimeoutException("Operation deadline expired."));
+              return;
+            }
+            JsonNode envelope = JsonRpcHttpTransport.parseEnvelope(bodyString);
 
             if (!response.isSuccessful()) {
+              // The service's own error survives any HTTP status; a body that is not a matching
+              // envelope says nothing about the request.
+              JsonRpcDataException rpcError = null;
+              if (envelope != null && "2.0".equals(envelope.path("jsonrpc").asText(null))
+                      && envelope.has("error") && envelope.get("error").isObject() && !envelope.has("result")
+                      && requestId.equals(envelope.get("id"))) {
+                rpcError = JsonRpcHttpTransport.errorOf(envelope.get("error"), true, false, null);
+              }
               future.completeExceptionally(
-                      new JsonRpcNetworkException(response.code(), bodyString));
+                      new JsonRpcNetworkException(response.code(), bodyString, rpcError,
+                              JsonRpcHttpTransport.retryAfterOf(response)));
               return;
             }
-
-            JsonRpcResponse<T> data = UnicityObjectMapper.JSON.readValue(
-                    bodyString,
-                    UnicityObjectMapper.JSON.getTypeFactory()
-                            .constructParametricType(JsonRpcResponse.class, resultType)
-            );
-
-            if (data.getError() != null) {
-              future.completeExceptionally(new JsonRpcNetworkException(
-                      data.getError().getCode(), data.getError().getMessage()));
+            JsonNode result = JsonRpcHttpTransport.result(envelope, requestId,
+                    JsonRpcHttpTransport.retryAfterOf(response));
+            if (operation != null && operation.isExpired()) {
+              future.completeExceptionally(new TimeoutException("Operation deadline expired."));
               return;
             }
-
-            if (!requestId.equals(data.getId())) {
-              future.completeExceptionally(new IllegalArgumentException(
-                      "JSON-RPC response id mismatch: expected " + requestId + ", got "
-                              + data.getId() + "."));
-              return;
-            }
-
-            future.complete(data.getResult());
+            future.complete(result);
           } catch (Exception e) {
             future.completeExceptionally(e);
           }
@@ -186,8 +335,307 @@ public class JsonRpcHttpTransport {
     } catch (Exception e) {
       return CompletableFuture.failedFuture(e);
     }
-
     return future;
+  }
+
+  /** Header the transport keeps the server's Retry-After in, out of OkHttp's sight. */
+  static final String RETRY_AFTER_KEPT = "X-Unicity-Retry-After";
+
+  /**
+   * Moves Retry-After out of the response before OkHttp's retry logic reads it. OkHttp replays the
+   * request on a 503 whose Retry-After is 0 (and fails the call on a number that does not fit an
+   * int); the transport never replays, and keeps the server's value in another header for the
+   * typed failure. Whatever a server sends as the kept header itself is dropped.
+   */
+  private static okhttp3.Response hideRetryAfter(okhttp3.Interceptor.Chain chain)
+          throws IOException {
+    okhttp3.Response response = chain.proceed(chain.request());
+    String header = response.header("Retry-After");
+    okhttp3.Response.Builder builder = response.newBuilder()
+            .removeHeader("Retry-After").removeHeader(RETRY_AFTER_KEPT);
+    if (header != null) {
+      builder.header(RETRY_AFTER_KEPT, header);
+    }
+    return builder.build();
+  }
+
+  /** The Retry-After the server sent, as seconds, from the kept header. */
+  private static Long retryAfterOf(Response response) {
+    String kept = response.header(RETRY_AFTER_KEPT);
+    // a response an application interceptor built itself never passed the network interceptor:
+    // its own Retry-After is then the server's (a copy of the kept header from a server never
+    // reaches here, the network interceptor drops it)
+    return retryAfter(kept != null ? kept : response.header("Retry-After"));
+  }
+
+  /** A body that is sent once and never again: OkHttp does not replay a one-shot request. */
+  private static RequestBody oneShot(RequestBody body) {
+    return new RequestBody() {
+      @Override
+      public okhttp3.MediaType contentType() {
+        return body.contentType();
+      }
+
+      @Override
+      public long contentLength() throws IOException {
+        return body.contentLength();
+      }
+
+      @Override
+      public void writeTo(okio.BufferedSink sink) throws IOException {
+        body.writeTo(sink);
+      }
+
+      @Override
+      public boolean isOneShot() {
+        return true;
+      }
+    };
+  }
+
+  /** Strict: an impossible date (31 February) or a weekday that does not fit is rejected, not clamped. */
+  private static java.time.format.DateTimeFormatter strictDate(String pattern) {
+    return java.time.format.DateTimeFormatter.ofPattern(pattern, java.util.Locale.US)
+            .withResolverStyle(java.time.format.ResolverStyle.STRICT)
+            .withZone(java.time.ZoneOffset.UTC);
+  }
+
+  private static final java.time.format.DateTimeFormatter IMF_FIXDATE =
+          strictDate("EEE, d MMM uuuu HH:mm:ss 'GMT'");
+  private static final java.time.format.DateTimeFormatter RFC850_DATE =
+          strictDate("EEEE, dd-MMM-uuuu HH:mm:ss 'GMT'");
+  private static final java.time.format.DateTimeFormatter ASCTIME_DATE =
+          strictDate("EEE MMM ppd HH:mm:ss uuuu");
+  private static final java.util.regex.Pattern RFC850_SHAPE = java.util.regex.Pattern.compile(
+          "([A-Za-z]+, \\d{2}-[A-Za-z]{3}-)(\\d{2})( \\d{2}:\\d{2}:\\d{2} GMT)");
+  /** The RFC 850 date without its weekday, to decide the year before the weekday is checked. */
+  private static final java.time.format.DateTimeFormatter RFC850_NO_WEEKDAY =
+          strictDate("'x, 'dd-MMM-uuuu HH:mm:ss 'GMT'");
+  /** Years an HTTP-date may have: from the epoch, and the four digits the formats carry. */
+  private static final int MIN_DATE_YEAR = 1970;
+  private static final int MAX_DATE_YEAR = 9999;
+
+  /**
+   * An HTTP-date (RFC 9110, 5.6.7) in any of its three forms, resolved strictly and bounded to the
+   * years 1970 to 9999; null if it is none of them. The two-digit year of the RFC 850 form is the
+   * most recent such year that is not more than 50 years after {@code now}.
+   */
+  private static Instant parseHttpDate(String value, Instant now) {
+    Instant date = parseStrict(IMF_FIXDATE, value);
+    if (date == null) {
+      date = parseStrict(ASCTIME_DATE, value);
+    }
+    if (date == null) {
+      java.util.regex.Matcher shape = RFC850_SHAPE.matcher(value);
+      if (shape.matches()) {
+        java.time.ZonedDateTime utcNow = java.time.ZonedDateTime.ofInstant(now, java.time.ZoneOffset.UTC);
+        Instant limit = utcNow.plusYears(50).toInstant();
+        String dayMonth = shape.group(1).substring(shape.group(1).indexOf(", ") + 2);
+        // RFC 9110 5.6.7: a date that appears more than 50 years ahead is the most recent past year
+        // with the same two digits, so the year is the latest one with them that is not after
+        // now + 50 years (the window is now - 49 years up to now + 50 years); the weekday then has
+        // to agree with that year
+        int year = limit.atZone(java.time.ZoneOffset.UTC).getYear() / 100 * 100
+                + Integer.parseInt(shape.group(2));
+        for (int tries = 0; tries < 3 && year >= MIN_DATE_YEAR - 100; tries++, year -= 100) {
+          Instant candidate = parseStrict(RFC850_NO_WEEKDAY, "x, " + dayMonth + year + shape.group(3));
+          if (candidate == null) {
+            break;
+          }
+          if (!candidate.isAfter(limit)) {
+            date = parseStrict(RFC850_DATE,
+                    shape.group(0).replaceFirst("-\\d{2} ", "-" + year + " "));
+            break;
+          }
+        }
+      }
+    }
+    if (date == null) {
+      return null;
+    }
+    int year = java.time.ZonedDateTime.ofInstant(date, java.time.ZoneOffset.UTC).getYear();
+    return year < MIN_DATE_YEAR || year > MAX_DATE_YEAR ? null : date;
+  }
+
+  private static Instant parseStrict(java.time.format.DateTimeFormatter format, String value) {
+    try {
+      return Instant.from(format.parse(value));
+    } catch (java.time.DateTimeException e) {
+      return null;
+    }
+  }
+
+  /**
+   * The Retry-After header as seconds (RFC 9110, 10.2.3): delay-seconds, or an HTTP-date as the
+   * time from now to it. Seconds of any length, and a date further away, saturate at
+   * {@link #MAX_RETRY_AFTER_SECONDS}; a date in the past is 0. Anything else is null.
+   */
+  static Long retryAfter(String header) {
+    return retryAfter(header, Instant.now());
+  }
+
+  /**
+   * As {@link #retryAfter(String)} with the time now given, so the date form can be tested.
+   *
+   * @param header the header value, may be null
+   * @param now the time a date is measured from
+   * @return seconds, null if the header is absent or in no valid form
+   */
+  static Long retryAfter(String header, Instant now) {
+    if (header == null) {
+      return null;
+    }
+    String value = header.trim();
+    if (value.isEmpty()) {
+      return null;
+    }
+    if (value.chars().allMatch(c -> c >= '0' && c <= '9')) {
+      long seconds = 0;
+      for (int i = 0; i < value.length(); i++) {
+        seconds = Math.min(MAX_RETRY_AFTER_SECONDS, seconds * 10 + (value.charAt(i) - '0'));
+      }
+      return seconds;
+    }
+    Instant date = parseHttpDate(value, now);
+    if (date != null) {
+      long millis = date.toEpochMilli() - now.toEpochMilli();
+      return millis <= 0 ? 0L : Math.min(MAX_RETRY_AFTER_SECONDS, (millis + 999) / 1000);
+    }
+    return null;
+  }
+
+  /** Parses the whole body as one JSON object; trailing data after the value is not a valid response. */
+  private static JsonNode parseEnvelope(String body) {
+    try (com.fasterxml.jackson.core.JsonParser parser =
+                 UnicityObjectMapper.JSON.getFactory().createParser(body)) {
+      JsonNode node = UnicityObjectMapper.JSON.readTree(parser);
+      if (node == null || !node.isObject() || parser.nextToken() != null) {
+        return null;
+      }
+      return node;
+    } catch (IOException e) {
+      return null;
+    }
+  }
+
+  private static JsonNode result(JsonNode envelope, JsonNode requestId, Long retryAfter)
+          throws JsonRpcDataException {
+    if (envelope == null) {
+      throw new JsonRpcResponseException("JSON-RPC response is not a valid JSON object.");
+    }
+    if (!"2.0".equals(envelope.path("jsonrpc").asText(null))) {
+      throw new JsonRpcResponseException(
+              "Invalid JSON-RPC version: " + envelope.get("jsonrpc") + ".");
+    }
+    boolean hasResult = envelope.has("result");
+    boolean hasError = envelope.has("error");
+    if (hasError && !envelope.get("error").isObject()) {
+      throw new JsonRpcResponseException("JSON-RPC error must be an object.");
+    }
+    if (hasResult && hasError) {
+      throw new JsonRpcResponseException(
+              "JSON-RPC response must contain exactly one of result or error.");
+    }
+    JsonNode id = envelope.get("id");
+    if (hasError) {
+      // An error that answers no request of ours (a null id is what a server uses when it could
+      // not read the id) is kept for callers that tolerate it, marked as not matched.
+      // A missing id is no such answer: only an explicit null is.
+      if (!envelope.has("id")) {
+        throw new JsonRpcResponseException("JSON-RPC error response has no id.");
+      }
+      boolean matched = requestId.equals(id);
+      if (!matched && !id.isNull()) {
+        throw new JsonRpcResponseException("JSON-RPC response id mismatch: expected " + requestId
+                + ", got " + id + ".");
+      }
+      throw errorOf(envelope.get("error"), matched, true, retryAfter);
+    }
+    if (!requestId.equals(id)) {
+      throw new JsonRpcResponseException("JSON-RPC response id mismatch: expected " + requestId
+              + ", got " + id + ".");
+    }
+    if (!hasResult) {
+      throw new JsonRpcResponseException(
+              "JSON-RPC response must contain exactly one of result or error.");
+    }
+    return envelope.get("result");
+  }
+
+  /** Builds the typed error of an error object; a malformed object is a response failure. */
+  private static JsonRpcDataException errorOf(JsonNode error, boolean matched, boolean strict,
+          Long retryAfter) {
+    JsonNode code = error.get("code");
+    JsonNode message = error.get("message");
+    if (code == null || !code.isIntegralNumber() || !code.canConvertToInt()
+            || message == null || !message.isTextual()) {
+      if (strict) {
+        throw new JsonRpcResponseException(
+                "JSON-RPC error object needs an integer code and a message.");
+      }
+      return null;
+    }
+    return new JsonRpcDataException(code.intValue(), message.textValue(), error.get("data"),
+            matched, retryAfter);
+  }
+
+  /**
+   * The HTTP client of one call. The shared client keeps its connection pool and dispatcher; a call
+   * with its own timeout gets a derived client (a held request outlives the default read timeout).
+   */
+  private OkHttpClient clientFor(RequestOptions options) {
+    Duration timeout = options.getCallTimeout();
+    Long wait = options.getWaitMillis();
+    if (timeout == null && wait != null && wait > 0) {
+      timeout = Duration.ofMillis(wait).plus(WaitOptions.DEFAULT_MARGIN);
+    }
+    OperationContext operation = options.getOperation();
+    if (operation != null) {
+      Duration remaining = operation.remaining();
+      if (timeout == null || remaining.compareTo(timeout) < 0) {
+        timeout = remaining;
+      }
+    }
+    if (timeout == null) {
+      // no timeout asked for: the caller's client keeps its own, shorter ones; a disabled or longer
+      // one is brought down to the limit, so no call is unbounded
+      long limit = RequestOptions.MAX_CALL_TIMEOUT.toMillis();
+      int call = this.httpClient.callTimeoutMillis();
+      int read = this.httpClient.readTimeoutMillis();
+      if (call > 0 && call <= limit && read > 0 && read <= limit) {
+        return this.httpClient;
+      }
+      OkHttpClient.Builder builder = this.httpClient.newBuilder();
+      if (call <= 0 || call > limit) {
+        builder.callTimeout(RequestOptions.MAX_CALL_TIMEOUT);
+      }
+      if (read <= 0 || read > limit) {
+        builder.readTimeout(RequestOptions.MAX_CALL_TIMEOUT);
+      }
+      return builder.build();
+    }
+    // no call outlives the limit: a time left in a long budget is clipped to it
+    if (timeout.compareTo(RequestOptions.MAX_CALL_TIMEOUT) > 0) {
+      timeout = RequestOptions.MAX_CALL_TIMEOUT;
+    }
+    // zero means "no timeout" to OkHttp: never let an exhausted budget become unbounded
+    Duration bounded = timeout.isZero() ? Duration.ofMillis(1) : timeout;
+    return this.httpClient.newBuilder().callTimeout(bounded).readTimeout(bounded).build();
+  }
+
+  /**
+   * The body of a non-success response, for the message of the failure: a body over the limit or
+   * one that cannot be read is replaced by a note, so the status is always reported. Closing the
+   * response discards the connection of an abandoned body.
+   */
+  private String readErrorBody(ResponseBody body) {
+    try {
+      return this.readBounded(body);
+    } catch (JsonRpcResponseException e) {
+      return "(response body exceeds the maximum allowed size)";
+    } catch (IOException e) {
+      return "(response body unreadable: " + e.getMessage() + ")";
+    }
   }
 
   /**
@@ -207,7 +655,7 @@ public class JsonRpcHttpTransport {
       while ((read = in.read(buffer)) != -1) {
         total += read;
         if (total > this.maxResponseBytes) {
-          throw new IOException("JSON-RPC response exceeds the maximum allowed size.");
+          throw new JsonRpcResponseException("JSON-RPC response exceeds the maximum allowed size.");
         }
         out.write(buffer, 0, read);
       }

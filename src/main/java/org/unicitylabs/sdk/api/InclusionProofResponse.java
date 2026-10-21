@@ -22,15 +22,21 @@ public class InclusionProofResponse {
   private final long blockNumber;
   private final InclusionProof inclusionProof;
   private final UnicityCertificate unicityCertificate;
+  private final ProofStatusHint statusHint;
+  private final Long waitedMillis;
 
   private InclusionProofResponse(
           long blockNumber,
           InclusionProof inclusionProof,
-          UnicityCertificate unicityCertificate
+          UnicityCertificate unicityCertificate,
+          ProofStatusHint statusHint,
+          Long waitedMillis
   ) {
     this.blockNumber = blockNumber;
     this.inclusionProof = inclusionProof;
     this.unicityCertificate = unicityCertificate;
+    this.statusHint = statusHint;
+    this.waitedMillis = waitedMillis;
   }
 
   /**
@@ -45,7 +51,7 @@ public class InclusionProofResponse {
    */
   public static InclusionProofResponse certified(long blockNumber, InclusionProof inclusionProof) {
     return new InclusionProofResponse(blockNumber, inclusionProof,
-            inclusionProof.getUnicityCertificate());
+            inclusionProof.getUnicityCertificate(), null, null);
   }
 
   /**
@@ -57,7 +63,57 @@ public class InclusionProofResponse {
    */
   public static InclusionProofResponse notCertified(long blockNumber,
           UnicityCertificate unicityCertificate) {
-    return new InclusionProofResponse(blockNumber, null, unicityCertificate);
+    return new InclusionProofResponse(blockNumber, null, unicityCertificate, null, null);
+  }
+
+  /**
+   * Copy of this response with the status hint the aggregator attached.
+   *
+   * @param statusHint unauthenticated hint, null if none or not recognized
+   * @return the response
+   */
+  public InclusionProofResponse withStatusHint(ProofStatusHint statusHint) {
+    return new InclusionProofResponse(blockNumber, inclusionProof, unicityCertificate, statusHint,
+            waitedMillis);
+  }
+
+  /**
+   * Copy of this response with the aggregator's echo of the time it waited.
+   *
+   * @param waitedMillis unauthenticated echo, null if none
+   * @return the response
+   */
+  public InclusionProofResponse withWaitedMillis(Long waitedMillis) {
+    return new InclusionProofResponse(blockNumber, inclusionProof, unicityCertificate, statusHint,
+            waitedMillis);
+  }
+
+  /**
+   * Unauthenticated status hint of the aggregator. Control flow only, never evidence.
+   *
+   * @return hint, null if the aggregator sent none or one this version does not know
+   */
+  public ProofStatusHint getStatusHint() {
+    return this.statusHint;
+  }
+
+  /**
+   * Unauthenticated echo of the time the aggregator held the request. Never extends a deadline.
+   *
+   * @return milliseconds, null if the request asked for no wait or the aggregator sent no echo
+   */
+  public Long getWaitedMillis() {
+    return this.waitedMillis;
+  }
+
+  /**
+   * Get the block number the answer was served at, as unsigned 64-bit bits. Unauthenticated
+   * transport metadata, never evidence.
+   *
+   * @return block number
+   */
+  public long getBlockNumber() {
+    return this.blockNumber;
   }
 
   /**

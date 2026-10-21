@@ -188,11 +188,14 @@ public final class Token {
    * verified iteratively with a worklist instead of recursion, so arbitrarily long provenance
    * chains do not grow the call stack.
    *
-   * @param context shared verification context (trust base + registries)
+   * @param verificationContext shared verification context (trust base + registries); one
+   *     certificate verification operation spans the token and every nested token
    * @return verification result with a child result per verified token
    */
-  public VerificationResult<VerificationStatus> verify(VerificationContext context) {
-    Objects.requireNonNull(context, "context cannot be null");
+  public VerificationResult<VerificationStatus> verify(VerificationContext verificationContext) {
+    Objects.requireNonNull(verificationContext, "context cannot be null");
+    // one operation spans the token and every nested token
+    VerificationContext context = verificationContext.forOperation();
 
     ArrayDeque<Token> pending = new ArrayDeque<>();
     pending.add(this);

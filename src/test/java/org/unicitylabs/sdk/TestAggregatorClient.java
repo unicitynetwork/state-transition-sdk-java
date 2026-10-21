@@ -27,9 +27,11 @@ public class TestAggregatorClient implements AggregatorClient {
    * proof served later is anchored to a certificate whose input record time is past the one
    * the leaf was built from, exactly as it is against a live aggregator.
    */
-  private long referenceTime = System.currentTimeMillis() / 1000;
+  private long referenceTime;
 
-  private TestAggregatorClient(SparseMerkleTree smt, SigningService signingService) {
+  private TestAggregatorClient(SparseMerkleTree smt, SigningService signingService,
+      long referenceTime) {
+    this.referenceTime = referenceTime;
     this.sparseMerkleTree = smt;
     this.signingService = signingService;
     this.trustBase = RootTrustBaseUtils.generateRootTrustBase(this.signingService.getPublicKey());
@@ -55,9 +57,18 @@ public class TestAggregatorClient implements AggregatorClient {
    * generated.
    */
   public static TestAggregatorClient create(byte[] privateKey) {
+    return create(privateKey, System.currentTimeMillis() / 1000);
+  }
+
+  /**
+   * Creates an aggregator with the given key whose first round has the given reference time, so
+   * that two aggregators under one key can certify the same requests at different times.
+   */
+  public static TestAggregatorClient create(byte[] privateKey, long referenceTime) {
     return new TestAggregatorClient(
             new SparseMerkleTree(HashAlgorithm.SHA256),
-            new SigningService(privateKey)
+            new SigningService(privateKey),
+            referenceTime
     );
   }
 

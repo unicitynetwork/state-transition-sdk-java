@@ -54,6 +54,73 @@ public class UnicityCertificate {
   }
 
   /**
+   * Rule of the certificate body that a certificate violates, see {@link #checkBody()}.
+   */
+  public enum BodyViolation {
+    /** The certificate is not of the aggregation partition. */
+    PARTITION("The certificate is not of the aggregation partition."),
+    /** The input record violates the native structure rules. */
+    INPUT_RECORD("The input record is invalid."),
+    /** The state root is present but not 32 bytes. */
+    STATE_HASH_LENGTH("The state root must be absent or 32 bytes."),
+    /** The technical record hash is absent or not 32 bytes. */
+    TECHNICAL_RECORD_HASH_LENGTH("The technical record hash must be 32 bytes."),
+    /** The shard path does not have exactly one sibling per bit of the shard id. */
+    SHARD_PATH_LENGTH("The shard path must have one sibling per bit of the shard id.");
+
+    private final String description;
+
+    BodyViolation(String description) {
+      this.description = description;
+    }
+
+    /**
+     * Fixed description of the rule.
+     *
+     * @return description
+     */
+    public String getDescription() {
+      return this.description;
+    }
+  }
+
+  /**
+   * Checks the properties of the certificate body that hold for every application use of a
+   * certificate, before any hashing or signature work (bft-go-base {@code UnicityCertificate.IsValid}
+   * parity). In order: the partition is the fixed {@link AggregationPartition#AGGREGATION_PARTITION_ID}
+   * (so a memo can never carry another partition); the input record satisfies its conditional
+   * structure rules ({@link InputRecord#structureFailure()}); the state root is absent or exactly
+   * 32 bytes; the technical record hash is exactly 32 bytes; the shard path has exactly one
+   * sibling per shard bit. Never throws on a decoded or constructed certificate.
+   *
+   * <p>The seal is not part of the body; its structure and authority are checked by the seal
+   * session.
+   *
+   * @return the first violated rule, or null if the body is acceptable
+   */
+  public BodyViolation checkBody() {
+    if (this.unicityTreeCertificate.getPartitionIdentifierUnsigned()
+            != AggregationPartition.AGGREGATION_PARTITION_ID) {
+      return BodyViolation.PARTITION;
+    }
+    if (this.inputRecord.structureFailure() != null) {
+      return BodyViolation.INPUT_RECORD;
+    }
+    byte[] root = this.inputRecord.getHash();
+    if (root != null && root.length != 32) {
+      return BodyViolation.STATE_HASH_LENGTH;
+    }
+    if (this.technicalRecordHash == null || this.technicalRecordHash.length != 32) {
+      return BodyViolation.TECHNICAL_RECORD_HASH_LENGTH;
+    }
+    if (this.shardTreeCertificate.getSiblingHashCount()
+            != this.shardTreeCertificate.getShard().getLength()) {
+      return BodyViolation.SHARD_PATH_LENGTH;
+    }
+    return null;
+  }
+
+  /**
    * Get the certificate version.
    *
    * @return certificate version
@@ -119,6 +186,28 @@ public class UnicityCertificate {
   }
 
   /**
+   * Calculate the shard tree leaf hash: the hash of the committed input record, technical record
+   * hash and shard configuration hash.
+   *
+   * @param inputRecord            input record
+   * @param technicalRecordHash    technical record hash, null if absent
+   * @param shardConfigurationHash shard configuration hash
+   * @return leaf hash
+   */
+  public static DataHash calculateShardLeafHash(
+          InputRecord inputRecord,
+          byte[] technicalRecordHash,
+          byte[] shardConfigurationHash
+  ) {
+    return new DataHasher(HashAlgorithm.SHA256)
+            .update(inputRecord.toCbor())
+            .update(
+                    CborSerializer.encodeNullable(technicalRecordHash, CborSerializer::encodeByteString))
+            .update(CborSerializer.encodeByteString(shardConfigurationHash))
+            .digest();
+  }
+
+  /**
    * Calculate the root hash of the shard tree certificate.
    *
    * @param inputRecord            input record
@@ -126,6 +215,7 @@ public class UnicityCertificate {
    * @param shardConfigurationHash shard configuration hash
    * @param shardTreeCertificate   shard tree certificate
    * @return root hash
+   * @throws IllegalArgumentException if the shard path does not have one sibling per shard bit
    */
   public static DataHash calculateShardTreeCertificateRootHash(
           InputRecord inputRecord,
@@ -134,15 +224,16 @@ public class UnicityCertificate {
           ShardTreeCertificate shardTreeCertificate
   ) {
 
-    DataHash rootHash = new DataHasher(HashAlgorithm.SHA256)
-            .update(inputRecord.toCbor())
-            .update(
-                    CborSerializer.encodeNullable(technicalRecordHash, CborSerializer::encodeByteString))
-            .update(CborSerializer.encodeByteString(shardConfigurationHash))
-            .digest();
-
     ShardId shardId = shardTreeCertificate.getShard();
     List<byte[]> siblingHashes = shardTreeCertificate.getSiblingHashList();
+    if (siblingHashes.size() != shardId.getLength()) {
+      throw new IllegalArgumentException(
+              "The shard path must have one sibling hash per bit of the shard id.");
+    }
+
+    DataHash rootHash = calculateShardLeafHash(
+            inputRecord, technicalRecordHash, shardConfigurationHash);
+
     for (int i = 0; i < siblingHashes.size(); i++) {
       boolean isRight = shardId.getBit(shardId.getLength() - 1 - i) == 1;
       if (isRight) {
