@@ -112,6 +112,7 @@ public class TokenSplit {
     NetworkId networkId = token.getGenesis().getNetworkId();
     Map<AssetId, SparseMerkleSumTree> trees = new HashMap<>();
     LinkedHashMap<TokenId, SplitTokenRequest> requestsByTokenId = new LinkedHashMap<>();
+    Map<TokenId, SplitOutputPayload> payloads = new HashMap<>();
     for (SplitTokenRequest request : requests) {
       Objects.requireNonNull(request, "Split token request cannot be null");
       TokenId tokenId = TokenId.fromSalt(networkId, request.getSalt());
@@ -120,12 +121,18 @@ public class TokenSplit {
       }
       requestsByTokenId.put(tokenId, request);
 
+      // Freeze before anything is committed: these exact bytes feed the leaf, the proofs and
+      // the returned token.
+      SplitOutputPayload payload =
+              SplitOutputPayload.freeze(request.getPaymentData(), paymentDataDeserializer);
+      payloads.put(tokenId, payload);
+
       EncodedPredicate recipient = EncodedPredicate.fromPredicate(request.getRecipient());
-      byte[] data = request.getPaymentData().encode();
+      byte[] data = payload.encode();
       byte[] leafData = SplitMintJustification.calculateLeafData(
               token, recipient, request.getSalt(), tokenId, data);
 
-      for (Asset asset : request.getPaymentData().getAssets().toList()) {
+      for (Asset asset : payload.getAssets().toList()) {
         if (sourceAssets.get(asset.getId()) == null) {
           throw new TokenAssetMissingException(asset.getId());
         }
@@ -174,7 +181,8 @@ public class TokenSplit {
     for (Map.Entry<TokenId, SplitTokenRequest> entry : requestsByTokenId.entrySet()) {
       SplitTokenRequest request = entry.getValue();
       TokenId tokenId = entry.getKey();
-      List<SplitAllocationProof> proofs = request.getPaymentData().getAssets().toList().stream()
+      SplitOutputPayload payload = payloads.get(tokenId);
+      List<SplitAllocationProof> proofs = payload.getAssets().toList().stream()
               .map(asset -> SplitAllocationProof.create(
                       rootByAsset.get(asset.getId()), tokenId.getBytes()))
               .collect(Collectors.toList());
@@ -184,7 +192,7 @@ public class TokenSplit {
               request.getRecipient(),
               token.getType(),
               request.getSalt(),
-              request.getPaymentData(),
+              payload,
               proofs
       ));
     }
