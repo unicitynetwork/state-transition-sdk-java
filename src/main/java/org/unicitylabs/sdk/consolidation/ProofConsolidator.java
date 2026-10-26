@@ -27,6 +27,7 @@ import org.unicitylabs.sdk.api.InclusionProof;
 import org.unicitylabs.sdk.api.InclusionProofBatch;
 import org.unicitylabs.sdk.api.InclusionProofResponse;
 import org.unicitylabs.sdk.api.LeafValue;
+import org.unicitylabs.sdk.api.RequestOptions;
 import org.unicitylabs.sdk.api.StateId;
 import org.unicitylabs.sdk.api.bft.AggregationPartition;
 import org.unicitylabs.sdk.api.bft.AuthenticatedPartitionView;
@@ -663,9 +664,12 @@ public final class ProofConsolidator {
           requestOptions = BatchRequestOptions.latest();
           long wait = master ? masterWait() : 0;
           if (wait > 0) {
-            requestOptions = requestOptions.withWaitMillis(wait);
+            requestOptions = requestOptions.withWaitMillis(wait)
+                .withCallTimeout(callTimeout(wait));
           }
         }
+        // only the call that waits carries a call bound of its own: only its expiry is a timeout
+        boolean bounded = requestOptions.getCallTimeout() != null;
         requestOptions = requestOptions.withOperation(attempt);
         BatchAggregatorClient client = (BatchAggregatorClient) group.endpoint.getClient();
         CompletableFuture<InclusionProofBatch> call = client.getInclusionProofs(ids, requestOptions);
@@ -673,7 +677,7 @@ public final class ProofConsolidator {
         call.whenComplete((batch, error) -> {
           registration.remove();
           try {
-            settle(out, group, ids.size(), master, batch, error);
+            settle(out, group, ids.size(), master, bounded, batch, error);
           } catch (Throwable t) {
             // whatever goes wrong while classifying a response fails the step, typed and at once
             out.completeExceptionally(t);
@@ -687,17 +691,17 @@ public final class ProofConsolidator {
           }
         });
       } catch (Throwable t) {
-        out.completeExceptionally(requestFailure(t, group.endpoint.getShard(), master,
+        out.completeExceptionally(requestFailure(t, group.endpoint.getShard(), master, false,
             group.indexes));
       }
       return out;
     }
 
     private void settle(CompletableFuture<ShardBatch> out, Group group, int expected,
-        boolean master, InclusionProofBatch batch, Throwable error) {
+        boolean master, boolean bounded, InclusionProofBatch batch, Throwable error) {
       if (error != null) {
         out.completeExceptionally(requestFailure(error, group.endpoint.getShard(), master,
-            group.indexes));
+            bounded, group.indexes));
         return;
       }
       if (batch == null || batch.getProofs().size() != expected) {
@@ -709,6 +713,20 @@ public final class ProofConsolidator {
         return;
       }
       out.complete(new ShardBatch(batch, group));
+    }
+
+    /** The timeout of the call that waits: wait plus margin, within what the attempt has left. */
+    private Duration callTimeout(long wait) {
+      Duration timeout = Duration.ofMillis(wait).plus(options.getMargin());
+      Duration left = attempt.remaining();
+      if (left.compareTo(timeout) < 0) {
+        timeout = left;
+      }
+      if (timeout.compareTo(RequestOptions.MAX_CALL_TIMEOUT) > 0) {
+        timeout = RequestOptions.MAX_CALL_TIMEOUT;
+      }
+      // a spent budget is not a zero timeout: the attempt deadline ends the call
+      return timeout.isZero() || timeout.isNegative() ? Duration.ofMillis(1) : timeout;
     }
 
     /** The wait that fits the attempt deadline, or none: {@code min(window, left - margin)}. */
@@ -800,7 +818,7 @@ public final class ProofConsolidator {
 
     /** Maps whatever a failed call produced to the failure or unavailable outcome of the attempt. */
     private Throwable requestFailure(Throwable raised, ShardId shard, boolean master,
-        List<Integer> positions) {
+        boolean bounded, List<Integer> positions) {
       Throwable e = unwrap(raised);
       ConsolidationException done = done();
       if (done != null && (e instanceof CancellationException
@@ -839,9 +857,21 @@ public final class ProofConsolidator {
           return new ConsolidationException(ConsolidationException.Kind.INVALID_RESPONSE,
               batch.getMessage(), ConsolidationOutcome.INVALID_INPUT, detail, false, shard, batch);
         default:
-          return new ConsolidationException(ConsolidationException.Kind.TRANSPORT,
+          // the master's call that outlived its own bound (wait plus margin) is a retryable timeout;
+          // a transport timeout of any other call stays a transport failure
+          return new ConsolidationException(bounded && timedOut(batch)
+              ? ConsolidationException.Kind.TIMEOUT : ConsolidationException.Kind.TRANSPORT,
               batch.getMessage(), null, detail, true, shard, batch);
       }
+    }
+
+    private boolean timedOut(Throwable e) {
+      for (int depth = 0; e != null && depth < 8; e = e.getCause(), depth++) {
+        if (e instanceof java.io.InterruptedIOException) {
+          return true;
+        }
+      }
+      return false;
     }
 
     private UnavailableSignal unavailable(BatchProofException batch, String detail,

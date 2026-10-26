@@ -407,6 +407,51 @@ class TokenProofClientTest {
     assertNull(tight.options.get(0).getWaitMillis(), "nothing fits the margin: no wait");
   }
 
+  @Test
+  void aMasterCallThatOutlivesItsBoundIsARetryableTimeoutNotATransportFailure() throws Exception {
+    Token token = threeProofToken();
+    Batch batch = new Batch();
+    batch.hang = new CompletableFuture<>();
+    batch.hang.completeExceptionally(new org.unicitylabs.sdk.api.BatchProofException(
+        org.unicitylabs.sdk.api.BatchProofException.Kind.TRANSPORT, "timeout", null, null, null,
+        true, 1, null, new java.net.SocketTimeoutException("timeout")));
+    CompletionException error = assertThrows(CompletionException.class, () ->
+        new TokenProofClient(ShardRouting.single(batch), context).consolidate(token,
+            ConsolidationOptions.defaults().withMasterLongPoll(Duration.ofSeconds(3),
+                Duration.ofSeconds(1))).join());
+    ConsolidationException failure = (ConsolidationException) error.getCause();
+    assertEquals(ConsolidationException.Kind.TIMEOUT, failure.getKind());
+    assertTrue(failure.isRetryable());
+
+    // any other transport failure stays a transport failure
+    Batch refused = new Batch();
+    refused.hang = new CompletableFuture<>();
+    refused.hang.completeExceptionally(new org.unicitylabs.sdk.api.BatchProofException(
+        org.unicitylabs.sdk.api.BatchProofException.Kind.TRANSPORT, "refused", null, null, null,
+        true, 1, null, new java.net.ConnectException("refused")));
+    error = assertThrows(CompletionException.class, () ->
+        new TokenProofClient(ShardRouting.single(refused), context).consolidate(token).join());
+    assertEquals(ConsolidationException.Kind.TRANSPORT,
+        ((ConsolidationException) error.getCause()).getKind());
+  }
+
+  @Test
+  void theMasterCallTimeoutIsBoundedByWaitPlusMargin() throws Exception {
+    Token token = threeProofToken();
+    Batch batch = new Batch();
+    consolidate(token, batch, ConsolidationOptions.defaults()
+        .withMasterLongPoll(Duration.ofSeconds(3), Duration.ofSeconds(1))
+        .withTimeout(Duration.ofSeconds(10)));
+    // the wait is 3 s (window), well inside the 10 s budget: the call is cut at 4 s, not at the budget
+    assertEquals(3000L, batch.options.get(0).getWaitMillis());
+    Duration timeout = batch.options.get(0).getCallTimeout();
+    assertTrue(timeout != null && timeout.toMillis() == 4000, String.valueOf(timeout));
+
+    Batch plain = new Batch();
+    consolidate(token, plain, ConsolidationOptions.defaults());
+    assertNull(plain.options.get(0).getCallTimeout(), "no wait, no call timeout");
+  }
+
   private static boolean awaitCancelled(CompletableFuture<?> future) throws InterruptedException {
     for (int i = 0; i < 100 && !future.isCancelled(); i++) {
       Thread.sleep(20);
