@@ -383,6 +383,25 @@ class LongPollWireTest {
   }
 
   @Test
+  void theRetryWithoutTheWaitSharesTheCallBoundAndUsesOnlyTheTimeLeft() throws Exception {
+    // the first answer takes ~300 ms, the bound is 600 ms: the retry gets ~300 ms, not a fresh 600 ms
+    server.enqueue(new MockResponse().setHeadersDelay(300, java.util.concurrent.TimeUnit.MILLISECONDS)
+        .setBody(MALFORMED_PARAMS));
+    server.enqueue(new MockResponse().setHeadersDelay(5, java.util.concurrent.TimeUnit.SECONDS).setBody("{}"));
+    long started = System.nanoTime();
+    CompletableFuture<InclusionProofBatch> future = WireTestSupport.client(server, http, 5).getInclusionProofs(
+        List.of(WireTestSupport.stateId("ab".repeat(32))),
+        BatchRequestOptions.latest().withWaitMillis(1000)
+            .withCallTimeout(java.time.Duration.ofMillis(600)));
+    BatchProofException e = assertInstanceOf(BatchProofException.class, WireTestSupport.failure(future));
+    long tookMillis = java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
+    assertEquals(BatchProofException.Kind.TRANSPORT, e.getKind());
+    assertEquals(2, e.getRequests());
+    // 600 ms bound plus scheduling slack, well under 300 + 600
+    assertTrue(tookMillis < 850, "took " + tookMillis + " ms");
+  }
+
+  @Test
   void cancellingTheOperationCancelsTheRetryInFlight() throws Exception {
     org.unicitylabs.sdk.internal.OperationContext operation =
         org.unicitylabs.sdk.internal.OperationContext.unbounded();

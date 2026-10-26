@@ -15,6 +15,7 @@ import org.unicitylabs.sdk.serializer.UnicityObjectMapper;
 import org.unicitylabs.sdk.util.HexConverter;
 
 import java.net.URI;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -336,6 +337,7 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
     private final Long waitMillis;
     private final RequestOptions options;
     private volatile CompletableFuture<JsonNode> inFlight;
+    private volatile long startedNanos;
 
     BatchCall(List<String> ids, String stateRoot, boolean exact, Long waitMillis,
         RequestOptions options) {
@@ -354,6 +356,7 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
     }
 
     void start(CompletableFuture<InclusionProofBatch> result) {
+      this.startedNanos = System.nanoTime();
       this.send(this.waitMillis, 1, result);
     }
 
@@ -365,8 +368,21 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
       if (wait != null) {
         params.put("waitMs", wait);
       }
-      RequestOptions callOptions = wait == null && this.waitMillis != null
-              ? withoutWait(this.options) : this.options;
+      RequestOptions callOptions = this.options;
+      if (wait == null && this.waitMillis != null) {
+        callOptions = withoutWait(this.options);
+        Duration bound = this.options.getCallTimeout();
+        if (bound != null) {
+          // the repeat shares the one call bound of the request: only the time left is used
+          Duration left = bound.minusNanos(System.nanoTime() - this.startedNanos);
+          if (left.isZero() || left.isNegative()) {
+            result.completeExceptionally(batchFailure(new java.net.SocketTimeoutException(
+                    "The call timeout expired before the repeat without waitMs."), requests, null));
+            return;
+          }
+          callOptions = callOptions.withCallTimeout(left);
+        }
+      }
       CompletableFuture<JsonNode> call = JsonRpcAggregatorClient.this.transport
               .call("get_inclusion_proofs.v1", params, JsonRpcAggregatorClient.this.authHeaders(),
                       callOptions);
@@ -422,9 +438,6 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
     RequestOptions copy = RequestOptions.none();
     if (options.getOperation() != null) {
       copy = copy.withOperation(options.getOperation());
-    }
-    if (options.getCallTimeout() != null) {
-      copy = copy.withCallTimeout(options.getCallTimeout());
     }
     return copy;
   }

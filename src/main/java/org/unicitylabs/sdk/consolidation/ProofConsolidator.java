@@ -23,11 +23,11 @@ import org.unicitylabs.sdk.api.AggregatorClient;
 import org.unicitylabs.sdk.api.BatchAggregatorClient;
 import org.unicitylabs.sdk.api.BatchProofException;
 import org.unicitylabs.sdk.api.BatchRequestOptions;
-import org.unicitylabs.sdk.api.RequestOptions;
 import org.unicitylabs.sdk.api.InclusionProof;
 import org.unicitylabs.sdk.api.InclusionProofBatch;
 import org.unicitylabs.sdk.api.InclusionProofResponse;
 import org.unicitylabs.sdk.api.LeafValue;
+import org.unicitylabs.sdk.api.RequestOptions;
 import org.unicitylabs.sdk.api.StateId;
 import org.unicitylabs.sdk.api.bft.AggregationPartition;
 import org.unicitylabs.sdk.api.bft.AuthenticatedPartitionView;
@@ -855,9 +855,20 @@ public final class ProofConsolidator {
           return new ConsolidationException(ConsolidationException.Kind.INVALID_RESPONSE,
               batch.getMessage(), ConsolidationOutcome.INVALID_INPUT, detail, false, shard, batch);
         default:
-          return new ConsolidationException(ConsolidationException.Kind.TRANSPORT,
+          // a call that outlived its own bound (wait plus margin) is a retryable timeout
+          return new ConsolidationException(timedOut(batch)
+              ? ConsolidationException.Kind.TIMEOUT : ConsolidationException.Kind.TRANSPORT,
               batch.getMessage(), null, detail, true, shard, batch);
       }
+    }
+
+    private boolean timedOut(Throwable e) {
+      for (int depth = 0; e != null && depth < 8; e = e.getCause(), depth++) {
+        if (e instanceof java.io.InterruptedIOException) {
+          return true;
+        }
+      }
+      return false;
     }
 
     private UnavailableSignal unavailable(BatchProofException batch, String detail,

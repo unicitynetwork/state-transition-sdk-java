@@ -408,6 +408,34 @@ class TokenProofClientTest {
   }
 
   @Test
+  void aMasterCallThatOutlivesItsBoundIsARetryableTimeoutNotATransportFailure() throws Exception {
+    Token token = threeProofToken();
+    Batch batch = new Batch();
+    batch.hang = new CompletableFuture<>();
+    batch.hang.completeExceptionally(new org.unicitylabs.sdk.api.BatchProofException(
+        org.unicitylabs.sdk.api.BatchProofException.Kind.TRANSPORT, "timeout", null, null, null,
+        true, 1, null, new java.net.SocketTimeoutException("timeout")));
+    CompletionException error = assertThrows(CompletionException.class, () ->
+        new TokenProofClient(ShardRouting.single(batch), context).consolidate(token,
+            ConsolidationOptions.defaults().withMasterLongPoll(Duration.ofSeconds(3),
+                Duration.ofSeconds(1))).join());
+    ConsolidationException failure = (ConsolidationException) error.getCause();
+    assertEquals(ConsolidationException.Kind.TIMEOUT, failure.getKind());
+    assertTrue(failure.isRetryable());
+
+    // any other transport failure stays a transport failure
+    Batch refused = new Batch();
+    refused.hang = new CompletableFuture<>();
+    refused.hang.completeExceptionally(new org.unicitylabs.sdk.api.BatchProofException(
+        org.unicitylabs.sdk.api.BatchProofException.Kind.TRANSPORT, "refused", null, null, null,
+        true, 1, null, new java.net.ConnectException("refused")));
+    error = assertThrows(CompletionException.class, () ->
+        new TokenProofClient(ShardRouting.single(refused), context).consolidate(token).join());
+    assertEquals(ConsolidationException.Kind.TRANSPORT,
+        ((ConsolidationException) error.getCause()).getKind());
+  }
+
+  @Test
   void theMasterCallTimeoutIsBoundedByWaitPlusMargin() throws Exception {
     Token token = threeProofToken();
     Batch batch = new Batch();
