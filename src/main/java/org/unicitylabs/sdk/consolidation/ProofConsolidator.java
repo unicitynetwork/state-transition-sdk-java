@@ -668,6 +668,8 @@ public final class ProofConsolidator {
                 .withCallTimeout(callTimeout(wait));
           }
         }
+        // only the call that waits carries a call bound of its own: only its expiry is a timeout
+        boolean bounded = requestOptions.getCallTimeout() != null;
         requestOptions = requestOptions.withOperation(attempt);
         BatchAggregatorClient client = (BatchAggregatorClient) group.endpoint.getClient();
         CompletableFuture<InclusionProofBatch> call = client.getInclusionProofs(ids, requestOptions);
@@ -675,7 +677,7 @@ public final class ProofConsolidator {
         call.whenComplete((batch, error) -> {
           registration.remove();
           try {
-            settle(out, group, ids.size(), master, batch, error);
+            settle(out, group, ids.size(), master, bounded, batch, error);
           } catch (Throwable t) {
             // whatever goes wrong while classifying a response fails the step, typed and at once
             out.completeExceptionally(t);
@@ -689,17 +691,17 @@ public final class ProofConsolidator {
           }
         });
       } catch (Throwable t) {
-        out.completeExceptionally(requestFailure(t, group.endpoint.getShard(), master,
+        out.completeExceptionally(requestFailure(t, group.endpoint.getShard(), master, false,
             group.indexes));
       }
       return out;
     }
 
     private void settle(CompletableFuture<ShardBatch> out, Group group, int expected,
-        boolean master, InclusionProofBatch batch, Throwable error) {
+        boolean master, boolean bounded, InclusionProofBatch batch, Throwable error) {
       if (error != null) {
         out.completeExceptionally(requestFailure(error, group.endpoint.getShard(), master,
-            group.indexes));
+            bounded, group.indexes));
         return;
       }
       if (batch == null || batch.getProofs().size() != expected) {
@@ -816,7 +818,7 @@ public final class ProofConsolidator {
 
     /** Maps whatever a failed call produced to the failure or unavailable outcome of the attempt. */
     private Throwable requestFailure(Throwable raised, ShardId shard, boolean master,
-        List<Integer> positions) {
+        boolean bounded, List<Integer> positions) {
       Throwable e = unwrap(raised);
       ConsolidationException done = done();
       if (done != null && (e instanceof CancellationException
@@ -855,8 +857,9 @@ public final class ProofConsolidator {
           return new ConsolidationException(ConsolidationException.Kind.INVALID_RESPONSE,
               batch.getMessage(), ConsolidationOutcome.INVALID_INPUT, detail, false, shard, batch);
         default:
-          // a call that outlived its own bound (wait plus margin) is a retryable timeout
-          return new ConsolidationException(timedOut(batch)
+          // the master's call that outlived its own bound (wait plus margin) is a retryable timeout;
+          // a transport timeout of any other call stays a transport failure
+          return new ConsolidationException(bounded && timedOut(batch)
               ? ConsolidationException.Kind.TIMEOUT : ConsolidationException.Kind.TRANSPORT,
               batch.getMessage(), null, detail, true, shard, batch);
       }
