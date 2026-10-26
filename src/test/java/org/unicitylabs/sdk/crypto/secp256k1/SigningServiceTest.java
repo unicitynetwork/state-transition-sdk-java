@@ -153,4 +153,21 @@ public class SigningServiceTest {
       assertFalse(SigningService.verify(hash, candidate.getBytes(), service.getPublicKey()));
     }
   }
+
+  @Test
+  public void testDigestLongerThan32BytesIsRejected() {
+    SigningService service = new SigningService(SigningService.generatePrivateKey());
+    byte[] long64 = new byte[64];
+    Arrays.fill(long64, (byte) 0x42);
+    // a signature over int(d) mod n, which recovery would otherwise accept for the 64-byte digest
+    byte[] reduced = scalar(new BigInteger(1, long64).mod(N));
+    Signature signature = service.sign(new DataHash(HashAlgorithm.SHA256, reduced));
+    DataHash longHash = new DataHash(HashAlgorithm.SHA512, long64);
+
+    assertFalse(service.verify(longHash, signature));
+    assertFalse(SigningService.verifyWithPublicKey(longHash, signature, service.getPublicKey()));
+    assertFalse(SigningService.verifyWithRecoveredPublicKey(longHash, signature));
+    assertFalse(SigningService.verify(longHash, signature.getBytes(), service.getPublicKey()));
+    assertFalse(SigningService.verify(new byte[31], signature.getBytes(), service.getPublicKey()));
+  }
 }

@@ -30,6 +30,9 @@ public class SigningService {
           EC_SPEC.getH()
   );
 
+  /** Signatures are over a raw 32-byte digest; any other length is rejected, as in Rust. */
+  private static final int DIGEST_LENGTH = 32;
+
   private static final BigInteger HALF_ORDER = EC_DOMAIN_PARAMETERS.getN().shiftRight(1);
 
   private final ECPrivateKeyParameters privateKey;
@@ -171,7 +174,7 @@ public class SigningService {
    * @return true if successful
    */
   public static boolean verify(byte[] hash, byte[] signature, byte[] publicKey) {
-    if (!SigningService.isCanonical(signature)) {
+    if (hash == null || hash.length != DIGEST_LENGTH || !SigningService.isCanonical(signature)) {
       return false;
     }
 
@@ -329,7 +332,8 @@ public class SigningService {
    */
   private static byte[] recoverPublicKey(DataHash hash, Signature signature) {
     try {
-      if (!SigningService.isCanonical(signature.getBytes())) {
+      if (hash.getData().length != DIGEST_LENGTH
+              || !SigningService.isCanonical(signature.getBytes())) {
         return null;
       }
 
