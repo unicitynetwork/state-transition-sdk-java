@@ -304,6 +304,9 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
     if (options.getOperation() != null) {
       callOptions = callOptions.withOperation(options.getOperation());
     }
+    if (options.getCallTimeout() != null) {
+      callOptions = callOptions.withCallTimeout(options.getCallTimeout());
+    }
     if (waitMillis != null) {
       callOptions = callOptions.withWaitMillis(waitMillis);
     }

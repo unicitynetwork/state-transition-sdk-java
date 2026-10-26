@@ -4,6 +4,9 @@ import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.unicitylabs.sdk.internal.OperationContext;
 
+import java.time.Duration;
+import java.util.Objects;
+
 /**
  * Options of {@link BatchAggregatorClient#getInclusionProofs}.
  *
@@ -13,16 +16,19 @@ import org.unicitylabs.sdk.internal.OperationContext;
  */
 public final class BatchRequestOptions {
 
-  private static final BatchRequestOptions LATEST = new BatchRequestOptions(null, null, null);
+  private static final BatchRequestOptions LATEST = new BatchRequestOptions(null, null, null, null);
 
   private final DataHash stateRoot;
   private final Long waitMillis;
   private final OperationContext operation;
+  private final Duration callTimeout;
 
-  private BatchRequestOptions(DataHash stateRoot, Long waitMillis, OperationContext operation) {
+  private BatchRequestOptions(DataHash stateRoot, Long waitMillis, OperationContext operation,
+      Duration callTimeout) {
     this.stateRoot = stateRoot;
     this.waitMillis = waitMillis;
     this.operation = operation;
+    this.callTimeout = callTimeout;
   }
 
   /**
@@ -45,7 +51,7 @@ public final class BatchRequestOptions {
     if (stateRoot == null || stateRoot.getAlgorithm() != HashAlgorithm.SHA256) {
       throw new IllegalArgumentException("State root must be a SHA-256 hash.");
     }
-    return new BatchRequestOptions(stateRoot, null, null);
+    return new BatchRequestOptions(stateRoot, null, null, null);
   }
 
   /**
@@ -65,7 +71,7 @@ public final class BatchRequestOptions {
     if (waitMillis < 0 || waitMillis > WaitOptions.MAX_WAIT_MILLIS) {
       throw new IllegalArgumentException("waitMillis must be in 0.." + WaitOptions.MAX_WAIT_MILLIS);
     }
-    return new BatchRequestOptions(null, waitMillis, operation);
+    return new BatchRequestOptions(null, waitMillis, operation, callTimeout);
   }
 
   /**
@@ -75,7 +81,26 @@ public final class BatchRequestOptions {
    * @return new options
    */
   public BatchRequestOptions withOperation(OperationContext operation) {
-    return new BatchRequestOptions(stateRoot, waitMillis, operation);
+    return new BatchRequestOptions(stateRoot, waitMillis, operation, callTimeout);
+  }
+
+  /**
+   * Bounds one HTTP call, in addition to the budget of the operation. A call that is held by the
+   * aggregator needs a timeout of its wait plus a response margin, because the HTTP client's own
+   * read timeout is shorter.
+   *
+   * @param callTimeout positive duration, at most {@link RequestOptions#MAX_CALL_TIMEOUT}
+   * @return new options
+   * @throws IllegalArgumentException if the duration is not positive or above the limit
+   */
+  public BatchRequestOptions withCallTimeout(Duration callTimeout) {
+    Objects.requireNonNull(callTimeout, "callTimeout cannot be null");
+    if (callTimeout.isNegative() || callTimeout.isZero()
+        || callTimeout.compareTo(RequestOptions.MAX_CALL_TIMEOUT) > 0) {
+      throw new IllegalArgumentException("callTimeout must be positive and at most "
+          + RequestOptions.MAX_CALL_TIMEOUT.getSeconds() + " s (MAX_CALL_TIMEOUT).");
+    }
+    return new BatchRequestOptions(stateRoot, waitMillis, operation, callTimeout);
   }
 
   /**
@@ -103,5 +128,14 @@ public final class BatchRequestOptions {
    */
   public OperationContext getOperation() {
     return operation;
+  }
+
+  /**
+   * Timeout of one HTTP call.
+   *
+   * @return duration, null when the transport default applies
+   */
+  public Duration getCallTimeout() {
+    return callTimeout;
   }
 }

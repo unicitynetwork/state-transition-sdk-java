@@ -407,6 +407,23 @@ class TokenProofClientTest {
     assertNull(tight.options.get(0).getWaitMillis(), "nothing fits the margin: no wait");
   }
 
+  @Test
+  void theMasterCallTimeoutIsBoundedByWaitPlusMargin() throws Exception {
+    Token token = threeProofToken();
+    Batch batch = new Batch();
+    consolidate(token, batch, ConsolidationOptions.defaults()
+        .withMasterLongPoll(Duration.ofSeconds(3), Duration.ofSeconds(1))
+        .withTimeout(Duration.ofSeconds(10)));
+    // the wait is 3 s (window), well inside the 10 s budget: the call is cut at 4 s, not at the budget
+    assertEquals(3000L, batch.options.get(0).getWaitMillis());
+    Duration timeout = batch.options.get(0).getCallTimeout();
+    assertTrue(timeout != null && timeout.toMillis() == 4000, String.valueOf(timeout));
+
+    Batch plain = new Batch();
+    consolidate(token, plain, ConsolidationOptions.defaults());
+    assertNull(plain.options.get(0).getCallTimeout(), "no wait, no call timeout");
+  }
+
   private static boolean awaitCancelled(CompletableFuture<?> future) throws InterruptedException {
     for (int i = 0; i < 100 && !future.isCancelled(); i++) {
       Thread.sleep(20);
