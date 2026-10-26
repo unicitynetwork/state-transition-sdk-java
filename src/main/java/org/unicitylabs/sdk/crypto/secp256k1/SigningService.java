@@ -30,6 +30,11 @@ public class SigningService {
           EC_SPEC.getH()
   );
 
+  /** Signatures are over a raw 32-byte digest; any other length is rejected, as in Rust. */
+  private static final int DIGEST_LENGTH = 32;
+
+  private static final BigInteger HALF_ORDER = EC_DOMAIN_PARAMETERS.getN().shiftRight(1);
+
   private final ECPrivateKeyParameters privateKey;
   private final byte[] publicKey;
 
@@ -112,8 +117,7 @@ public class SigningService {
     BigInteger s = signature[1];
 
     // Ensure s is in the lower half of the order (malleability fix)
-    BigInteger halfN = EC_DOMAIN_PARAMETERS.getN().shiftRight(1);
-    if (s.compareTo(halfN) > 0) {
+    if (s.compareTo(HALF_ORDER) > 0) {
       s = EC_DOMAIN_PARAMETERS.getN().subtract(s);
     }
 
@@ -170,6 +174,10 @@ public class SigningService {
    * @return true if successful
    */
   public static boolean verify(byte[] hash, byte[] signature, byte[] publicKey) {
+    if (hash == null || hash.length != DIGEST_LENGTH || !SigningService.isCanonical(signature)) {
+      return false;
+    }
+
     ECPoint pubPoint = EC_SPEC.getCurve().decodePoint(publicKey);
     ECPublicKeyParameters pubKey = new ECPublicKeyParameters(pubPoint, EC_DOMAIN_PARAMETERS);
 
@@ -184,6 +192,25 @@ public class SigningService {
   }
 
   /**
+   * Check that compact signature scalars are canonical: {@code 1 <= r < n} and
+   * {@code 1 <= s <= n/2} (low-S). The high-S twin of a signature verifies under the same key, so
+   * it is rejected to keep a single encoding per signature, as the Rust and JS SDKs do.
+   *
+   * @param signature compact signature bytes, at least the 64 bytes {@code r || s}
+   * @return true if the signature is 64 or more bytes and its scalars are canonical
+   */
+  public static boolean isCanonical(byte[] signature) {
+    if (signature == null || signature.length < 64) {
+      return false;
+    }
+
+    BigInteger r = new BigInteger(1, Arrays.copyOfRange(signature, 0, 32));
+    BigInteger s = new BigInteger(1, Arrays.copyOfRange(signature, 32, 64));
+    return r.signum() > 0 && r.compareTo(EC_DOMAIN_PARAMETERS.getN()) < 0
+            && s.signum() > 0 && s.compareTo(HALF_ORDER) <= 0;
+  }
+
+  /**
    * Verify a recoverable signature against an expected public key. Unlike {@link #verify(DataHash,
    * byte[], byte[])}, this binds the signature's recovery byte: the public key is recovered from
    * the signature and must equal {@code publicKey}, so a tampered recovery byte fails verification.
@@ -195,11 +222,7 @@ public class SigningService {
    */
   public static boolean verifyWithPublicKey(DataHash hash, Signature signature, byte[] publicKey) {
     byte[] recoveredPublicKey = SigningService.recoverPublicKey(hash, signature);
-    if (recoveredPublicKey == null || !Arrays.equals(publicKey, recoveredPublicKey)) {
-      return false;
-    }
-
-    return SigningService.verify(hash, signature.getBytes(), publicKey);
+    return recoveredPublicKey != null && Arrays.equals(publicKey, recoveredPublicKey);
   }
 
 
@@ -229,6 +252,10 @@ public class SigningService {
           BigInteger s,
           byte[] message
   ) {
+    if (recId < 0 || recId > 3) {
+      return null;
+    }
+
     BigInteger n = EC_DOMAIN_PARAMETERS.getN();
     BigInteger x = r;
 
@@ -237,6 +264,9 @@ public class SigningService {
     }
 
     ECCurve curve = EC_DOMAIN_PARAMETERS.getCurve();
+    if (x.compareTo(curve.getField().getCharacteristic()) >= 0) {
+      return null;
+    }
 
     // Calculate y from x
     ECPoint y = SigningService.decompressKey(x, (recId & 1) == 1, curve);
@@ -289,11 +319,7 @@ public class SigningService {
    */
   public static boolean verifyWithRecoveredPublicKey(DataHash hash, Signature signature) {
     byte[] recoveredPublicKey = SigningService.recoverPublicKey(hash, signature);
-    if (recoveredPublicKey == null) {
-      return false;
-    }
-
-    return SigningService.verify(hash, signature.getBytes(), recoveredPublicKey);
+    return recoveredPublicKey != null;
   }
 
   /**
@@ -306,11 +332,16 @@ public class SigningService {
    */
   private static byte[] recoverPublicKey(DataHash hash, Signature signature) {
     try {
+      if (hash.getData().length != DIGEST_LENGTH
+              || !SigningService.isCanonical(signature.getBytes())) {
+        return null;
+      }
+
       BigInteger r = new BigInteger(1, Arrays.copyOfRange(signature.getBytes(), 0, 32));
       BigInteger s = new BigInteger(1, Arrays.copyOfRange(signature.getBytes(), 32, 64));
 
       ECPoint recovered = recoverFromSignature(signature.getRecovery(), r, s, hash.getData());
-      if (recovered == null || !recovered.isValid()) {
+      if (recovered == null || recovered.isInfinity() || !recovered.isValid()) {
         return null;
       }
 

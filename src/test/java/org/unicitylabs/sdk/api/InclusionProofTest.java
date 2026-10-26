@@ -1,5 +1,7 @@
 package org.unicitylabs.sdk.api;
 
+import java.math.BigInteger;
+import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
@@ -213,6 +215,57 @@ public class InclusionProofTest {
                     this.transaction
             ).getStatus()
     );
+  }
+
+  @Test
+  public void testHighSUnlockSignatureIsNotAuthenticated() {
+    // the mint transaction is unlocked by the mint signing service
+    org.unicitylabs.sdk.crypto.secp256k1.Signature low =
+            SignaturePredicateUnlockScript.decode(this.certificationData.getUnlockScript()).getSignature();
+    BigInteger n = new BigInteger(
+            "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141", 16);
+    byte[] lowBytes = low.getBytes();
+
+    // the unmodified low-S unlock script authenticates
+    Assertions.assertEquals(InclusionProofVerificationStatus.OK,
+            this.verifyWithUnlockScript(low.encode()));
+
+    // the high-S twin, with the matching and with the flipped recovery byte, does not
+    byte[] highBytes = new byte[64];
+    System.arraycopy(lowBytes, 0, highBytes, 0, 32);
+    byte[] highS = n.subtract(new BigInteger(1, Arrays.copyOfRange(lowBytes, 32, 64))).toByteArray();
+    System.arraycopy(highS, Math.max(0, highS.length - 32), highBytes,
+            64 - Math.min(32, highS.length), Math.min(32, highS.length));
+    for (int recovery : new int[] {low.getRecovery(), low.getRecovery() ^ 1}) {
+      Assertions.assertEquals(InclusionProofVerificationStatus.NOT_AUTHENTICATED,
+              this.verifyWithUnlockScript(withRecovery(highBytes, recovery)));
+    }
+  }
+
+  private static byte[] withRecovery(byte[] compact, int recovery) {
+    byte[] encoded = Arrays.copyOf(compact, 65);
+    encoded[64] = (byte) recovery;
+    return encoded;
+  }
+
+  private InclusionProofVerificationStatus verifyWithUnlockScript(byte[] unlockScript) {
+    return InclusionProofVerificationRule.verify(
+            this.trustBase,
+            this.predicateVerifier,
+            new InclusionProof(
+                    new CertificationData(
+                            this.certificationData.getLockScript(),
+                            this.certificationData.getSourceStateHash(),
+                            this.certificationData.getTransactionHash(),
+                            this.certificationData.getExpiresAt().orElse(null),
+                            unlockScript
+                    ),
+                    REFERENCE_TIME,
+                    this.inclusionCertificate,
+                    this.unicityCertificate
+            ),
+            this.transaction
+    ).getStatus();
   }
 
   @Test
