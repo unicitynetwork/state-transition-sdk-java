@@ -12,6 +12,7 @@ import org.unicitylabs.sdk.api.StatusAwareAggregatorClient;
 import org.unicitylabs.sdk.api.WaitOptions;
 import org.unicitylabs.sdk.api.jsonrpc.JsonRpcDataException;
 import org.unicitylabs.sdk.api.jsonrpc.JsonRpcNetworkException;
+import org.unicitylabs.sdk.api.jsonrpc.JsonRpcResponseException;
 
 import java.io.InterruptedIOException;
 import java.time.Duration;
@@ -403,8 +404,17 @@ public final class InclusionProofWaiter {
       fail(new InclusionProofWaitException.Unknown(stateId, elapsedMillis()));
       return;
     }
-    // these legacy errors carry no echo: the endpoint is not long polling
-    if (asked > 0) {
+    // A pending error that echoes data.waitedMs comes from a long-poll capable server: long polling
+    // stays on, and a malformed echo is a protocol error. Every other legacy error carries no echo:
+    // the endpoint is not long polling.
+    JsonNode data = rpc == null ? null : rpc.getData();
+    if (pending && asked > 0 && data != null && data.has("waitedMs")) {
+      if (!LongPoll.isWireMillis(data.get("waitedMs"))) {
+        fail(new JsonRpcResponseException(
+            "Malformed waitedMs in the data of the certification pending error.", cause));
+        return;
+      }
+    } else if (asked > 0) {
       longPolling = false;
     }
     next(longPollConfigured ? Math.max(interval, LongPoll.MIN_POLL_GAP_MILLIS) : interval);

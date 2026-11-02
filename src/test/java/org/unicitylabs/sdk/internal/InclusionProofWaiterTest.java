@@ -3,6 +3,7 @@ package org.unicitylabs.sdk.internal;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -509,6 +510,44 @@ class InclusionProofWaiterTest {
     assertEquals(3, seen.size());
     // these answers carry no echo: the endpoint does not long poll
     assertNull(seen.get(1).waitMillis);
+  }
+
+  private static com.fasterxml.jackson.databind.node.ObjectNode echoData(
+      com.fasterxml.jackson.databind.JsonNode echo) {
+    com.fasterxml.jackson.databind.node.ObjectNode data =
+        com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+    data.set("waitedMs", echo);
+    return data;
+  }
+
+  @Test
+  void aLegacyPendingErrorThatEchoesTheWaitKeepsLongPolling() {
+    fail(new JsonRpcDataException(-32021, "pending", echoData(
+        com.fasterxml.jackson.databind.node.IntNode.valueOf(0)), true));
+    answer(certified, 0);
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
+    assertFalse(result.isDone());
+    firePause();
+    assertTrue(result.isDone());
+    assertEquals(2, seen.size());
+    assertNotNull(seen.get(0).waitMillis);
+    assertNotNull(seen.get(1).waitMillis, "an echoed pending error does not drop the wait");
+  }
+
+  @Test
+  void aLegacyPendingErrorWithAMalformedEchoIsAProtocolError() {
+    com.fasterxml.jackson.databind.node.JsonNodeFactory f =
+        com.fasterxml.jackson.databind.node.JsonNodeFactory.instance;
+    for (com.fasterxml.jackson.databind.JsonNode bad : List.of(f.numberNode(-1), f.numberNode(1.5),
+        f.textNode("3"), f.nullNode(), f.numberNode(1L << 53))) {
+      seen.clear();
+      JsonRpcDataException pending = new JsonRpcDataException(-32021, "pending", echoData(bad), true);
+      fail(pending);
+      Throwable failure = failure(await(WaitOptions.defaults()));
+      assertInstanceOf(org.unicitylabs.sdk.api.jsonrpc.JsonRpcResponseException.class, failure, bad.toString());
+      assertSame(pending, failure.getCause());
+      assertEquals(1, seen.size());
+    }
   }
 
   @Test
