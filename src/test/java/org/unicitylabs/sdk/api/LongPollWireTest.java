@@ -168,11 +168,73 @@ class LongPollWireTest {
     }
   }
 
+  private static boolean isPreflightRejection(JsonNode c) {
+    return c.get("name").asText().contains("preflight");
+  }
+
+  static Stream<JsonNode> invalidWaitV2() {
+    return echoV2().filter(c -> c.get("name").asText().startsWith("v2/error-invalid-wait"));
+  }
+
+  static Stream<JsonNode> invalidWaitBatch() {
+    return echoBatch().filter(c -> c.get("name").asText().startsWith("batch/invalid-wait"));
+  }
+
+  /**
+   * The client rejects an invalid wait locally, so the corpus requests cannot be built from the
+   * typed API. What is tested here are the server's invalid-wait answers as injected replies to a
+   * valid wait request: an echoed rejection (waitedMs 0) is final and never repeated without the
+   * wait, a preflight rejection has no echo and is final too. The strict-parser no-echo retry is
+   * covered by the capability table.
+   */
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("invalidWaitV2")
+  void invalidWaitAnswersAreFinalV2(JsonNode c) throws Exception {
+    JsonNode response = c.get("response");
+    boolean preflight = isPreflightRejection(c);
+    server.enqueue(new MockResponse().setBody(WireTestSupport.MAPPER.writeValueAsString(response)));
+    CompletableFuture<InclusionProofResponse> future = WireTestSupport.client(server, http, preflight ? 7 : c.get("request").get("id").intValue())
+        .getInclusionProof(WireTestSupport.stateId("ab".repeat(32)), RequestOptions.none().withWaitMillis(5000));
+    JsonRpcDataException e = assertInstanceOf(JsonRpcDataException.class, WireTestSupport.failure(future));
+    assertEquals(response.get("error").get("code").intValue(), e.getCode());
+    assertEquals(response.get("error").get("data"), e.getData());
+    assertEquals(!preflight, e.isIdMatched());
+    assertEquals(!preflight, e.getData() != null && e.getData().has("waitedMs"));
+    assertEquals(1, server.getRequestCount());
+  }
+
+  @ParameterizedTest(name = "{0}")
+  @MethodSource("invalidWaitBatch")
+  void invalidWaitAnswersAreFinalBatch(JsonNode c) throws Exception {
+    JsonNode response = c.get("response");
+    boolean preflight = isPreflightRejection(c);
+    server.enqueue(new MockResponse().setBody(WireTestSupport.MAPPER.writeValueAsString(response)));
+    CompletableFuture<InclusionProofBatch> future = WireTestSupport.client(server, http, preflight ? 7 : c.get("request").get("id").intValue())
+        .getInclusionProofs(List.of(WireTestSupport.stateId("ab".repeat(32))),
+            BatchRequestOptions.latest().withWaitMillis(5000));
+    BatchProofException e = assertInstanceOf(BatchProofException.class, WireTestSupport.failure(future));
+    if (preflight) {
+      // an answer which carries no id of this request is attributed to nothing: never classified, never retried
+      assertEquals(BatchProofException.Kind.INVALID_RESPONSE, e.getKind());
+      assertNull(e.getCode());
+    } else {
+      assertEquals(response.get("error").get("code").intValue(), e.getCode());
+    }
+    assertEquals(1, e.getRequests(), "never repeated without the wait");
+    assertEquals(1, server.getRequestCount());
+    assertEquals(preflight ? null : Long.valueOf(0), e.getWaitedMillis());
+    JsonNode sent = sentParams();
+    assertEquals(5000, sent.get("waitMs").longValue());
+  }
+
   @ParameterizedTest(name = "{0}")
   @MethodSource("echoV2")
   void v2Answers(JsonNode c) throws Exception {
     JsonNode request = c.get("request");
     JsonNode response = c.get("response");
+    if (isPreflightRejection(c)) {
+      return; // answered before the request is attributed to an id: invalidWaitAnswersAreFinal covers it
+    }
     int id = request.get("id").intValue();
     JsonNode wire = request.get("params");
     String hex = wire.get("stateId").asText();
@@ -215,6 +277,9 @@ class LongPollWireTest {
   void batchAnswers(JsonNode c) throws Exception {
     JsonNode request = c.get("request");
     JsonNode response = c.get("response");
+    if (isPreflightRejection(c)) {
+      return; // answered before the request is attributed to an id: invalidWaitAnswersAreFinal covers it
+    }
     JsonNode params = request.get("params");
     int id = request.get("id").intValue();
     List<StateId> ids = new ArrayList<>();
@@ -254,9 +319,10 @@ class LongPollWireTest {
       assertEquals(response.get("error").get("code").intValue(), e.getCode());
       boolean echoed = wait != null && data != null && data.has("waitedMs");
       assertEquals(echoed ? Long.valueOf(data.get("waitedMs").longValue()) : null, e.getWaitedMillis());
-      // the generic malformed-params answer without an echo is repeated once, so the second one is final
-      assertEquals(c.get("name").asText().equals("batch/invalid-wait-malformed-params") ? 2 : 1,
-          e.getRequests());
+      // only the bare generic malformed-params answer (no echo: an old strict parser) is repeated
+      // once without the wait; an echoed rejection is final
+      boolean bareMalformed = !echoed && data != null && "malformed_params".equals(data.path("detail").asText());
+      assertEquals(wait != null && bareMalformed ? 2 : 1, e.getRequests());
       return;
     }
     // a success is read by its shape: the proofs are opaque here

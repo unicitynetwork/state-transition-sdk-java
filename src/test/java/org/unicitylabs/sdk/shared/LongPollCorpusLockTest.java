@@ -33,7 +33,7 @@ class LongPollCorpusLockTest {
     }
     Map<String, String> actual = LongPollCorpus.actualFiles();
     assertEquals(locked, actual, "vendored file set or contents differ from the lock");
-    assertEquals("51f2ca8b4ad58d55e11be4c281051cae1e72d773", commit);
+    assertEquals("09ed2d5c0f88500e004473c9d3e581a762246241", commit);
     assertEquals(readmePin, actual.get("README.md"));
   }
 

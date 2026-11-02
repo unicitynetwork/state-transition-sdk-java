@@ -1,14 +1,15 @@
 # Source lock of src/test/resources/shared/longpoll (vendored byte for byte, never regenerated here).
 source-repo: unicitynetwork/aggregator-go
-source-commit: 51f2ca8b4ad58d55e11be4c281051cae1e72d773
+source-commit: 09ed2d5c0f88500e004473c9d3e581a762246241
 source-path: testdata/longpoll
+# source-commit is the head of aggregator-go PR fix/longpoll-invalid-wait-echo-202611020739 (echo.json revision 4); re-pin to the merge commit once merged.
 # The upstream README carries the checksum table of its five fixture files (there is no JSON manifest). It is vendored
 # unchanged and checked against the files; its own hash is locked here like every other file.
-readme-sha256: 3ca2a7992d60073f3b6b3c506ecedf45f72451b4f5e64a13198c1ec5e0c8902c
+readme-sha256: 25b43670f5a6bcfe22359891e893489fa90f1a5fea306fbc26261f0e68804af1
 # <sha256>  <path relative to the vendored directory>, every file including README.md
 b00701917858d6e2671bec24b9f917de5bb53f4303bdeb6e6795b343ca379c35  capability.json
-a287d35cdad196c55d1661430e6547b5cb730d3baf6b87549cdb5d5247289e4e  echo.json
+a9dad238857c6953b3f65b5c8680cd8dda2786bccb85a6c633b47644b6c4cd86  echo.json
 5c36869bef6c9298ed9323b3bc606029ba69690936aa0311a0c6b56136fb331e  golden/batch-nowait.json
 62305006cdf18995f8a02b54863468713f905f09ee2f1eb330f530679b1f35a7  golden/v2-nowait.json
 4558bd8047b6fb5f0a00c84a167a0fa8f678c4dd325880e3036c3b033b48cb5e  params.json
-3ca2a7992d60073f3b6b3c506ecedf45f72451b4f5e64a13198c1ec5e0c8902c  README.md
+25b43670f5a6bcfe22359891e893489fa90f1a5fea306fbc26261f0e68804af1  README.md
