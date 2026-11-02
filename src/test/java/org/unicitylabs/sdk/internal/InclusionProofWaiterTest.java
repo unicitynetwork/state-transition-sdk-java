@@ -535,6 +535,20 @@ class InclusionProofWaiterTest {
   }
 
   @Test
+  void aLegacyPendingErrorWithDataButNoEchoStillDropsTheWait() {
+    com.fasterxml.jackson.databind.node.ObjectNode data =
+        com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+    data.put("detail", "x");
+    fail(new JsonRpcDataException(-32021, "pending", data, true));
+    answer(certified, 0);
+    CompletableFuture<InclusionProof> result = await(WaitOptions.defaults());
+    firePause();
+    assertTrue(result.isDone());
+    assertNotNull(seen.get(0).waitMillis);
+    assertNull(seen.get(1).waitMillis, "data without waitedMs is not an echo");
+  }
+
+  @Test
   void aLegacyPendingErrorWithAMalformedEchoIsAProtocolError() {
     com.fasterxml.jackson.databind.node.JsonNodeFactory f =
         com.fasterxml.jackson.databind.node.JsonNodeFactory.instance;
