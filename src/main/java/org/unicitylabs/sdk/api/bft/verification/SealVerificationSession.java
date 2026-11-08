@@ -4,9 +4,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.api.bft.UnicitySeal;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseEntry;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
 import org.unicitylabs.sdk.api.bft.verification.rule.UnicitySealQuorumSignaturesVerificationRule;
+import org.unicitylabs.sdk.api.bft.verification.rule.UnicitySealTrustBaseEntryRule;
 import org.unicitylabs.sdk.crypto.hash.DataHasher;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.unicitylabs.sdk.internal.SingleFlightMemo;
@@ -17,19 +19,20 @@ import org.unicitylabs.sdk.util.verification.VerificationResult;
 import org.unicitylabs.sdk.util.verification.VerificationStatus;
 
 /**
- * Seal authentication under a snapshot of the caller's trust base, with a bounded memo of
- * successful quorum checks and sharing of checks in flight.
+ * Seal authentication under a trust-base history, with a bounded memo of successful quorum checks
+ * and sharing of checks in flight.
  *
- * <p>What is memoized is the signature verdict "this exact seal carries a quorum of valid
- * signatures of this authority", a pure function of the complete seal bytes (signature witnesses
- * included) and the authority content: the key binds exactly those, so altered witnesses or
- * another authority cannot hit an entry, and one verification serves every policy. Everything that
- * depends on the policy is evaluated on every call, memo hits included: the strict path checks the
- * seal structure, network, exact epoch and the epoch start round before it looks at the memo, so a
- * success of the legacy path can never admit a strict request. Only successes are retained;
+ * <p>Each seal is checked against the entry of its own epoch: structure, then its place in the
+ * history (network, the entry of its epoch, the round inside that epoch's interval), then the
+ * weighted quorum of that entry. Placement runs on every call, memo hits included, so a growing
+ * history or a conflicting session is seen by every verdict. What is memoized is the signature
+ * verdict "this exact seal carries a quorum of valid signatures of this entry", a pure function of
+ * the complete seal bytes (signature witnesses included) and the entry id: the key binds exactly
+ * those, so altered witnesses or another entry cannot hit an entry. Only successes are retained;
  * failures and failed in-flight checks are removed, the memo is bounded and evicts the oldest
- * entry. The session owns exactly one quorum rule and no verified flag can be supplied from
- * outside.
+ * entry. A seal of an epoch the history does not hold fails with the typed
+ * {@link NoTrustBaseEntryResult}. The session owns exactly one quorum rule and no verified flag
+ * can be supplied from outside.
  *
  * <p>Thread safe. Instances are scoped to one operation; they are not a process-wide cache.
  */
@@ -44,16 +47,16 @@ public final class SealVerificationSession implements SealAuthenticator {
 
   private static final String QUORUM_RULE = "UnicitySealQuorumSignaturesVerificationRule";
 
-  private final RootTrustBase trustBase;
-  private final String identity;
-  private final boolean unitStake;
+  private final TrustBaseHistoryView trustBase;
+  private final SealQuorumRule quorumRule;
   private final int maxInFlight;
   private final SingleFlightMemo<SealVerificationResult> memo;
   private final AtomicLong inFlightJoins = new AtomicLong();
   private final AtomicLong memoHits = new AtomicLong();
   private final AtomicLong quorumChecks = new AtomicLong();
 
-  private SealVerificationSession(RootTrustBase trustBase, int maxEntries, int maxInFlight) {
+  private SealVerificationSession(TrustBaseHistoryView trustBase, int maxEntries, int maxInFlight,
+      SealQuorumRule quorumRule) {
     if (maxEntries <= 0) {
       throw new IllegalArgumentException("maxEntries must be positive.");
     }
@@ -61,63 +64,77 @@ public final class SealVerificationSession implements SealAuthenticator {
       throw new IllegalArgumentException("maxInFlight must be positive.");
     }
     this.trustBase = Objects.requireNonNull(trustBase, "trustBase cannot be null");
+    this.quorumRule = Objects.requireNonNull(quorumRule, "quorumRule cannot be null");
     this.maxInFlight = maxInFlight;
-    // the trust base is immutable, so the authority identity is built once and every verdict and
-    // every memo key refers to it
-    this.identity = AuthorityIdentity.of(trustBase);
-    boolean unit = true;
-    for (RootTrustBase.NodeInfo node : trustBase.getRootNodes()) {
-      unit &= node.getStakedAmount() == 1;
-    }
-    this.unitStake = unit;
     this.memo = new SingleFlightMemo<>(maxEntries, maxInFlight,
         result -> result.getStatus() == VerificationStatus.OK);
   }
 
   /**
-   * Creates a session over the trust base. A trust base is immutable, so later changes of the
-   * caller's configuration cannot affect the session.
+   * Creates a session over the trust-base history.
    *
-   * @param trustBase the authority
+   * @param trustBase the authority: a view of the held history
    * @return new session with the default limits
    */
-  public static SealVerificationSession create(RootTrustBase trustBase) {
-    return new SealVerificationSession(trustBase, DEFAULT_MAX_ENTRIES, DEFAULT_MAX_IN_FLIGHT);
+  public static SealVerificationSession create(TrustBaseHistoryView trustBase) {
+    return new SealVerificationSession(trustBase, DEFAULT_MAX_ENTRIES, DEFAULT_MAX_IN_FLIGHT,
+        UnicitySealQuorumSignaturesVerificationRule::verify);
   }
 
   /**
    * Creates a session with explicit limits.
    *
-   * @param trustBase the authority
+   * @param trustBase the authority: a view of the held history
    * @param maxEntries memo size, positive
    * @param maxInFlight most verifications in flight, positive
    * @return new session
    * @throws IllegalArgumentException if a limit is not positive
    */
-  public static SealVerificationSession create(RootTrustBase trustBase, int maxEntries,
+  public static SealVerificationSession create(TrustBaseHistoryView trustBase, int maxEntries,
       int maxInFlight) {
-    return new SealVerificationSession(trustBase, maxEntries, maxInFlight);
+    return new SealVerificationSession(trustBase, maxEntries, maxInFlight,
+        UnicitySealQuorumSignaturesVerificationRule::verify);
+  }
+
+  /**
+   * Creates a session with explicit limits and its own quorum check.
+   *
+   * @param trustBase the authority: a view of the held history
+   * @param maxEntries memo size, positive
+   * @param maxInFlight most verifications in flight, positive
+   * @param quorumRule the check that runs on every distinct miss of the memo
+   * @return new session
+   * @throws IllegalArgumentException if a limit is not positive
+   */
+  public static SealVerificationSession create(TrustBaseHistoryView trustBase, int maxEntries,
+      int maxInFlight, SealQuorumRule quorumRule) {
+    return new SealVerificationSession(trustBase, maxEntries, maxInFlight, quorumRule);
   }
 
   /**
    * The authority this session authenticates against.
    *
-   * @return the trust base
+   * @return the trust-base view
    */
-  public RootTrustBase getTrustBase() {
+  public TrustBaseHistoryView getTrustBase() {
     return trustBase;
   }
 
+  /**
+   * Identity of the anchored authority: the pinned genesis and the held tip. It changes when the
+   * history grows, which only costs a cache miss.
+   */
   @Override
   public String getIdentity() {
-    return identity;
+    return AuthorityIdentity.ofView(trustBase);
   }
 
   /**
    * Native seal structural validation (bft-go-base {@code UnicitySeal.IsValid}), independent of any
    * trust base: hash present, root round at least 1, timestamp not before the genesis time,
-   * signatures present with a signer id and bytes each. Signer map entries are outside the signed
-   * payload, so this must hold before a success is returned or remembered.
+   * signatures present (at most {@link UnicitySeal#MAX_WITNESSES}) with a signer id and bytes each.
+   * Signer map entries are outside the signed payload, so this must hold before a success is
+   * returned or remembered.
    *
    * @param seal the seal
    * @return description of the violation, or null if the seal is structurally valid
@@ -136,6 +153,10 @@ public final class SealVerificationSession implements SealAuthenticator {
     if (witnesses == null || witnesses.isEmpty()) {
       return "Seal has no signatures.";
     }
+    if (witnesses.size() > UnicitySeal.MAX_WITNESSES) {
+      return String.format("Seal has %d signatures, more than %d.", witnesses.size(),
+          UnicitySeal.MAX_WITNESSES);
+    }
     for (Map.Entry<String, byte[]> entry : witnesses.entrySet()) {
       if (entry.getKey().isEmpty()) {
         return "Seal has a signature without signer ID.";
@@ -148,12 +169,11 @@ public final class SealVerificationSession implements SealAuthenticator {
   }
 
   /**
-   * Strict authentication: structure, network, epoch, epoch start round and quorum. The only
-   * authentication this session offers, whatever policy an operation applies to token proofs. The
-   * checks other than the quorum signatures run on every call; a quorum verdict memoized by the
-   * legacy path is reused, a legacy success never stands for the checks. The authority must weigh
-   * every node equally (stake 1), as the quorum rule counts signers;
-   * another authority is refused rather than judged by the wrong rule.
+   * Authentication: structure, the seal's place in the history (network, the entry of its epoch,
+   * the round inside that epoch) and the weighted quorum of that entry. A seal of an epoch the
+   * history does not hold fails with the typed {@link NoTrustBaseEntryResult} as a child of the
+   * result, and a wrong network, an epoch before the genesis, a round outside the interval or a
+   * bad quorum is final.
    *
    * @param seal the seal
    * @return OK, or FAIL with the failing rule and its typed reason
@@ -161,25 +181,18 @@ public final class SealVerificationSession implements SealAuthenticator {
   @Override
   public SealVerificationResult authenticate(UnicitySeal seal) {
     Objects.requireNonNull(seal, "seal cannot be null");
-    SealVerificationResult failure = checkAuthority(seal);
-    if (failure != null) {
-      return failure;
+    String structure = checkSealStructure(seal);
+    if (structure != null) {
+      return SealVerificationResult.fail("SealStructure", UnicityCertificateFailure.MALFORMED_SEAL,
+          structure, List.of());
     }
-    return quorum(seal);
-  }
 
-  /**
-   * Legacy check for historical token proofs: quorum signatures only, no structure, epoch or round
-   * constraint (the network is checked with the certificate). Kept apart from
-   * {@link #authenticate}: it is not authentication, it must not be reported as such, and it
-   * shares nothing but the signature verdict with the strict path.
-   *
-   * @param seal the seal
-   * @return OK, or FAIL with the failing rule
-   */
-  public SealVerificationResult verifyLegacyQuorum(UnicitySeal seal) {
-    Objects.requireNonNull(seal, "seal cannot be null");
-    return quorum(seal);
+    TrustBaseEntryResult placed = UnicitySealTrustBaseEntryRule.verify(trustBase, seal);
+    if (placed.getEntry() == null) {
+      return SealVerificationResult.fail("SealAuthority", placed.getFailure(),
+          placed.getMessage(), List.of(placed));
+    }
+    return quorum(placed.getEntry(), seal);
   }
 
   /**
@@ -191,42 +204,19 @@ public final class SealVerificationSession implements SealAuthenticator {
     return new SealVerificationStats(inFlightJoins.get(), memoHits.get(), quorumChecks.get());
   }
 
-  private SealVerificationResult checkAuthority(UnicitySeal seal) {
-    String structure = checkSealStructure(seal);
-    if (structure != null) {
-      return SealVerificationResult.fail("SealStructure", UnicityCertificateFailure.MALFORMED_SEAL,
-          structure, List.of());
+  private SealVerificationResult quorum(TrustBaseEntry entry, UnicitySeal seal) {
+    // Before the memo key is built (which encodes and hashes the whole seal) and before any
+    // signature work.
+    Map<String, byte[]> witnesses = seal.getWitnesses();
+    if (witnesses != null && witnesses.size() > UnicitySeal.MAX_WITNESSES) {
+      return SealVerificationResult.fail("SealAuthority", UnicityCertificateFailure.MALFORMED_SEAL,
+          String.format("Seal has %d signatures, more than %d.", witnesses.size(),
+              UnicitySeal.MAX_WITNESSES), List.of());
     }
-    if (!seal.getNetworkId().equals(trustBase.getNetworkId())) {
-      return SealVerificationResult.fail("SealAuthority", UnicityCertificateFailure.NETWORK_MISMATCH,
-          String.format("Seal is of network %d, trust base is of network %d.",
-              seal.getNetworkId().getId(), trustBase.getNetworkId().getId()), List.of());
-    }
-    if (seal.getEpoch() != trustBase.getEpoch()) {
-      return SealVerificationResult.fail("SealAuthority", UnicityCertificateFailure.EPOCH_MISMATCH,
-          String.format("Seal is of epoch %s, trust base is of epoch %s.",
-              seal.getEpochDecimal(), UnsignedLongs.toDecimal(trustBase.getEpoch())), List.of());
-    }
-    if (UnsignedLongs.lessThan(seal.getRootChainRoundNumber(), trustBase.getEpochStartRound())) {
-      return SealVerificationResult.fail("SealAuthority",
-          UnicityCertificateFailure.BEFORE_EPOCH_START,
-          String.format("Seal round %s is before the start of epoch %s (round %s).",
-              seal.getRootChainRoundNumberDecimal(), UnsignedLongs.toDecimal(trustBase.getEpoch()),
-              UnsignedLongs.toDecimal(trustBase.getEpochStartRound())), List.of());
-    }
-    if (!unitStake) {
-      return SealVerificationResult.fail("SealAuthority",
-          UnicityCertificateFailure.UNSUPPORTED_AUTHORITY,
-          "The quorum rule counts signers; a stake-weighted authority is not supported.",
-          List.of());
-    }
-    return null;
-  }
 
-  private SealVerificationResult quorum(UnicitySeal seal) {
     String key = HexConverter.encode(new DataHasher(HashAlgorithm.SHA256)
         .update(CborSerializer.encodeArray(
-            CborSerializer.encodeTextString(identity),
+            CborSerializer.encodeTextString(AuthorityIdentity.ofEntry(entry)),
             CborSerializer.encodeByteString(seal.toCbor())))
         .digest().getData());
     SingleFlightMemo.Outcome<SealVerificationResult> outcome;
@@ -234,7 +224,7 @@ public final class SealVerificationSession implements SealAuthenticator {
       outcome = memo.get(key, () -> {
         quorumChecks.incrementAndGet();
         VerificationResult<VerificationStatus> result =
-            UnicitySealQuorumSignaturesVerificationRule.verify(trustBase, seal);
+            quorumRule.verify(entry, seal);
         if (result.getStatus() == VerificationStatus.OK) {
           return SealVerificationResult.ok(QUORUM_RULE, result.getResults());
         }
@@ -244,6 +234,7 @@ public final class SealVerificationSession implements SealAuthenticator {
     } catch (SingleFlightMemo.BusyException e) {
       throw new SealVerificationBusyException(maxInFlight);
     }
+
     switch (outcome.getSource()) {
       case HIT:
         memoHits.incrementAndGet();

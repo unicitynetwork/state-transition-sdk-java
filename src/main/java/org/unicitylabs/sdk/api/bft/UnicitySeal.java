@@ -24,6 +24,8 @@ import org.unicitylabs.sdk.util.UnsignedLongs;
  */
 public class UnicitySeal {
   public static final long CBOR_TAG = 39005;
+  /** Most signatures a seal may carry (owner §49): a native resource ceiling, counted whoever signed. */
+  public static final int MAX_WITNESSES = 256;
   private static final int VERSION = 1;
 
   private final NetworkId networkId;
@@ -296,7 +298,7 @@ public class UnicitySeal {
     // a seal that arrives over the wire carries its signature map; the null form exists only for
     // the seal hash, which is computed over the seal without signatures
     Map<String, byte[]> witnesses = new LinkedHashMap<>();
-    for (CborMap.Entry entry : CborDeserializer.decodeMap(data.get(7))) {
+    for (CborMap.Entry entry : CborDeserializer.decodeMapAtMost(data.get(7), MAX_WITNESSES)) {
       String signer = CborDeserializer.decodeTextString(entry.getKey());
       if (witnesses.put(signer, CborDeserializer.decodeByteString(entry.getValue())) != null) {
         throw new CborSerializationException("Duplicate signer id in seal signatures.");

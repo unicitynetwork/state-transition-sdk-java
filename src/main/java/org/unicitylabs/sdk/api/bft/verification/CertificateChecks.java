@@ -4,16 +4,16 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import org.unicitylabs.sdk.api.bft.PartitionViewPolicy;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
 import org.unicitylabs.sdk.api.bft.UnicityCertificate;
 import org.unicitylabs.sdk.api.bft.verification.rule.UnicitySealHashMatchesWithRootHashRule;
 import org.unicitylabs.sdk.util.verification.VerificationResult;
 import org.unicitylabs.sdk.util.verification.VerificationStatus;
 
 /**
- * The checks of a certificate that do not depend on the policy applied to its seal: network,
+ * The checks of a certificate that do not depend on the trust-base entry of its seal: network,
  * fixed partition, body structure, seal structure and the paths to the seal hash. Shared by the
- * static legacy verification and the operation verifier so that both judge a body identically.
+ * static verification and the operation verifier so that both judge a body identically.
  */
 final class CertificateChecks {
 
@@ -54,9 +54,12 @@ final class CertificateChecks {
    *
    * @return the rule result
    */
-  static VerificationResult<VerificationStatus> network(RootTrustBase trustBase,
+  static VerificationResult<VerificationStatus> network(TrustBaseHistoryView trustBase,
       UnicityCertificate certificate) {
-    boolean match = certificate.getUnicitySeal().getNetworkId().equals(trustBase.getNetworkId());
+    // an empty history has no network to contradict: the seal is then placed (and found without an
+    // entry) by the seal session
+    boolean match = trustBase.getNetworkId()
+        .map(network -> network.equals(certificate.getUnicitySeal().getNetworkId())).orElse(true);
     return new VerificationResult<>(NETWORK_RULE, match ? VerificationStatus.OK
         : VerificationStatus.FAIL);
   }

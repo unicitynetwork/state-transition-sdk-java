@@ -3,12 +3,15 @@ package org.unicitylabs.sdk.api;
 /**
  * Unicity network identifier ({@code α}). Used to scope token ids and other
  * network-bound values so they cannot be replayed across networks.
+ *
+ * <p>The named networks are the live ones: MAINNET 1, TESTNET2 4 and the LOCAL development network
+ * 3. Network 2, the old testnet, was removed and has no constant: 2 is an ordinary unnamed id.
  */
 public final class NetworkId {
 
   public static final NetworkId MAINNET = new NetworkId(1, "MAINNET");
-  public static final NetworkId TESTNET = new NetworkId(2, "TESTNET");
   public static final NetworkId LOCAL = new NetworkId(3, "LOCAL");
+  public static final NetworkId TESTNET2 = new NetworkId(4, "TESTNET2");
 
   private final int id;
   private final String name;
@@ -41,11 +44,11 @@ public final class NetworkId {
     if (value == MAINNET.id) {
       return MAINNET;
     }
-    if (value == TESTNET.id) {
-      return TESTNET;
-    }
     if (value == LOCAL.id) {
       return LOCAL;
+    }
+    if (value == TESTNET2.id) {
+      return TESTNET2;
     }
     return new NetworkId(value);
   }

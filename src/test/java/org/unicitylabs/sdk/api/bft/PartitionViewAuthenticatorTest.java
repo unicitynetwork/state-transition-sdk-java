@@ -403,9 +403,9 @@ class PartitionViewAuthenticatorTest {
    */
   @Test
   void aBusySealSessionIsAResourceLimitNotAViewRejection() throws Exception {
-    BlockingTrustBase blocking = BlockingTrustBase.copyOf(AUTHORITY.trustBase());
+    BlockingTrustBase blocking = new BlockingTrustBase();
     PartitionViewAuthenticator limited = new PartitionViewAuthenticator(
-        SealVerificationSession.create(blocking, 8, 1), PartitionViewPolicy.none());
+        SealVerificationSession.create(AUTHORITY.trustBase(), 8, 1, blocking), PartitionViewPolicy.none());
     TestChain.Sealed first = TestChain.seal(AUTHORITY, 7, 9, TestChain.fourShards(3, NOW));
     TestChain.Sealed second = TestChain.seal(AUTHORITY, 7, 10, TestChain.fourShards(4, NOW));
 

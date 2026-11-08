@@ -7,12 +7,13 @@ plugins {
 }
 
 group = "org.unicitylabs"
-// Use version property if provided, otherwise use default. hasProperty("version") is always true
+// Use version property if provided, otherwise use the default 4.0.0 (the version all three SDKs ship as; releases pass
+// -Pversion=4.0.0). hasProperty("version") is always true
 // because Gradle defines it, so check for the "unspecified" it holds when -Pversion was not passed.
 version = project.property("version")
     ?.takeIf { it.toString() != "unspecified" }
     ?.toString()
-    ?: "3.0-SNAPSHOT"
+    ?: "4.0.0"
 
 repositories {
     mavenCentral()
@@ -81,6 +82,37 @@ java {
     targetCompatibility = JavaVersion.VERSION_11
     withSourcesJar()
     withJavadocJar()
+}
+
+// The SDK version, generated from the Gradle project version so the X-SDK-Version header can never drift from the artifact.
+val generateSdkVersion by tasks.registering {
+    val outputDir = layout.buildDirectory.dir("generated/sdk-version")
+    val sdkVersion = project.version.toString()
+    inputs.property("version", sdkVersion)
+    outputs.dir(outputDir)
+    doLast {
+        val file = outputDir.get().file("org/unicitylabs/sdk/SdkVersion.java").asFile
+        file.parentFile.mkdirs()
+        file.writeText(
+            """
+            package org.unicitylabs.sdk;
+
+            /** The version of this SDK, generated from the Gradle project version. */
+            public final class SdkVersion {
+
+              /** The SDK version. */
+              public static final String VERSION = "$sdkVersion";
+
+              private SdkVersion() {
+              }
+            }
+            """.trimIndent() + "\n"
+        )
+    }
+}
+
+sourceSets.main {
+    java.srcDir(generateSdkVersion)
 }
 
 checkstyle {

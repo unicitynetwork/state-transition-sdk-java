@@ -5,7 +5,7 @@ import org.unicitylabs.sdk.api.InclusionCertificate;
 import org.unicitylabs.sdk.api.InclusionProof;
 import org.unicitylabs.sdk.api.LeafValue;
 import org.unicitylabs.sdk.api.StateId;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerifier;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
@@ -40,7 +40,7 @@ public class InclusionProofVerificationRule {
    * @return a {@code VerificationResult} object containing the {@code InclusionProofVerificationStatus}
    *         and additional details about the verification outcome
    */
-  public static VerificationResult<InclusionProofVerificationStatus> verify(RootTrustBase trustBase,
+  public static VerificationResult<InclusionProofVerificationStatus> verify(TrustBaseHistoryView trustBase,
                                                                             PredicateVerifierService predicateVerifier, InclusionProof inclusionProof,
                                                                             Transaction transaction) {
     return verify(trustBase, predicateVerifier, new UnicityCertificateVerifier(), inclusionProof,
@@ -61,7 +61,7 @@ public class InclusionProofVerificationRule {
    *         and additional details about the verification outcome
    */
   public static VerificationResult<InclusionProofVerificationStatus> verify(
-          RootTrustBase trustBase,
+          TrustBaseHistoryView trustBase,
           PredicateVerifierService predicateVerifier,
           UnicityCertificateVerifier certificateVerifier,
           InclusionProof inclusionProof,

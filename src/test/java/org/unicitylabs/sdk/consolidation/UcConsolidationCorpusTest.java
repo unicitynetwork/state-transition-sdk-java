@@ -24,12 +24,11 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.unicitylabs.sdk.api.InclusionProofResponse;
 import org.unicitylabs.sdk.api.bft.PartitionView;
 import org.unicitylabs.sdk.api.bft.PartitionViewException;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
 import org.unicitylabs.sdk.api.bft.ShardConfigurationPin;
 import org.unicitylabs.sdk.api.bft.ShardId;
 import org.unicitylabs.sdk.api.bft.verification.OperationUnicityCertificateVerifier;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerifier;
-import org.unicitylabs.sdk.api.bft.verification.VerificationPolicy;
 import org.unicitylabs.sdk.consolidation.CorpusSupport.Call;
 import org.unicitylabs.sdk.consolidation.CorpusSupport.Case;
 import org.unicitylabs.sdk.api.bft.PartitionViewPolicy;
@@ -134,11 +133,10 @@ class UcConsolidationCorpusTest {
     Observation observed = new Observation();
     observed.calls = CorpusSupport.newCalls();
     try {
-      RootTrustBase trustBase = CorpusSupport.trustBase(c.bytes("trust-base.cbor"));
+      TrustBaseHistoryView trustBase = CorpusSupport.trustBase(c.bytes("trust-base.cbor"));
       ShardRouting routing = routing(c, responses(c), observed.calls);
       OperationUnicityCertificateVerifier verifier = (OperationUnicityCertificateVerifier)
-          new UnicityCertificateVerifier().beginOperation(VerificationPolicy.LEGACY_QUORUM,
-              PartitionViewPolicy.none());
+          new UnicityCertificateVerifier().beginOperation(PartitionViewPolicy.none());
       ProofConsolidator consolidator = new ProofConsolidator(routing, trustBase, verifier);
       List<ConsolidationItem> items;
       try {
@@ -264,8 +262,8 @@ class UcConsolidationCorpusTest {
       String observed = "ok";
       try {
         routing(c, responses(c), CorpusSupport.newCalls());
-        RootTrustBase trustBase = CorpusSupport.trustBase(c.bytes("trust-base.cbor"));
-        if (c.json("context.json").get("networkId").asInt() != trustBase.getNetworkId().getId()) {
+        TrustBaseHistoryView trustBase = CorpusSupport.trustBase(c.bytes("trust-base.cbor"));
+        if (c.json("context.json").get("networkId").asInt() != trustBase.getNetworkId().get().getId()) {
           observed = "incompatible_lineage";
         }
       } catch (ConsolidationException e) {

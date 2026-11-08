@@ -35,7 +35,7 @@ import org.unicitylabs.sdk.api.bft.PartitionView;
 import org.unicitylabs.sdk.api.bft.PartitionViewAuthenticator;
 import org.unicitylabs.sdk.api.bft.PartitionViewException;
 import org.unicitylabs.sdk.api.bft.PartitionViewLeaf;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
 import org.unicitylabs.sdk.api.bft.ShardId;
 import org.unicitylabs.sdk.api.bft.UnicityCertificate;
 import org.unicitylabs.sdk.api.bft.UnicitySeal;
@@ -81,7 +81,7 @@ public final class ProofConsolidator {
   private static final int HASH_LENGTH = 32;
 
   private final ShardRouting routing;
-  private final RootTrustBase trustBase;
+  private final TrustBaseHistoryView trustBase;
   private final OperationUnicityCertificateVerifier verifier;
   private final SealVerificationSession session;
 
@@ -96,7 +96,7 @@ public final class ProofConsolidator {
    *     are authenticated. Its pins are not used: the routing's scheme and configuration pins
    *     constrain the original proofs and the targets of the consolidation only
    */
-  public ProofConsolidator(ShardRouting routing, RootTrustBase trustBase,
+  public ProofConsolidator(ShardRouting routing, TrustBaseHistoryView trustBase,
       OperationUnicityCertificateVerifier verifier) {
     this.routing = Objects.requireNonNull(routing, "routing cannot be null");
     this.trustBase = Objects.requireNonNull(trustBase, "trustBase cannot be null");
@@ -537,9 +537,10 @@ public final class ProofConsolidator {
           break;
         case NETWORK_MISMATCH:
         case EPOCH_MISMATCH:
+        case NO_TRUST_BASE_ENTRY:
         case BEFORE_EPOCH_START:
+        case AFTER_EPOCH_END:
         case QUORUM_NOT_REACHED:
-        case UNSUPPORTED_AUTHORITY:
           outcome = ConsolidationOutcome.UNAUTHENTICATED;
           break;
         default:

@@ -16,14 +16,13 @@ import org.unicitylabs.sdk.api.BatchProofException;
 import org.unicitylabs.sdk.api.BatchRequestOptions;
 import org.unicitylabs.sdk.api.InclusionProofBatch;
 import org.unicitylabs.sdk.api.StateId;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
 import org.unicitylabs.sdk.api.bft.ShardId;
 import org.unicitylabs.sdk.api.bft.ShardConfigurationPin;
 import org.unicitylabs.sdk.util.HexConverter;
 import org.unicitylabs.sdk.api.bft.verification.OperationUnicityCertificateVerifier;
 import org.unicitylabs.sdk.api.bft.PartitionViewPolicy;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerifier;
-import org.unicitylabs.sdk.api.bft.verification.VerificationPolicy;
 
 /** A peer's ordinary transport timeout in wave 2 stays a retryable transport failure. */
 class PeerTransportTimeoutTest {
@@ -73,10 +72,9 @@ class PeerTransportTimeoutTest {
       pins.add(new ShardConfigurationPin(CorpusSupport.shard(config.get("shard").asText()),
           HexConverter.decode(config.get("hash").asText())));
     }
-    RootTrustBase trustBase = CorpusSupport.trustBase(c.bytes("trust-base.cbor"));
+    TrustBaseHistoryView trustBase = CorpusSupport.trustBase(c.bytes("trust-base.cbor"));
     OperationUnicityCertificateVerifier verifier = (OperationUnicityCertificateVerifier)
-        new UnicityCertificateVerifier().beginOperation(VerificationPolicy.LEGACY_QUORUM,
-            PartitionViewPolicy.none());
+        new UnicityCertificateVerifier().beginOperation(PartitionViewPolicy.none());
     ProofConsolidator consolidator = new ProofConsolidator(new ShardRouting(endpoints, scheme, pins),
         trustBase, verifier);
     ConsolidationException failure;

@@ -43,13 +43,15 @@ var aggregator = new JsonRpcAggregatorClient(
 return new StateTransitionClient(aggregator);
 ```
 
-**Trust base.** The trust base identifies the network, its validators and quorum. Download the file for your network (links in the README), keep a trusted copy with the application, and load it:
+**Trust base.** The trust base is a history of signed entries (Unicity Trust Base v2, CBOR tag 39000), one per epoch of the network's validators. It starts at a genesis entry whose entry id you pin, and every later entry must carry a quorum of signatures of its predecessor. Load a complete bundle (CBOR tag 39015, from genesis to tip) together with the pinned genesis entry id:
 
 ```java
-return RootTrustBase.fromJson(Files.readString(Path.of("bft-trustbase.testnet2.json")));
+var bundle = TrustBaseBundle.decode(Files.readAllBytes(Path.of("trust-base-bundle.cbor")),
+    new TrustBaseBundleLimits(1 << 20, 64));
+return TrustBaseHistory.fromBundle(bundle, genesisPin);
 ```
 
-`trustBase.getNetworkId()` is the network ID to use when minting.
+`trustBase.getNetworkId()` is the network ID to use when minting (empty while the history holds no entry). Every seal is verified against the entry of its own epoch; a seal of an epoch the history does not hold fails with the typed `NoTrustBaseEntryResult` (`NoTrustBaseEntryResult.find(result)`), which a later update step can cure. There is no JSON trust base any more.
 
 **Verification context.** `VerificationContext` bundles what token verification needs: the trust base, a `PredicateVerifierService` (`PredicateVerifierService.create()` handles the built-in predicates), a `MintJustificationVerifierService` (empty unless you use token splits, see [Payments and splits](#payments-and-splits)) and a `TokenIssuanceVerifierService`.
 
@@ -118,7 +120,7 @@ Store the private key securely; whoever holds it controls the tokens locked to i
 A mint creates a token with a new ID. Build a `MintTransaction`, submit its certification data, wait for the inclusion proof, and build the verified `Token`.
 
 ```java
-MintTransaction mint = MintTransaction.builder(context.getTrustBase().getNetworkId(), owner)
+MintTransaction mint = MintTransaction.builder(context.getTrustBase().getNetworkId().get(), owner)
     .tokenType(new TokenType("my-token-type".getBytes(StandardCharsets.UTF_8)))
     .data(payload)
     .build();
@@ -376,11 +378,12 @@ return Token.fromCbor(HexConverter.decode(hex));
 
 **Pending operations.** Serialization is also how an application survives a crash. Before submitting a mint, a transfer or a split, persist the exact transaction (`toCbor()`), the `CertificationData` of a transfer, and for a split its inputs (recipients, payment data, output salts, state mask and deadline). After a crash, deserialize them and submit again; never rebuild. Examples: [Crash recovery](#crash-recovery), [Recovering a transfer](#recovering-a-transfer) and [Payments and splits](#payments-and-splits).
 
-JSON is used for the trust base: `RootTrustBase.fromJson(json)` and `trustBase.toJson()`.
+The trust base serializes as a bundle: `trustBase.toBundle()` and `TrustBaseBundle.decode(bytes, limits)`.
 
 ```java
-String json = trustBase.toJson();
-return RootTrustBase.fromJson(json).getNetworkId().toString();
+byte[] bundle = trustBase.toBundle();
+return TrustBaseBundle.decode(bundle, new TrustBaseBundleLimits(1 << 20, 64))
+    .getNetworkId().toString();
 ```
 
 ## 7. Waiting for Inclusion Proofs

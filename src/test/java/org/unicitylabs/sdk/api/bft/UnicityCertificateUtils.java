@@ -108,7 +108,7 @@ public class UnicityCertificateUtils {
     UnicitySeal seal = new UnicitySeal(
             NetworkId.LOCAL,
             1L,
-            0L,
+            1L,
             timestamp,
             null,
             unicitySealHash.getData(),

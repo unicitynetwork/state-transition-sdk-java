@@ -1,19 +1,17 @@
 package org.unicitylabs.sdk.api.bft.verification;
 
+import java.util.ArrayList;
 import org.unicitylabs.sdk.api.InclusionProof;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
 import org.unicitylabs.sdk.api.bft.UnicityCertificate;
-import org.unicitylabs.sdk.api.bft.verification.rule.UnicitySealQuorumSignaturesVerificationRule;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
 import org.unicitylabs.sdk.util.verification.VerificationResult;
 import org.unicitylabs.sdk.util.verification.VerificationStatus;
 
-import java.util.ArrayList;
-
 /**
- * Verifies unicity certificate within an inclusion proof under the legacy quorum policy: network,
- * fixed partition, certificate body, seal structure, paths to the seal hash and the quorum
- * signatures. The epoch of the seal is deliberately not constrained, historical token proofs may
- * carry seals of earlier epochs; strict authentication is {@link SealVerificationSession}.
+ * Verifies unicity certificate within an inclusion proof: network, fixed partition, certificate
+ * body, seal structure, paths to the seal hash, and the seal under the trust-base entry of its own
+ * epoch (see {@link SealVerificationSession}). There is no relaxed mode: a seal of an earlier
+ * epoch verifies against the entry of that epoch, and against nothing else.
  */
 public class UnicityCertificateVerification {
 
@@ -23,28 +21,27 @@ public class UnicityCertificateVerification {
   /**
    * Runs unicity certificate verification rules against the provided inclusion proof.
    *
-   * @param trustBase trust base used for quorum signature verification
+   * @param trustBase trust-base history the seal is placed in
    * @param inclusionProof inclusion proof containing the certificate and seal
    * @return verification result aggregating rule outcomes
    */
-  public static UnicityCertificateVerificationResult verify(RootTrustBase trustBase,
+  public static UnicityCertificateVerificationResult verify(TrustBaseHistoryView trustBase,
                                                             InclusionProof inclusionProof) {
     return verify(trustBase, inclusionProof.getUnicityCertificate());
   }
 
   /**
    * Runs unicity certificate verification rules against a certificate on its own, without an
-   * inclusion proof around it (legacy quorum policy: network, partition, body, seal hash and
-   * quorum).
+   * inclusion proof around it (network, partition, body, seal hash, and the seal under the entry of
+   * its epoch).
    *
-   * @param trustBase trust base used for quorum signature verification
+   * @param trustBase trust-base history the seal is placed in
    * @param certificate unicity certificate with its seal
    * @return verification result aggregating rule outcomes
    */
-  public static UnicityCertificateVerificationResult verify(RootTrustBase trustBase,
+  public static UnicityCertificateVerificationResult verify(TrustBaseHistoryView trustBase,
                                                             UnicityCertificate certificate) {
     ArrayList<VerificationResult<?>> results = new ArrayList<>();
-
     VerificationResult<VerificationStatus> network = CertificateChecks.network(trustBase,
         certificate);
     results.add(network);
@@ -66,15 +63,12 @@ public class UnicityCertificateVerification {
       return UnicityCertificateVerificationResult.fail(body.getFailure(), results);
     }
 
-    VerificationResult<VerificationStatus> quorum = UnicitySealQuorumSignaturesVerificationRule
-        .verify(trustBase, certificate.getUnicitySeal());
-    results.add(quorum);
-    if (quorum.getStatus() != VerificationStatus.OK) {
-      return UnicityCertificateVerificationResult.fail(
-          UnicityCertificateFailure.QUORUM_NOT_REACHED, results);
+    SealVerificationResult seal = SealVerificationSession.create(trustBase)
+        .authenticate(certificate.getUnicitySeal());
+    results.add(seal);
+    if (seal.getStatus() != VerificationStatus.OK) {
+      return UnicityCertificateVerificationResult.fail(seal.getFailure(), results);
     }
-
     return UnicityCertificateVerificationResult.ok(results);
   }
-
 }

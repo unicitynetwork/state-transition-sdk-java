@@ -1,5 +1,6 @@
 package org.unicitylabs.sdk.api;
 
+import org.unicitylabs.sdk.api.bft.TrustBaseTestUtils;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -22,12 +23,10 @@ import org.junit.jupiter.api.Test;
 import org.unicitylabs.sdk.api.bft.PartitionViewPolicy;
 import org.unicitylabs.sdk.api.bft.verification.OperationUnicityCertificateVerifier;
 import org.unicitylabs.sdk.api.bft.verification.OperationVerificationStats;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
 import org.unicitylabs.sdk.api.bft.ShardId;
 import org.unicitylabs.sdk.api.bft.PartitionViewPolicy;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerifier;
-import org.unicitylabs.sdk.api.bft.verification.VerificationPolicy;
-import org.unicitylabs.sdk.api.bft.verification.VerificationPolicy;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.util.HexConverter;
 import org.unicitylabs.sdk.util.UnsignedLongs;
@@ -44,7 +43,7 @@ class NonInclusionCorpusTest {
   /** The strict operation verifier of the shared verification package, no pins. */
   private static UnicityCertificateVerifier strict() {
     return new UnicityCertificateVerifier()
-        .beginOperation(VerificationPolicy.STRICT, PartitionViewPolicy.none());
+        .beginOperation(PartitionViewPolicy.none());
   }
 
   private static JsonNode read(String relative) throws IOException {
@@ -76,14 +75,14 @@ class NonInclusionCorpusTest {
   }
 
   private static final class Setup {
-    final RootTrustBase trustBase;
+    final TrustBaseHistoryView trustBase;
     final NonInclusionContext context;
 
     Setup(JsonNode ctx) throws IOException {
       String json = new String(
           Files.readAllBytes(ROOT.resolve(ctx.get("trustBaseJson").asText())),
           StandardCharsets.UTF_8);
-      this.trustBase = RootTrustBase.fromJson(json);
+      this.trustBase = TrustBaseTestUtils.fromLegacyJson(json);
       NonInclusionContext c = NonInclusionContext.unsharded()
           .withShard(shard(ctx.get("shard").asText()));
       if (!"0".equals(ctx.get("nextEpochStart").asText())) {
@@ -251,32 +250,29 @@ class NonInclusionCorpusTest {
   }
 
   @Test
-  void thePlainLegacyVerifierIsRefused() throws Exception {
+  void thePlainVerifierAppliesTheSameEpochRulesAsAnOperation() throws Exception {
     JsonNode vector = read("cases/singleton.json");
     Setup setup = new Setup(read("contexts.json").get(vector.get("context").asText()));
     NonInclusionProof proof = new NonInclusionProof(stateId(vector.get("query").asText()),
         HexConverter.decode(vector.get("wrapper").asText()));
-    org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () ->
-        NonInclusionVerifier.verify(new UnicityCertificateVerifier(), setup.trustBase, proof,
-            setup.context));
+    assertTrue(NonInclusionVerifier.verify(new UnicityCertificateVerifier(), setup.trustBase, proof,
+        setup.context).isAbsent());
   }
 
   @Test
-  void aLegacyOperationVerifierIsRefusedAndWouldHaveAcceptedTheWrongEpoch() throws Exception {
+  void aWrongEpochIsTheAuthoritysRefusalWhicheverVerifierIsUsed() throws Exception {
     JsonNode vector = read("negative/ctx-wrong-epoch.json");
     Setup setup = new Setup(read("contexts.json").get(vector.get("context").asText()));
     NonInclusionProof proof = new NonInclusionProof(stateId(vector.get("query").asText()),
         HexConverter.decode(vector.get("wrapper").asText()));
-    UnicityCertificateVerifier legacy = new UnicityCertificateVerifier()
-        .beginOperation(VerificationPolicy.LEGACY_QUORUM, PartitionViewPolicy.none());
-    org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () ->
-        NonInclusionVerifier.verify(legacy, setup.trustBase, proof, setup.context));
-    // the strict one rejects it as the authority's refusal
-    try {
-      NonInclusionVerifier.verify(strict(), setup.trustBase, proof, setup.context);
-      fail("expected a rejection");
-    } catch (NonInclusionVerificationException e) {
-      assertEquals(NonInclusionVerificationException.Reason.AUTHORITY_REJECTED, e.getReason());
+    for (UnicityCertificateVerifier verifier : new UnicityCertificateVerifier[] {
+        new UnicityCertificateVerifier(), strict()}) {
+      try {
+        NonInclusionVerifier.verify(verifier, setup.trustBase, proof, setup.context);
+        fail("expected a rejection");
+      } catch (NonInclusionVerificationException e) {
+        assertEquals(NonInclusionVerificationException.Reason.AUTHORITY_REJECTED, e.getReason());
+      }
     }
   }
 }

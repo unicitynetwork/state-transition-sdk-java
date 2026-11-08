@@ -8,8 +8,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.unicitylabs.sdk.api.NetworkId;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
-import org.unicitylabs.sdk.api.bft.RootTrustBaseUtils;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
+import org.unicitylabs.sdk.api.bft.TrustBaseTestUtils;
 import org.unicitylabs.sdk.api.bft.ShardId;
 import org.unicitylabs.sdk.api.bft.UnicityCertificate;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
@@ -40,7 +40,7 @@ public class InclusionProofTest {
   StateId stateId;
   InclusionCertificate inclusionCertificate;
   CertificationData certificationData;
-  RootTrustBase trustBase;
+  TrustBaseHistoryView trustBase;
   UnicityCertificate unicityCertificate;
   DataHash rootHash;
 
@@ -65,7 +65,7 @@ public class InclusionProofTest {
     rootHash = root.getHash();
     inclusionCertificate = InclusionCertificate.create(root, stateId.getData());
     // Reuse user signing service as unicity certificate signing service.
-    trustBase = RootTrustBaseUtils.generateRootTrustBase(signingService.getPublicKey());
+    trustBase = TrustBaseTestUtils.singleNode(signingService.getPublicKey());
     unicityCertificate = UnicityCertificateUtils.generateCertificate(signingService, root.getHash());
     predicateVerifier = PredicateVerifierService.create();
   }
@@ -294,7 +294,7 @@ public class InclusionProofTest {
     Assertions.assertEquals(
             InclusionProofVerificationStatus.SHARD_ID_MISMATCH,
             InclusionProofVerificationRule.verify(
-                    RootTrustBaseUtils.generateRootTrustBase(signingService.getPublicKey()),
+                    TrustBaseTestUtils.singleNode(signingService.getPublicKey()),
                     this.predicateVerifier,
                     inclusionProof,
                     this.transaction
@@ -412,7 +412,7 @@ public class InclusionProofTest {
     Assertions.assertEquals(
             InclusionProofVerificationStatus.INVALID_TRUSTBASE,
             InclusionProofVerificationRule.verify(
-                    RootTrustBaseUtils.generateRootTrustBase(
+                    TrustBaseTestUtils.singleNode(
                             HexConverter.decode("020000000000000000000000000000000000000000000000000000000000000001")
                     ),
                     this.predicateVerifier,

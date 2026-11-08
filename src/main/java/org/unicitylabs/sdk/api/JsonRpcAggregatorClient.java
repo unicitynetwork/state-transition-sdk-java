@@ -9,6 +9,7 @@ import org.unicitylabs.sdk.api.jsonrpc.JsonRpcDataException;
 import org.unicitylabs.sdk.api.jsonrpc.JsonRpcHttpTransport;
 import org.unicitylabs.sdk.api.jsonrpc.JsonRpcNetworkException;
 import org.unicitylabs.sdk.api.jsonrpc.JsonRpcResponseException;
+import org.unicitylabs.sdk.api.jsonrpc.SdkVersionHeader;
 import org.unicitylabs.sdk.internal.LongPoll;
 import org.unicitylabs.sdk.internal.OperationContext;
 import org.unicitylabs.sdk.serializer.UnicityObjectMapper;
@@ -101,6 +102,25 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
    */
   public JsonRpcAggregatorClient(String url, String apiKey, boolean allowInsecureTransport,
       OkHttpClient httpClient) {
+    this(url, apiKey, allowInsecureTransport, httpClient, SdkVersionHeader.sdkDefault());
+  }
+
+  /**
+   * Create aggregator client with an explicit setting of the {@code X-SDK-Version} header, sent on
+   * every HTTP call of the client.
+   *
+   * @param url    destination url
+   * @param apiKey api key, may be null
+   * @param allowInsecureTransport when {@code true}, permit sending the api key over a non-https
+   *     url (intended for local development and testing only)
+   * @param httpClient OkHttp client to share, null for the SDK's default one
+   * @param sdkVersionHeader the header setting: default, a custom value or disabled
+   *
+   * @throws IllegalArgumentException if an api key is supplied for a non-https url and
+   *     {@code allowInsecureTransport} is {@code false}
+   */
+  public JsonRpcAggregatorClient(String url, String apiKey, boolean allowInsecureTransport,
+      OkHttpClient httpClient, SdkVersionHeader sdkVersionHeader) {
     Objects.requireNonNull(url, "url cannot be null");
 
     if (apiKey != null && !allowInsecureTransport && !JsonRpcAggregatorClient.isHttps(url)) {
@@ -108,9 +128,9 @@ public class JsonRpcAggregatorClient implements StatusAwareAggregatorClient,
               "API key must not be sent over plaintext HTTP; use an https url.");
     }
 
-    this.transport = httpClient == null
-            ? new JsonRpcHttpTransport(url)
-            : new JsonRpcHttpTransport(url, httpClient);
+    this.transport = new JsonRpcHttpTransport(url,
+            httpClient == null ? JsonRpcHttpTransport.defaultHttpClient() : httpClient,
+            JsonRpcHttpTransport.DEFAULT_MAX_RESPONSE_BYTES, sdkVersionHeader);
     this.apiKey = apiKey;
   }
 

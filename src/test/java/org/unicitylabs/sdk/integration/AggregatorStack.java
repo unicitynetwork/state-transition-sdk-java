@@ -1,5 +1,6 @@
 package org.unicitylabs.sdk.integration;
 
+import org.unicitylabs.sdk.api.bft.TrustBaseTestUtils;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -16,7 +17,7 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 import org.testcontainers.containers.ComposeContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
 
 /**
  * The aggregator stack the integration suite runs against: a BFT root node, mongodb, redis and a
@@ -172,8 +173,8 @@ public final class AggregatorStack implements AutoCloseable {
    * @return trust base
    * @throws IOException if the generated genesis cannot be read
    */
-  public RootTrustBase getTrustBase() throws IOException {
-    return RootTrustBase.fromJson(new String(
+  public TrustBaseHistoryView getTrustBase() throws IOException {
+    return TrustBaseTestUtils.fromLegacyJson(new String(
             Files.readAllBytes(getTrustBasePath()), StandardCharsets.UTF_8));
   }
 

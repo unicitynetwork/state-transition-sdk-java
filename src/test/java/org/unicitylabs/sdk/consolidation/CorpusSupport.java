@@ -1,5 +1,6 @@
 package org.unicitylabs.sdk.consolidation;
 
+import org.unicitylabs.sdk.api.bft.TrustBaseTestUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -26,7 +27,7 @@ import org.unicitylabs.sdk.api.CertificationResponse;
 import org.unicitylabs.sdk.api.InclusionProofBatch;
 import org.unicitylabs.sdk.api.InclusionProofResponse;
 import org.unicitylabs.sdk.api.StateId;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
 import org.unicitylabs.sdk.api.bft.ShardId;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.util.HexConverter;
@@ -106,7 +107,7 @@ final class CorpusSupport {
   }
 
   /** Go trust base CBOR: tag 39000 [version, network, epoch, epochStart, [[id, key, stake]...], quorum, ...]. */
-  static RootTrustBase trustBase(byte[] cbor) {
+  static TrustBaseHistoryView trustBase(byte[] cbor) {
     List<byte[]> data = CborDeserializer.decodeArray(CborDeserializer.decodeTag(cbor).getData());
     ObjectNode json = JSON.createObjectNode();
     json.put("version", 1);
@@ -132,7 +133,7 @@ final class CorpusSupport {
     json.putNull("previousEntryHash");
     json.putObject("signatures");
     try {
-      return RootTrustBase.fromJson(JSON.writeValueAsString(json));
+      return TrustBaseTestUtils.fromLegacyJson(JSON.writeValueAsString(json));
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     }

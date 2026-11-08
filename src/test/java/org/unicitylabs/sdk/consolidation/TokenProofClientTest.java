@@ -1,5 +1,6 @@
 package org.unicitylabs.sdk.consolidation;
 
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -340,7 +341,7 @@ class TokenProofClientTest {
     UnicityCertificateVerifier counting = new UnicityCertificateVerifier() {
       @Override
       public org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerificationResult verify(
-          org.unicitylabs.sdk.api.bft.RootTrustBase trustBase,
+          org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView trustBase,
           org.unicitylabs.sdk.api.InclusionProof proof) {
         verified.incrementAndGet();
         return super.verify(trustBase, proof);

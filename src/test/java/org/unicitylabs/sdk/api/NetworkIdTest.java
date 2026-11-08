@@ -56,4 +56,24 @@ public class NetworkIdTest {
             Exception.class,
             () -> UnicityObjectMapper.JSON.readValue("0", NetworkId.class));
   }
+
+  @Test
+  void namedNetworksAreMainnetTestnet2AndLocal() {
+    Assertions.assertSame(NetworkId.MAINNET, NetworkId.fromId((short) 1));
+    Assertions.assertSame(NetworkId.LOCAL, NetworkId.fromId((short) 3));
+    Assertions.assertSame(NetworkId.TESTNET2, NetworkId.fromId((short) 4));
+    Assertions.assertEquals(4, NetworkId.TESTNET2.getId());
+    Assertions.assertEquals("NetworkId[TESTNET2]", NetworkId.TESTNET2.toString());
+  }
+
+  @Test
+  void theOldTestnetHasNoNameButTwoIsStillAValidId() {
+    NetworkId two = NetworkId.fromId((short) 2);
+    Assertions.assertEquals(2, two.getId());
+    Assertions.assertEquals("NetworkId[2]", two.toString());
+    Assertions.assertNotEquals(NetworkId.TESTNET2, two);
+    for (java.lang.reflect.Field field : NetworkId.class.getFields()) {
+      Assertions.assertNotEquals("TESTNET", field.getName());
+    }
+  }
 }

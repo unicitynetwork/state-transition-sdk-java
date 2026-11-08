@@ -23,11 +23,10 @@ import org.unicitylabs.sdk.api.InclusionProofBatch;
 import org.unicitylabs.sdk.api.InclusionProofResponse;
 import org.unicitylabs.sdk.api.StateId;
 import org.unicitylabs.sdk.api.bft.PartitionViewPolicy;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
 import org.unicitylabs.sdk.api.bft.verification.OperationUnicityCertificateVerifier;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerificationResult;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerifier;
-import org.unicitylabs.sdk.api.bft.verification.VerificationPolicy;
 import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
 import org.unicitylabs.sdk.predicate.builtin.SignaturePredicate;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
@@ -126,8 +125,7 @@ class ConsolidationGuardTest {
 
   private ProofConsolidator consolidator(BatchAggregatorClient batch) {
     OperationUnicityCertificateVerifier operation = (OperationUnicityCertificateVerifier)
-        new UnicityCertificateVerifier().beginOperation(VerificationPolicy.LEGACY_QUORUM,
-            PartitionViewPolicy.none());
+        new UnicityCertificateVerifier().beginOperation(PartitionViewPolicy.none());
     return new ProofConsolidator(ShardRouting.single(batch), context.getTrustBase(), operation);
   }
 
@@ -206,7 +204,7 @@ class ConsolidationGuardTest {
     int originalProofs = items().size();
     UnicityCertificateVerifier callersRule = new UnicityCertificateVerifier() {
       @Override
-      public UnicityCertificateVerificationResult verify(RootTrustBase trustBase,
+      public UnicityCertificateVerificationResult verify(TrustBaseHistoryView trustBase,
           InclusionProof proof) {
         if (calls.incrementAndGet() > originalProofs) {
           return super.verify(TestAggregatorClient.create().getTrustBase(), proof);
@@ -236,12 +234,17 @@ class ConsolidationGuardTest {
   void aBusyVerificationSessionIsReportedAsABusyRetryableFailure() throws Exception {
     TestAggregatorClient honest = reCertify(key, 0);
     org.unicitylabs.sdk.api.bft.BlockingTrustBase blocking =
-        org.unicitylabs.sdk.api.bft.BlockingTrustBase.copyOf(context.getTrustBase());
+        new org.unicitylabs.sdk.api.bft.BlockingTrustBase();
+    TrustBaseHistoryView view = context.getTrustBase();
     OperationUnicityCertificateVerifier operation = (OperationUnicityCertificateVerifier)
-        new UnicityCertificateVerifier().beginOperation(VerificationPolicy.LEGACY_QUORUM,
-            PartitionViewPolicy.none());
+        new UnicityCertificateVerifier().beginOperation(PartitionViewPolicy.none(),
+            v -> org.unicitylabs.sdk.api.bft.verification.SealVerificationSession.create(v,
+                org.unicitylabs.sdk.api.bft.verification.SealVerificationSession
+                    .DEFAULT_MAX_ENTRIES,
+                org.unicitylabs.sdk.api.bft.verification.SealVerificationSession
+                    .DEFAULT_MAX_IN_FLIGHT, blocking));
     org.unicitylabs.sdk.api.bft.verification.SealVerificationSession session =
-        operation.sessionFor(blocking);
+        operation.sessionFor(view);
 
     // every slot of the session is taken by a check that does not finish
     blocking.arm();
@@ -258,7 +261,7 @@ class ConsolidationGuardTest {
                 new org.unicitylabs.sdk.crypto.hash.DataHash(
                     org.unicitylabs.sdk.crypto.hash.HashAlgorithm.SHA256, hash))
                 .getUnicitySeal();
-        pool.submit(() -> session.verifyLegacyQuorum(seal));
+        pool.submit(() -> session.authenticate(seal));
       }
       for (int i = 0; i < 500 && blocking.entered() < slots; i++) {
         Thread.sleep(10);
@@ -266,14 +269,14 @@ class ConsolidationGuardTest {
       assertEquals(slots, blocking.entered(), "the session is full");
 
       ConsolidationException direct = failure(new ProofConsolidator(
-          ShardRouting.single(new Batch(honest)), blocking, operation).consolidate(items(),
+          ShardRouting.single(new Batch(honest)), view, operation).consolidate(items(),
           ConsolidationOptions.defaults().withExecutor(Runnable::run)));
       assertEquals(ConsolidationException.Kind.BUSY, direct.getKind());
       assertTrue(direct.isRetryable());
       assertTrue(direct.getCause() instanceof
           org.unicitylabs.sdk.api.bft.verification.SealVerificationBusyException);
 
-      VerificationContext shared = new VerificationContext(blocking,
+      VerificationContext shared = new VerificationContext(view,
           PredicateVerifierService.create(), new MintJustificationVerifierService(),
           new TokenIssuanceVerifierService(false), operation);
       ConsolidationException viaClient = failure(tokenClient(new Batch(honest), shared));

@@ -13,7 +13,6 @@ import org.unicitylabs.sdk.api.bft.verification.OperationUnicityCertificateVerif
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateFailure;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerificationResult;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerifier;
-import org.unicitylabs.sdk.api.bft.verification.VerificationPolicy;
 import org.unicitylabs.sdk.util.verification.VerificationStatus;
 
 class UnicityCertificateBodyTest {
@@ -125,7 +124,7 @@ class UnicityCertificateBodyTest {
         .verifyCertificate(AUTHORITY.trustBase(), certificate);
     assertEquals(UnicityCertificateFailure.PARTITION_MISMATCH, legacy.getFailure());
     OperationUnicityCertificateVerifier strict = (OperationUnicityCertificateVerifier)
-        new UnicityCertificateVerifier().beginOperation(VerificationPolicy.STRICT, null);
+        new UnicityCertificateVerifier().beginOperation(null);
     assertEquals(UnicityCertificateFailure.PARTITION_MISMATCH,
         strict.verifyCertificate(AUTHORITY.trustBase(), certificate).getFailure());
   }
@@ -165,7 +164,7 @@ class UnicityCertificateBodyTest {
     assertNull(decoded.getInputRecord().getHash());
     assertNull(decoded.checkBody());
     OperationUnicityCertificateVerifier strict = (OperationUnicityCertificateVerifier)
-        new UnicityCertificateVerifier().beginOperation(VerificationPolicy.STRICT, null);
+        new UnicityCertificateVerifier().beginOperation(null);
     assertSame(null, strict.verifyCertificate(AUTHORITY.trustBase(), decoded).getFailure());
     assertEquals(VerificationStatus.OK,
         strict.verifyCertificate(AUTHORITY.trustBase(), decoded).getStatus());

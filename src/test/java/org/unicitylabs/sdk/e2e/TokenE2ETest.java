@@ -1,12 +1,13 @@
 package org.unicitylabs.sdk.e2e;
 
+import org.unicitylabs.sdk.api.bft.TrustBaseTestUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.unicitylabs.sdk.StateTransitionClient;
 import org.unicitylabs.sdk.api.JsonRpcAggregatorClient;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
 import org.unicitylabs.sdk.common.CommonTestFlow;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
 import org.unicitylabs.sdk.transaction.verification.MintJustificationVerifierService;
@@ -40,7 +41,7 @@ public class TokenE2ETest extends CommonTestFlow {
     try (InputStream stream = getClass().getResourceAsStream("/trust-base.json")) {
       assertNotNull(stream, "trust-base.json not found");
       this.context = new VerificationContext(
-              RootTrustBase.fromJson(new String(stream.readAllBytes())),
+              TrustBaseTestUtils.fromLegacyJson(new String(stream.readAllBytes())),
               PredicateVerifierService.create(), new MintJustificationVerifierService(),
               new TokenIssuanceVerifierService(false));
     }
