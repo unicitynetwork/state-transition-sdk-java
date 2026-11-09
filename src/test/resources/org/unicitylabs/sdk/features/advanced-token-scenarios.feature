@@ -6,7 +6,7 @@ Feature: Advanced Token Scenarios
 
   Background:
     Given the aggregator URL is configured
-    And trust-base.json is set
+    And the trust base is set
     And the state transition client is initialized
     And the following users are set up with their signing services
       | Alice |

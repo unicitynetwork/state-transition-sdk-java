@@ -27,7 +27,10 @@ import org.unicitylabs.sdk.api.CertificationResponse;
 import org.unicitylabs.sdk.api.InclusionProofBatch;
 import org.unicitylabs.sdk.api.InclusionProofResponse;
 import org.unicitylabs.sdk.api.StateId;
+import org.unicitylabs.sdk.api.NetworkId;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistory;
 import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseMember;
 import org.unicitylabs.sdk.api.bft.ShardId;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.util.HexConverter;
@@ -106,37 +109,31 @@ final class CorpusSupport {
     return ShardId.fromBitString(bits);
   }
 
-  /** Go trust base CBOR: tag 39000 [version, network, epoch, epochStart, [[id, key, stake]...], quorum, ...]. */
+  /**
+   * The consolidation corpus authority, a Go version-1 record (tag 39000 [version, network, epoch,
+   * epochStart, [[id, key, stake]...], quorum, ...]), as the one genesis entry of a history. The
+   * entry rules apply: the recorded quorum must be the exact threshold for the weights.
+   */
   static TrustBaseHistoryView trustBase(byte[] cbor) {
     List<byte[]> data = CborDeserializer.decodeArray(CborDeserializer.decodeTag(cbor).getData());
-    ObjectNode json = JSON.createObjectNode();
-    json.put("version", 1);
-    json.put("networkId", CborDeserializer.decodeUnsignedInteger(data.get(1)).asLong());
-    json.put("epoch", Long.toUnsignedString(
-        CborDeserializer.decodeUnsignedInteger(data.get(2)).asLong()));
-    json.put("epochStartRound", Long.toUnsignedString(
-        CborDeserializer.decodeUnsignedInteger(data.get(3)).asLong()));
-    ArrayNode nodes = json.putArray("rootNodes");
+    List<TrustBaseMember> members = new ArrayList<>();
     for (byte[] node : CborDeserializer.decodeArray(data.get(4))) {
       List<byte[]> fields = CborDeserializer.decodeArray(node, 3);
-      ObjectNode entry = nodes.addObject();
-      entry.put("nodeId", CborDeserializer.decodeTextString(fields.get(0)));
-      entry.put("sigKey", "0x" + HexConverter.encode(
-          CborDeserializer.decodeByteString(fields.get(1))));
-      entry.put("stake", Long.toUnsignedString(
+      members.add(new TrustBaseMember(CborDeserializer.decodeTextString(fields.get(0)),
+          CborDeserializer.decodeByteString(fields.get(1)),
           CborDeserializer.decodeUnsignedInteger(fields.get(2)).asLong()));
     }
-    json.put("quorumThreshold", Long.toUnsignedString(
-        CborDeserializer.decodeUnsignedInteger(data.get(5)).asLong()));
-    json.put("stateHash", "");
-    json.putNull("changeRecordHash");
-    json.putNull("previousEntryHash");
-    json.putObject("signatures");
-    try {
-      return TrustBaseTestUtils.fromLegacyJson(JSON.writeValueAsString(json));
-    } catch (IOException e) {
-      throw new UncheckedIOException(e);
+    long epoch = CborDeserializer.decodeUnsignedInteger(data.get(2)).asLong();
+    TrustBaseHistory history = TrustBaseTestUtils.genesis(
+        NetworkId.fromId((short) CborDeserializer.decodeUnsignedInteger(data.get(1)).asLong()),
+        epoch == 0 ? 1 : epoch,
+        CborDeserializer.decodeUnsignedInteger(data.get(3)).asLong(), members);
+    long quorum = CborDeserializer.decodeUnsignedInteger(data.get(5)).asLong();
+    if (history.getTip().get().getQuorumThreshold() != quorum) {
+      throw new IllegalArgumentException("the corpus quorum " + quorum
+          + " is not the entry threshold " + history.getTip().get().getQuorumThreshold());
     }
+    return history;
   }
 
   /** Certification data inside a Go certification request (tag 39030). */

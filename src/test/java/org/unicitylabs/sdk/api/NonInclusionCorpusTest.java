@@ -79,10 +79,8 @@ class NonInclusionCorpusTest {
     final NonInclusionContext context;
 
     Setup(JsonNode ctx) throws IOException {
-      String json = new String(
-          Files.readAllBytes(ROOT.resolve(ctx.get("trustBaseJson").asText())),
-          StandardCharsets.UTF_8);
-      this.trustBase = TrustBaseTestUtils.fromLegacyJson(json);
+      this.trustBase = TrustBaseTestUtils.fromBundle(
+          Files.readAllBytes(ROOT.resolve(ctx.get("trustBaseBundle").asText())));
       NonInclusionContext c = NonInclusionContext.unsharded()
           .withShard(shard(ctx.get("shard").asText()));
       if (!"0".equals(ctx.get("nextEpochStart").asText())) {

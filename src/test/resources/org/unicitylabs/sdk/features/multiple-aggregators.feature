@@ -2,7 +2,7 @@ Feature: Bulk Commitment Testing with Multiple Aggregators
 
   Scenario: Submit commitments to multiple aggregators concurrently
     Given the aggregator URLs are configured
-    And trust-base.json is set
+    And the trust base is set
     And the aggregator clients are initialized
     And I configure 10 threads with 10 commitments each
     When I submit all mint commitments concurrently to all aggregators

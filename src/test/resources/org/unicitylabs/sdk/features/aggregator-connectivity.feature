@@ -6,7 +6,7 @@ Feature: Aggregator Connectivity and Basic Operations
 
   Background:
     Given the aggregator URL is configured
-    And trust-base.json is set
+    And the trust base is set
     And the aggregator client is initialized
 
   Scenario: Verify aggregator connectivity

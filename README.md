@@ -149,7 +149,7 @@ Run the integration tests, including Docker-based tests:
 ./gradlew integrationTest
 ```
 
-The [deployed-network test](./src/test/java/org/unicitylabs/sdk/e2e/TokenE2ETest.java) is enabled by `AGGREGATOR_URL`. Its current setup loads `src/test/resources/trust-base.json` and creates a client without an API key; configure both for your target network before running it.
+The [deployed-network test](./src/test/java/org/unicitylabs/sdk/e2e/TokenE2ETest.java) is enabled by `AGGREGATOR_URL`. Its setup opens the trust base history the aggregator under test serves (the local-network setup, for a deployment you run yourself; for a public network use a pinned session instead) and creates a client without an API key; configure both for your target network before running it.
 
 ## Resources
 

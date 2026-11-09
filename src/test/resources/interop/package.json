@@ -4,6 +4,6 @@
   "type": "module",
   "description": "Mints a token with the published TypeScript SDK so the Java suite can verify it.",
   "dependencies": {
-    "@unicitylabs/state-transition-sdk": "3.0.1"
+    "@unicitylabs/state-transition-sdk": "4.0.0"
   }
 }

@@ -63,7 +63,7 @@ class NonInclusionCorpusLockTest {
     Map<String, String> actual = actualFiles();
     assertEquals(locked, actual, "vendored file set or contents differ from the lock");
     assertEquals(
-        "7bfb40a209b137acdcfa3deea0834a54924ce32e7d9d41c0d9d583ae3dc5dd8b", manifestPin);
+        "a4adc4d06fa1f03572d7fd675909df21e36060e7d094365b77a373f052ae64cf", manifestPin);
     assertEquals(manifestPin, actual.get("manifest.json"));
   }
 

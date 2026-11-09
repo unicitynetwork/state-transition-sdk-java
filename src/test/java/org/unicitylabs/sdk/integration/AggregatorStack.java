@@ -159,23 +159,27 @@ public final class AggregatorStack implements AutoCloseable {
   }
 
   /**
-   * Get the path of the trust base the BFT root node generated for this run.
+   * Fetch the trust base history the aggregator of this run serves: the complete bundle (tag 39015)
+   * from the genesis entry to the tip, as {@code GET /api/v1/trustbases} answers it. The stack is
+   * the test's own, so the bundle is the local deployment's authority and its genesis entry is the
+   * pin.
    *
-   * @return trust base path
+   * @return bundle bytes
+   * @throws IOException if the aggregator does not serve a bundle
    */
-  public Path getTrustBasePath() {
-    return DATA_DIR.resolve("genesis").resolve("trust-base.json");
+  public byte[] fetchTrustBaseBundle() throws IOException {
+    return TrustBaseTestUtils.fetchServedBundle(this.url);
   }
 
   /**
-   * Read the trust base the BFT root node generated for this run.
+   * Open the trust base history the aggregator of this run serves (see
+   * {@link #fetchTrustBaseBundle()}), pinned by the identity of its own genesis entry.
    *
    * @return trust base
-   * @throws IOException if the generated genesis cannot be read
+   * @throws IOException if the bundle cannot be fetched
    */
   public TrustBaseHistoryView getTrustBase() throws IOException {
-    return TrustBaseTestUtils.fromLegacyJson(new String(
-            Files.readAllBytes(getTrustBasePath()), StandardCharsets.UTF_8));
+    return TrustBaseTestUtils.fromBundle(fetchTrustBaseBundle());
   }
 
   @Override

@@ -1,16 +1,12 @@
 package org.unicitylabs.sdk.api.bft;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import org.unicitylabs.sdk.api.NetworkId;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseBundle;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseBundleLimits;
 import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseEntry;
 import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistory;
 import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseMember;
-import org.unicitylabs.sdk.util.HexConverter;
 
 /** Test trust bases: a history holding one genesis entry, pinned by its own entry id. */
 public final class TrustBaseTestUtils {
@@ -33,6 +29,10 @@ public final class TrustBaseTestUtils {
   /** A history of one genesis entry of the given members, with the exact threshold. */
   public static TrustBaseHistory genesis(NetworkId network, long epoch, long epochStartRound,
       List<TrustBaseMember> members) {
+    members = new java.util.ArrayList<>(members);
+    members.sort(java.util.Comparator.comparing(
+        m -> m.getNodeId().getBytes(java.nio.charset.StandardCharsets.UTF_8),
+        java.util.Arrays::compareUnsigned));
     long total = 0;
     for (TrustBaseMember member : members) {
       total += member.getWeight();
@@ -45,26 +45,35 @@ public final class TrustBaseTestUtils {
   }
 
   /**
-   * A history of one genesis entry from the recorded fields of a V1 JSON trust base (network,
-   * epoch, start round, nodes with key and stake): the corpus fixtures record real seals and the
-   * authority that signed them in that form. The threshold is the exact one for the weights.
+   * The history of a trust base bundle (a corpus authority: tag 39015, genesis to tip), pinned by the
+   * identity of its own genesis entry the way a verifier opens a local deployment's bundle.
    */
-  public static TrustBaseHistory fromLegacyJson(String json) {
+  public static TrustBaseHistory fromBundle(byte[] bytes) {
+    TrustBaseBundle bundle = TrustBaseBundle.decode(bytes,
+        new TrustBaseBundleLimits(bytes.length, 1024));
+    return TrustBaseHistory.fromBundle(bundle, bundle.getEntries().get(0).entryId());
+  }
+
+  /**
+   * The complete trust base bundle (tag 39015, genesis to tip) a running aggregator serves at
+   * {@code GET /api/v1/trustbases}. For a deployment this suite started itself, whose bundle is its
+   * own authority (the local-network setup); never a way to authenticate a network.
+   */
+  public static byte[] fetchServedBundle(String aggregatorUrl) throws java.io.IOException {
+    java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder(
+        java.net.URI.create(aggregatorUrl.replaceAll("/+$", "")
+            + "/api/v1/trustbases?from=1&maxEntries=64")).GET().build();
     try {
-      JsonNode node = new ObjectMapper().readTree(json);
-      List<TrustBaseMember> members = new ArrayList<>();
-      for (JsonNode n : node.get("rootNodes")) {
-        members.add(new TrustBaseMember(n.get("nodeId").asText(),
-            HexConverter.decode(n.get("sigKey").asText()), n.get("stake").asLong()));
+      java.net.http.HttpResponse<byte[]> response = java.net.http.HttpClient.newHttpClient()
+          .send(request, java.net.http.HttpResponse.BodyHandlers.ofByteArray());
+      if (response.statusCode() != 200) {
+        throw new java.io.IOException("the aggregator serves no trust base bundle: HTTP "
+            + response.statusCode());
       }
-      members.sort(Comparator.comparing(m -> m.getNodeId().getBytes(StandardCharsets.UTF_8),
-          java.util.Arrays::compareUnsigned));
-      return genesis(NetworkId.fromId((short) node.get("networkId").asInt()),
-          Long.parseUnsignedLong(node.get("epoch").asText()) == 0
-              ? 1 : Long.parseUnsignedLong(node.get("epoch").asText()),
-          Long.parseUnsignedLong(node.get("epochStartRound").asText()), members);
-    } catch (java.io.IOException e) {
-      throw new IllegalArgumentException(e);
+      return response.body();
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new java.io.IOException(e);
     }
   }
 }

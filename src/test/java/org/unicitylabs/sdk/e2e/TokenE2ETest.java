@@ -15,7 +15,6 @@ import org.unicitylabs.sdk.transaction.verification.TokenIssuanceVerifierService
 import org.unicitylabs.sdk.transaction.verification.VerificationContext;
 
 import java.io.IOException;
-import java.io.InputStream;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -38,13 +37,11 @@ public class TokenE2ETest extends CommonTestFlow {
 
     this.aggregatorClient = new JsonRpcAggregatorClient(aggregatorUrl);
     this.client = new StateTransitionClient(this.aggregatorClient);
-    try (InputStream stream = getClass().getResourceAsStream("/trust-base.json")) {
-      assertNotNull(stream, "trust-base.json not found");
-      this.context = new VerificationContext(
-              TrustBaseTestUtils.fromLegacyJson(new String(stream.readAllBytes())),
-              PredicateVerifierService.create(), new MintJustificationVerifierService(),
-              new TokenIssuanceVerifierService(false));
-    }
+    // the trust base history the aggregator under test serves (the local-network setup)
+    this.context = new VerificationContext(
+            TrustBaseTestUtils.fromBundle(TrustBaseTestUtils.fetchServedBundle(aggregatorUrl)),
+            PredicateVerifierService.create(), new MintJustificationVerifierService(),
+            new TokenIssuanceVerifierService(false));
   }
 
   @Test

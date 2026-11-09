@@ -76,22 +76,20 @@ class SignatureRecoveryVectorsTest {
   @TestFactory
   List<DynamicTest> sealCases() {
     JsonNode seal = fixture.get("seal");
-    StringBuilder nodes = new StringBuilder();
+    List<org.unicitylabs.sdk.api.bft.trustbase.TrustBaseMember> members = new ArrayList<>();
     for (JsonNode node : seal.get("nodes")) {
-      if (nodes.length() > 0) {
-        nodes.append(',');
-      }
-      nodes.append("{\"nodeId\":\"").append(node.get("id").asText())
-          .append("\",\"sigKey\":\"").append(node.get("publicKeyCompressed").asText())
-          .append("\",\"stake\":").append(node.get("stake").asText()).append('}');
+      members.add(new org.unicitylabs.sdk.api.bft.trustbase.TrustBaseMember(
+          node.get("id").asText(),
+          HexConverter.decode(node.get("publicKeyCompressed").asText()),
+          node.get("stake").asLong()));
     }
     org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistory trustBase =
-        TrustBaseTestUtils.fromLegacyJson("{\"version\":1,\"networkId\":"
-        + seal.get("networkId").asText() + ",\"epoch\":" + seal.get("epoch").asText()
-        + ",\"epochStartRound\":0,\"rootNodes\":[" + nodes + "],\"quorumThreshold\":"
-        + seal.get("quorumThreshold").asText()
-        + ",\"stateHash\":\"\",\"changeRecordHash\":\"\",\"previousEntryHash\":\"\","
-        + "\"signatures\":{}}");
+        TrustBaseTestUtils.genesis(
+            org.unicitylabs.sdk.api.NetworkId.fromId((short) seal.get("networkId").asInt()),
+            seal.get("epoch").asLong(), 1, members);
+    assertEquals(seal.get("quorumThreshold").asLong(),
+        trustBase.getTip().get().getQuorumThreshold(),
+        "the fixture quorum is the entry threshold");
 
     List<DynamicTest> tests = new ArrayList<>();
     for (JsonNode testCase : seal.get("cases")) {
