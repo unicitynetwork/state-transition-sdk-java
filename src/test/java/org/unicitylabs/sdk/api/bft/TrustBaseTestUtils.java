@@ -76,4 +76,24 @@ public final class TrustBaseTestUtils {
       throw new java.io.IOException(e);
     }
   }
+
+  /**
+   * Open the bundle of a local deployment as a session, the way an application opens its own
+   * network, and return the session's history. The bundle is the deployment's authority; this is
+   * never a way to authenticate a public network.
+   */
+  public static org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView openLocal(
+      byte[] bundle) throws java.io.IOException {
+    try {
+      return org.unicitylabs.sdk.api.bft.trustbase.TrustBaseSession.openLocal(bundle,
+          new org.unicitylabs.sdk.api.bft.trustbase.MemoryTrustBaseStore(),
+          org.unicitylabs.sdk.api.bft.trustbase.TrustBaseSessionOptions.of(Runnable::run))
+          .get().getSession().history();
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new java.io.IOException(e);
+    } catch (java.util.concurrent.ExecutionException e) {
+      throw new java.io.IOException("the bundle does not open as a local session", e);
+    }
+  }
 }

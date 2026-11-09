@@ -110,30 +110,11 @@ final class CorpusSupport {
   }
 
   /**
-   * The consolidation corpus authority, a Go version-1 record (tag 39000 [version, network, epoch,
-   * epochStart, [[id, key, stake]...], quorum, ...]), as the one genesis entry of a history. The
-   * entry rules apply: the recorded quorum must be the exact threshold for the weights.
+   * The consolidation corpus authority: a trust base v2 bundle (tag 39015) of one genesis entry,
+   * opened as a history pinned by that entry's identity.
    */
-  static TrustBaseHistoryView trustBase(byte[] cbor) {
-    List<byte[]> data = CborDeserializer.decodeArray(CborDeserializer.decodeTag(cbor).getData());
-    List<TrustBaseMember> members = new ArrayList<>();
-    for (byte[] node : CborDeserializer.decodeArray(data.get(4))) {
-      List<byte[]> fields = CborDeserializer.decodeArray(node, 3);
-      members.add(new TrustBaseMember(CborDeserializer.decodeTextString(fields.get(0)),
-          CborDeserializer.decodeByteString(fields.get(1)),
-          CborDeserializer.decodeUnsignedInteger(fields.get(2)).asLong()));
-    }
-    long epoch = CborDeserializer.decodeUnsignedInteger(data.get(2)).asLong();
-    TrustBaseHistory history = TrustBaseTestUtils.genesis(
-        NetworkId.fromId((short) CborDeserializer.decodeUnsignedInteger(data.get(1)).asLong()),
-        epoch == 0 ? 1 : epoch,
-        CborDeserializer.decodeUnsignedInteger(data.get(3)).asLong(), members);
-    long quorum = CborDeserializer.decodeUnsignedInteger(data.get(5)).asLong();
-    if (history.getTip().get().getQuorumThreshold() != quorum) {
-      throw new IllegalArgumentException("the corpus quorum " + quorum
-          + " is not the entry threshold " + history.getTip().get().getQuorumThreshold());
-    }
-    return history;
+  static TrustBaseHistoryView trustBase(byte[] bundle) {
+    return TrustBaseTestUtils.fromBundle(bundle);
   }
 
   /** Certification data inside a Go certification request (tag 39030). */

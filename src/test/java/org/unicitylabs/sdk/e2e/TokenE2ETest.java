@@ -39,7 +39,7 @@ public class TokenE2ETest extends CommonTestFlow {
     this.client = new StateTransitionClient(this.aggregatorClient);
     // the trust base history the aggregator under test serves (the local-network setup)
     this.context = new VerificationContext(
-            TrustBaseTestUtils.fromBundle(TrustBaseTestUtils.fetchServedBundle(aggregatorUrl)),
+            TrustBaseTestUtils.openLocal(TrustBaseTestUtils.fetchServedBundle(aggregatorUrl)),
             PredicateVerifierService.create(), new MintJustificationVerifierService(),
             new TokenIssuanceVerifierService(false));
   }
