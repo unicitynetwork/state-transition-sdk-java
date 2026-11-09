@@ -220,15 +220,21 @@ class TrustBaseUpdaterTest {
     assertThrows(TrustBaseUpdateException.class, () -> update(history, lying));
     // with a snapshot frozen, a not-yet-available page does not end the call as current by
     // itself: the source is asked again without the snapshot (an honest source answers an end
-    // above its own tip this way), and only that answer counts
+    // above its own tip this way). And while an end at or above the next epoch was announced, the
+    // answer without the snapshot that only knows an older tip is transient, not "current"
     TrustBaseHistory second = genesisOnly();
     Script paged = new Script((n, r) -> n == 0 ? page(2, 3, 5, 4L)
         : status(TrustBaseStatus.NOT_YET_AVAILABLE, 4, 1));
-    assertEquals(2, update(second, paged), "the authenticated prefix is kept");
+    TrustBaseUpdateException lagging = assertThrows(TrustBaseUpdateException.class,
+        () -> update(second, paged));
+    assertEquals(Failure.NONE_SERVED, lagging.getFailure(),
+        "a source that only knows the older tip does not end the call as current");
+    assertEquals(2, lagging.getAppended(), "the authenticated prefix is kept");
     assertEquals(3, tip(second));
     assertNotNull(paged.requests.get(1).getSnapshot(), "the second request echoed the snapshot");
     assertNull(paged.requests.get(2).getSnapshot(), "the refusal was asked again without it");
-    // and when that answer is not "nothing newer" either, the source is refused for good
+    // and when the answer without the snapshot is not "nothing newer" either, the source is
+    // refused for good
     TrustBaseHistory third = genesisOnly();
     Script refusing = new Script((n, r) -> n == 0 ? page(2, 3, 5, 4L)
         : status(TrustBaseStatus.NOT_YET_AVAILABLE, 4, 9));

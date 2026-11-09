@@ -193,6 +193,12 @@ public final class TrustBaseUpdater {
       // an entry is refused.
       long from = nextFrom();
       TrustBaseRequest.Snapshot snapshot = null;
+      // The highest end any source announced in this call, kept apart from the snapshot: dropping
+      // the snapshot (a source refused it) does not forget that a higher end was announced, so a
+      // source that only knows the older tip still cannot end the call as current. It is reset
+      // where the snapshot is reset because an entry was refused or the target moved on.
+      boolean announced = false;
+      long announcedEnd = 0;
 
       for (int round = 0; round < this.options.getRounds(); round++) {
         if (round > 0 && this.pause(this.options.getBackoffMs())) {
@@ -213,6 +219,7 @@ public final class TrustBaseUpdater {
             if (Long.compareUnsigned(this.nextFrom(), from) > 0) {
               from = this.nextFrom();
               snapshot = null;
+              announced = false;
             }
             TrustBaseRequest request =
                 new TrustBaseRequest(from, limits.getMaxEntries(), network, snapshot);
@@ -240,10 +247,16 @@ public final class TrustBaseUpdater {
 
             // A source's tip is unauthenticated metadata: a lagging or hostile source must not
             // end the update. Only when every source says there is nothing newer is the target
-            // taken as current.
+            // taken as current, and not while an end at or above the next epoch was announced
+            // (and the snapshot dropped since): then the answer is transient, asked again in the
+            // next round.
             if (page.getStatus() == TrustBaseStatus.NOT_YET_AVAILABLE && snapshot == null
                 && Long.compareUnsigned(page.getEffectiveEnd(), from) < 0) {
-              current++;
+              if (announced && Long.compareUnsigned(announcedEnd, from) >= 0) {
+                causes.add(new Cause(index, CauseKind.STATUS, null, page.getStatus()));
+              } else {
+                current++;
+              }
               break;
             }
             // A source that refuses the echoed snapshot may be the honest one: the snapshot came
@@ -292,6 +305,7 @@ public final class TrustBaseUpdater {
                 causes.add(new Cause(index, CauseKind.REFUSED, e, null));
                 refused = true;
                 snapshot = null;
+                announced = false;
                 from = this.nextFrom();
                 break;
               } catch (TrustBaseException e) {
@@ -300,6 +314,7 @@ public final class TrustBaseUpdater {
                 causes.add(new Cause(index, CauseKind.REFUSED, e, null));
                 refused = true;
                 snapshot = null;
+                announced = false;
                 from = this.nextFrom();
                 break;
               }
@@ -309,6 +324,10 @@ public final class TrustBaseUpdater {
             }
             if (page.getNextEpoch() == null) {
               return appended;
+            }
+            if (!announced || Long.compareUnsigned(page.getEffectiveEnd(), announcedEnd) > 0) {
+              announced = true;
+              announcedEnd = page.getEffectiveEnd();
             }
             if (snapshot == null) {
               byte[] end = page.getEndEntryId();
