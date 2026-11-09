@@ -56,48 +56,31 @@ dependencies {
 
 Mainnet is live. Start with testnet2; for production, use the mainnet gateway and matching trust base.
 
-| Network | Gateway | Network ID | Trust base |
-| --- | --- | --- | --- |
-| Mainnet | `https://gateway.mainnet.unicity.network` | `1` | genesis pinned in this SDK (`ReleasePins`); open it with `TrustBaseSession.openPublic` |
-| Testnet2 | `https://gateway.testnet2.unicity.network` | `4` | genesis pinned in this SDK (`ReleasePins`); open it with `TrustBaseSession.openPublic` |
+| Network | Gateway | Network ID |
+| --- | --- | --- |
+| Mainnet | `https://gateway.mainnet.unicity.network` | `1` |
+| Testnet2 | `https://gateway.testnet2.unicity.network` | `4` |
 
 Pass your gateway API key as the second argument to `JsonRpcAggregatorClient`. The public testnet2 key is `sk_ddc3cfcc001e4a28ac3fad7407f99590`. Use your own mainnet key obtained from [Sphere](https://sphere.unicity.network/) and keep it secure.
 
 ### First connection
 
-Put the complete trust-base bundle of your network (a CBOR file, tag 39015, from the genesis entry to the tip) in your working directory as `trust-base-bundle.cbor`, and pin the entry id of its genesis entry (hex) in `GENESIS_PIN`. Add this class to your application and run it:
+Add this class to your application and run it to check connectivity. Token verification also needs a trust-base history pinned to a known genesis; open it through a session using the [mainnet, testnet2 or local setup](./docs/api-reference.md#10-trust-base-sessions).
 
 ```java
-import java.nio.file.Files;
-import java.nio.file.Path;
 import org.unicitylabs.sdk.StateTransitionClient;
 import org.unicitylabs.sdk.api.JsonRpcAggregatorClient;
-import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseBundle;
-import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseBundleLimits;
-import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistory;
-import org.unicitylabs.sdk.util.HexConverter;
 
 public class Connect {
-    // entry id of the genesis entry of your network, from a source you trust
-    static final String GENESIS_PIN = "...";
-
     public static void main(String[] args) throws Exception {
         var aggregator = new JsonRpcAggregatorClient(
                 "https://gateway.testnet2.unicity.network",
                 "sk_ddc3cfcc001e4a28ac3fad7407f99590"); // Public testnet2 key
         var client = new StateTransitionClient(aggregator);
-        var bundle = TrustBaseBundle.decode(
-                Files.readAllBytes(Path.of("trust-base-bundle.cbor")),
-                new TrustBaseBundleLimits(1 << 20, 64));
-        var trustBase = TrustBaseHistory.fromBundle(bundle, HexConverter.decode(GENESIS_PIN));
-
-        System.out.println("Network ID: " + trustBase.getNetworkId().get().getId());
         System.out.println("Latest round: " + aggregator.getLatestBlockNumber().get());
     }
 }
 ```
-
-The trust base history identifies the Consensus Layer (BFT Core) instance: pin the genesis entry id in your application for production, and every later entry must be signed by a quorum of its predecessor. The single-record JSON trust base is no longer read, and there is no compatibility wrapper. Use `trustBase.getNetworkId().get()` when creating tokens so they match your gateway; testnet2 is network ID `4`, `NetworkId.TESTNET2` (mainnet is `NetworkId.MAINNET`, `1`). The old testnet, network 2, has no constant any more.
 
 The example waits for the result with `.get()`. In asynchronous applications, compose the returned futures; on Android, keep blocking calls off the UI thread.
 
@@ -116,7 +99,7 @@ For minting and transfers, create the transaction, submit its `CertificationData
 
 `waitInclusionProof()` sends its first request immediately and, by default, asks the aggregator to hold each request while the state is pending (long polling). The proof then arrives soon after certification, usually within a single request. Aggregators without long polling are polled at the interval. The default budget is 15 seconds; adjust it, the interval, and the long-poll window with `WaitOptions`. Cancelling the returned future cancels the request in flight. See the [API reference](./docs/api-reference.md#7-waiting-for-inclusion-proofs).
 
-These examples are test code with local network configuration. When adapting them to a public network, use the matching gateway, key, and trust base, and pass `trustBase.getNetworkId()` when minting.
+These examples are test code with local network configuration. When adapting them to a public network, use the matching gateway, key, and trust base, and pass `trustBase.getNetworkId().get()` when minting.
 
 ### Store, send, and receive
 
@@ -149,6 +132,8 @@ Unicity proofs provide independently verifiable evidence of certified state tran
 Use the SDK's verification APIs with the authentic network trust base and your application's token issuance policies. A token's cryptographic validity and whether your application accepts its issuer are separate checks; register accepted token types with `TokenIssuanceVerifierService`. Keep private keys and token backups secure, and check that received tokens belong to the intended recipient.
 
 ## Development
+
+Use JDK 21 for the Gradle build, matching CI; the SDK still targets Java 11. Select it with `JAVA_HOME` if another JDK is your system default.
 
 From a repository checkout:
 
