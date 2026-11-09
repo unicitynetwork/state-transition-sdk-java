@@ -63,7 +63,7 @@ class UcConsolidationCorpusLockTest {
     Map<String, String> actual = actualFiles();
     assertEquals(locked, actual, "vendored file set or contents differ from the lock");
     assertEquals(
-        "39188cf6344211747be164524fa226533cbdcb595f6e1a1972476ab46c58c114", manifestPin);
+        "58975fede900246fcf298e7b9ee9b6a28e753829f6a79cb5b603b60e9a275b2f", manifestPin);
     assertEquals(manifestPin, actual.get("manifest.json"));
   }
 

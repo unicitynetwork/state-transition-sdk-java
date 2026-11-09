@@ -1,9 +1,9 @@
 # Source lock of src/test/resources/shared/non-inclusion/v2 (vendored byte for byte, never regenerated here).
 source-repo: ristik/aggregator-go (branch risto/ni-corpus-utb-authority; the authorities are trust base v2 bundles on the local network, no JSON or version-1 trust base)
-source-commit: 427da05c4a735bfa8773927988b3d68aad638b61
+source-commit: f072f4afee319c030c263a6250e512949cc64900
 source-path: testdata/non-inclusion/v2
-manifest-sha256: 559db36b6d0145f61f6751e992a58c88fa7c518123e8e384cbcbd62fc5fd2977
-generator-commit: b420fd193d2b84cd98f5d39b1f586895eb7a9599 (recorded in manifest.json)
+manifest-sha256: 73889412bf5baf9074a2a2f67a4fee7c7b7221988fc10806a7df957d2cc9f946
+generator-commit: 5dc939966d12e218a0279cd6138ec731300185b0 (recorded in manifest.json)
 # <sha256>  <path relative to the vendored directory>, every file including manifest.json
 de07966f5959d8cabeae425fbd4d060e8d3ed3c685e13e1892588beea3c65749  SPEC.md
 772d0255116f708e5ea8718bef8ae386b4e5bb1ce6cd02700ca34f491cfc2979  authority/big-epoch.cbor
@@ -41,7 +41,7 @@ b5898dc594aa28371aed8bac4ec1695b552e851b3979a1cc29f0d379fe75305c  cases/singleto
 a95b6444b53f877cf6cf5156cf5cc0c6c9bec59b1b18b32e8ef9778814abccac  cases/zero-root.json
 569e92f88ef0dcab7ed5025c8e36b54b924de13522d6eb1f5691a494868e9bf5  contexts.json
 d02883f70cbf7f5331be4fd37e629f4eab3e2229d9554fa8b21eb37d7278468c  direct-unsharded/latest.json
-559db36b6d0145f61f6751e992a58c88fa7c518123e8e384cbcbd62fc5fd2977  manifest.json
+73889412bf5baf9074a2a2f67a4fee7c7b7221988fc10806a7df957d2cc9f946  manifest.json
 d852f6d7525efb3a720f8e03224a757ae4e616b6d2311b8058de0fbd6ae49f5e  negative/cert-bitmap-bit-moved.json
 014fb3e8a5046fe267b116b3df15f21cf80b0dc14f9777c57c3a39e539400a8d  negative/cert-bitmap-extra-bit.json
 8366e83ecab9808f56832147b101b5ce34b7c95b0fe53e097a833734d472d0be  negative/cert-empty-against-nonempty-root.json
