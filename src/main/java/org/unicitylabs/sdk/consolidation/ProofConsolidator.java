@@ -42,6 +42,7 @@ import org.unicitylabs.sdk.api.bft.UnicitySeal;
 import org.unicitylabs.sdk.api.bft.verification.OperationUnicityCertificateVerifier;
 import org.unicitylabs.sdk.api.bft.verification.SealVerificationResult;
 import org.unicitylabs.sdk.api.bft.verification.SealVerificationSession;
+import org.unicitylabs.sdk.api.bft.verification.NoTrustBaseEntryResult;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateFailure;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerificationResult;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
@@ -504,7 +505,9 @@ public final class ProofConsolidator {
         UnicityCertificateVerificationResult verified = verifier.verifyCertificate(trustBase, uc);
         evidenceBodyChecks += verifier.getStats().getBodyChecks() - bodiesBefore;
         if (verified.getStatus() != VerificationStatus.OK) {
-          throw certificateFailure("Evidence " + i, verified.getFailure(), shard, null);
+          NoTrustBaseEntryResult noEntry = NoTrustBaseEntryResult.find(verified);
+          throw certificateFailure("Evidence " + i, verified.getFailure(), shard,
+              noEntry == null ? null : noEntry.toException());
         }
         String pinViolation = routing.getViewPolicy().violation(shard,
             uc.getShardConfigurationHash());

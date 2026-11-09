@@ -23,13 +23,13 @@ import org.unicitylabs.sdk.util.HexConverter;
 /** The release table: approved assets, the generated manifest, and the full chain of each row. */
 class ReleasePinsTest {
 
-  /** The approved bundles of unicity-ids PR 11 at 513dc4fc (also shipped by the JS and Rust SDKs). */
+  /** The approved bundles of unicity-ids PR 11, merged as ef00ff25 (also shipped by the JS and Rust SDKs). */
   private static final String MAINNET_BUNDLE_SHA =
       "9d01b8713cab42dab269e1ad6e244cf11e7f8c4b580682a98402db348b37bd52";
   private static final String TESTNET2_BUNDLE_SHA =
       "5b0a4fb7bd6c2d71068c0e65659aa60733dcc9083e9290fc22c2dd8e8e60f08a";
   private static final String MANIFEST_SHA =
-      "7bbaad4fb41bc5e6d169a1c17d9834e792bd9cdceaf521faa8a25791d2dbe2c1";
+      "56b390ab0be3c77cd9119e983965d803e4081d44a56596b2cfb64ed179a27fc7";
   private static final String MAINNET_GENESIS =
       "0b6f8143e19e2a585be3534e8f1062f36c3b9621e506158f10abfbc9a56f4e4c";
   private static final String TESTNET2_GENESIS =
@@ -130,7 +130,7 @@ class ReleasePinsTest {
     assertEquals(new String(current, StandardCharsets.UTF_8), generated,
         "regenerate with UTB_RELEASE_PINS_UPDATE=1 ./gradlew test --tests '*ReleasePinsTest'");
     JsonNode manifest = new ObjectMapper().readTree(current);
-    assertEquals("513dc4fcf01ee802a97d59a5bc4e50ba64786d45", manifest.get("source").get("commit")
+    assertEquals("ef00ff25972e4db23485cc982e059a7022c2e463", manifest.get("source").get("commit")
         .asText());
     assertEquals(11, manifest.get("source").get("pullRequest").asInt());
     assertEquals("unicitynetwork/unicity-ids", manifest.get("source").get("repository").asText());

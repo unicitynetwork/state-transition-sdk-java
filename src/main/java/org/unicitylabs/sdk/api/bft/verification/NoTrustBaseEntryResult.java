@@ -48,6 +48,16 @@ public final class NoTrustBaseEntryResult extends TrustBaseEntryResult {
   }
 
   /**
+   * The same information as an exception, for the places that report a refusal as an exception
+   * (non-inclusion, consolidation) and must not lose the typed signal.
+   *
+   * @return the typed cause
+   */
+  public NoTrustBaseEntryException toException() {
+    return new NoTrustBaseEntryException(this.epoch, this.heldTipEpoch);
+  }
+
+  /**
    * Find the typed no-entry failure anywhere in a verification trace.
    *
    * @param result any verification result

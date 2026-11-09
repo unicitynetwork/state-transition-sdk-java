@@ -218,14 +218,48 @@ class TrustBaseUpdaterTest {
     // an end at or above the requested epoch is not "nothing newer"
     Script lying = Script.fixed(status(TrustBaseStatus.NOT_YET_AVAILABLE, 2, 2));
     assertThrows(TrustBaseUpdateException.class, () -> update(history, lying));
-    // with a snapshot frozen, a not-yet-available page never ends the call as current
+    // with a snapshot frozen, a not-yet-available page does not end the call as current by
+    // itself: the source is asked again without the snapshot (an honest source answers an end
+    // above its own tip this way), and only that answer counts
     TrustBaseHistory second = genesisOnly();
     Script paged = new Script((n, r) -> n == 0 ? page(2, 3, 5, 4L)
         : status(TrustBaseStatus.NOT_YET_AVAILABLE, 4, 1));
-    TrustBaseUpdateException e = assertThrows(TrustBaseUpdateException.class,
-        () -> update(second, paged));
-    assertEquals(2, e.getAppended(), "the authenticated prefix is kept");
+    assertEquals(2, update(second, paged), "the authenticated prefix is kept");
     assertEquals(3, tip(second));
+    assertNotNull(paged.requests.get(1).getSnapshot(), "the second request echoed the snapshot");
+    assertNull(paged.requests.get(2).getSnapshot(), "the refusal was asked again without it");
+    // and when that answer is not "nothing newer" either, the source is refused for good
+    TrustBaseHistory third = genesisOnly();
+    Script refusing = new Script((n, r) -> n == 0 ? page(2, 3, 5, 4L)
+        : status(TrustBaseStatus.NOT_YET_AVAILABLE, 4, 9));
+    TrustBaseUpdateException e = assertThrows(TrustBaseUpdateException.class,
+        () -> update(third, refusing));
+    assertEquals(2, e.getAppended(), "the authenticated prefix is kept");
+    assertEquals(3, tip(third));
+  }
+
+  /**
+   * aggregator-go answers a snapshot end above its own tip with NOT_YET_AVAILABLE, not
+   * HISTORY_MISMATCH. A hostile first source's fake end must not make an honest source final.
+   */
+  @Test
+  void anHonestSourceAnsweringNotYetAvailableToAFakeEndIsAskedAgainWithoutIt() {
+    TrustBaseHistory history = genesisOnly();
+    byte[] fake = new byte[32];
+    Script honest = new Script((n, r) -> {
+      if (r.getSnapshot() != null && r.getSnapshot().getEnd() > 5) {
+        return status(TrustBaseStatus.NOT_YET_AVAILABLE, r.getFromEpoch(), 5);
+      }
+      return page((int) r.getFromEpoch(), 5, 5, null);
+    });
+    Script hostileFirst = new Script((n, r) -> n == 0
+        ? pageRaw(2, 9, fake, List.of(entry(2).encode()), 3L)
+        : status(TrustBaseStatus.INVALID_REQUEST, 3, 9));
+    assertEquals(4, update(history, hostileFirst, honest), "every honest entry is appended");
+    assertEquals(5, tip(history));
+    assertTrue(honest.requests.stream().anyMatch(r -> r.getSnapshot() != null));
+    assertNull(honest.requests.get(honest.requests.size() - 1).getSnapshot(),
+        "the last request was made without the dropped snapshot");
   }
 
   @Test

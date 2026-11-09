@@ -613,16 +613,20 @@ public final class TrustBaseEntry {
   }
 
   /**
-   * Check that this entry extends {@code previous}: not a genesis, same network, epoch previous +
-   * 1, a later start round, the predecessor id equal to the entry id of {@code previous}, and a
-   * strict quorum of {@code previous}' members signing {@link #sigBytes()}.
+   * Check that this entry extends {@code previous}: a valid structure (as {@link #validate()}; an
+   * entry built with the public constructor is not decoded, so it is not yet validated), not a
+   * genesis, same network, epoch previous + 1, a later start round, the predecessor id equal to the
+   * entry id of {@code previous}, and a strict quorum of {@code previous}' members signing
+   * {@link #sigBytes()}.
    *
    * @param previous the predecessor
+   * @throws TrustBaseInvalidException if this entry's structure is invalid
    * @throws TrustBaseChainException if the entry does not extend the predecessor
    * @throws TrustBaseSignatureException if the predecessor's members did not sign it
    */
   public void verifySuccessor(TrustBaseEntry previous) {
     Objects.requireNonNull(previous, "previous cannot be null");
+    this.validate();
     if (this.isGenesis()) {
       throw new TrustBaseChainException("A genesis entry has no predecessor.");
     }

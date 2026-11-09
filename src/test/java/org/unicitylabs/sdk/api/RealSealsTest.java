@@ -2,6 +2,7 @@ package org.unicitylabs.sdk.api;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -16,6 +17,7 @@ import org.unicitylabs.sdk.api.bft.UnicitySeal;
 import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseBundle;
 import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseBundleLimits;
 import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistory;
+import org.unicitylabs.sdk.api.bft.verification.NoTrustBaseEntryException;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.util.HexConverter;
 
@@ -101,6 +103,29 @@ class RealSealsTest {
     assertEquals(NonInclusionOutcome.Kind.ABSENT_AT_SNAPSHOT, outcome.getKind());
     assertEquals(1, outcome.getSnapshot().getNetworkId().getId());
     assertEquals(1, outcome.getSnapshot().getRootEpoch());
+  }
+
+  /**
+   * A seal sealed in an epoch the client does not hold yet is not a verdict on the proof: the
+   * rejection carries the typed missing-entry cause (epoch of the seal, held tip), where a bad
+   * signature or another network's bundle carries none.
+   */
+  @Test
+  void aSealOfAnEpochTheHistoryDoesNotHoldKeepsTheTypedMissingEntryCause() {
+    NonInclusionProof proof = proofOf("testnet2", hexOf("testnet2.non-inclusion.hex"));
+    // the pinned history without a single entry: the certificate check gives the typed result
+    TrustBaseHistory empty = TrustBaseHistory.create(HexConverter.decode(TESTNET2_ID));
+    NonInclusionVerificationException missing = assertThrows(
+        NonInclusionVerificationException.class, () -> verify(proof, empty));
+    assertEquals(Reason.AUTHORITY_REJECTED, missing.getReason());
+    NoTrustBaseEntryException typed = (NoTrustBaseEntryException) missing.getCause();
+    assertEquals(1, typed.getEpoch());
+    assertNull(typed.getHeldTipEpoch(), "the history is empty");
+
+    // another network's bundle holds an epoch-1 entry: refused for what it is, with no such cause
+    NonInclusionVerificationException other = assertThrows(NonInclusionVerificationException.class,
+        () -> verify(proof, historyOf("mainnet", MAINNET_ID)));
+    assertNull(other.getCause());
   }
 
   @Test

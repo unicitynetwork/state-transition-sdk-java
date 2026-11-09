@@ -11,6 +11,7 @@ import org.unicitylabs.sdk.api.bft.UnicitySeal;
 import org.unicitylabs.sdk.api.bft.PartitionViewPolicy;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerificationResult;
 import org.unicitylabs.sdk.api.bft.verification.OperationUnicityCertificateVerifier;
+import org.unicitylabs.sdk.api.bft.verification.NoTrustBaseEntryResult;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateFailure;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerifier;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializationException;
@@ -204,10 +205,14 @@ public final class NonInclusionVerifier {
       UnicityCertificateFailure failure = result.getFailure();
       // a fault of the certificate (partition, body, paths, seal hash, pins) is uc_invalid; the
       // refusal of the authority (network, epoch, quorum) is authority_rejected
+      // a missing trust-base entry is not a verdict on the proof: the typed signal stays the cause
+      // (epoch of the seal, held tip), so the caller can update its history and ask again
+      NoTrustBaseEntryResult noEntry = NoTrustBaseEntryResult.find(result);
       throw new NonInclusionVerificationException(
           failure != null && !failure.isAuthorityRejection() ? Reason.UC_INVALID
               : Reason.AUTHORITY_REJECTED,
-          "the certificate is not authenticated by the trusted authority", null);
+          "the certificate is not authenticated by the trusted authority",
+          noEntry == null ? null : noEntry.toException());
     }
     // the end of the authority is a statement about an authenticated seal
     long round = uc.getUnicitySeal().getRootChainRoundNumber();

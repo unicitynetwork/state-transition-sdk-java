@@ -131,7 +131,8 @@ public final class TrustBaseHistory implements TrustBaseHistoryView {
    * @param entry decoded entry
    * @return {@link TrustBaseAppendOutcome#APPENDED}, or
    *     {@link TrustBaseAppendOutcome#ALREADY_HELD} when the entry is already held
-   * @throws TrustBaseInvalidException if the first entry is not a genesis entry
+   * @throws TrustBaseInvalidException if the entry's structure is invalid, or the first entry is not a
+   *     genesis entry
    * @throws TrustBaseChainException if the first entry is not the pinned genesis, or the entry does
    *     not extend the tip (or its held predecessor)
    * @throws TrustBaseSignatureException if the predecessor's members did not sign it with a quorum
@@ -140,6 +141,8 @@ public final class TrustBaseHistory implements TrustBaseHistoryView {
    */
   public TrustBaseAppendOutcome append(TrustBaseEntry entry) {
     Objects.requireNonNull(entry, "entry cannot be null");
+    // An entry from the public constructor was never decoded, so never validated: structure first, as Go's VerifySuccessor does.
+    entry.validate();
     synchronized (this.lock) {
       if (this.entries.isEmpty()) {
         entry.verifyGenesis();

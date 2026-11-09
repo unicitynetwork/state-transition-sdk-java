@@ -246,12 +246,15 @@ public final class TrustBaseUpdater {
               current++;
               break;
             }
-            // A source that refuses the echoed snapshot as another history may be the honest
-            // one: the snapshot came from whichever source answered the first page, and a
-            // hostile first page can announce a fake end. Drop it, start again from the tip and
-            // ask the same source once more without it; a mismatch without a snapshot is final,
-            // so this terminates.
-            if (page.getStatus() == TrustBaseStatus.HISTORY_MISMATCH && snapshot != null) {
+            // A source that refuses the echoed snapshot may be the honest one: the snapshot came
+            // from whichever source answered the first page, and a hostile first page can
+            // announce a fake end. An honest source answers an end above its own tip with
+            // NOT_YET_AVAILABLE (aggregator-go), and another history with HISTORY_MISMATCH; both
+            // say nothing against the source. Drop the snapshot, start again from the tip and ask
+            // the same source once more without it; a refusal without a snapshot is final, so
+            // this terminates.
+            if ((page.getStatus() == TrustBaseStatus.HISTORY_MISMATCH
+                || page.getStatus() == TrustBaseStatus.NOT_YET_AVAILABLE) && snapshot != null) {
               causes.add(new Cause(index, CauseKind.STATUS, null, page.getStatus()));
               snapshot = null;
               from = this.nextFrom();
