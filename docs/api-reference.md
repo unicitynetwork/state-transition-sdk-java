@@ -643,7 +643,7 @@ Construct `source` with `new org.unicitylabs.sdk.api.HttpTrustBaseSource(gateway
 
 `refresh` authenticates consecutive entries after the held tip and attempts to save, including an accepted prefix if a later page fails. Its integer result is not a persistence acknowledgement; inspect `isDirty()` and the `FlushResult` when persistence matters. Default update policy is two passes, 200 ms backoff and bounded pages. The first page freezes the end epoch/EntryID; later pages echo it and another source continues the same cursor. `NotYetAvailable` and zero appended entries are not authenticated freshness. Failures surface through `TrustBaseUpdateException` (wrapped by a future when applicable).
 
-Plain verification does not fetch. `NoTrustBaseEntryResult.find(result)` identifies missing future epochs (or empty history); bad signatures, wrong network or a seal before genesis are other failures. Refresh and re-verify before accepting. `TrustBaseUpdater.verifyWithUpdate` provides a one-update/one-retry helper but does not persist; callers must flush any accepted prefix, including on update failure.
+Plain verification does not fetch. `NoTrustBaseEntryResult.find(result)` identifies missing future epochs (or empty history); bad signatures, wrong network or a seal before genesis are other failures. Where the refusal is an exception (non-inclusion, consolidation, partition view), the same signal is its cause, a `NoTrustBaseEntryException` with the seal's epoch and the held tip. Refresh and re-verify before accepting. `TrustBaseUpdater.verifyWithUpdate` provides a one-update/one-retry helper but does not persist; callers must flush any accepted prefix, including on update failure.
 
 ### Persistence and conflict handling
 
