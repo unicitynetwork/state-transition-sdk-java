@@ -37,3 +37,5 @@ Copied unchanged from `unicitynetwork/state-transition-sdk-rust` main at
 `ae0a58a` (`tests/vectors/split-payload/`), itself generated from
 `state-transition-sdk-js` `6bd409bcdd2d312c814f7b9b8b91982c2c16253c`.
 Consumed by `SplitPayloadVectorsTest`; do not edit by hand, re-vendor instead.
+
+The generator (a Jest test, copied into the JS repo's `tests/functional/payment/` to run) already uses the 4.0.0 API: it takes the trust base history from the JS test aggregator (`aggregator.rootTrustBase`, a `TrustBaseHistory`) and no JSON trust base. Checked against the JS 4.0.0 branch (`upstream-pr/utb-v2` at 85c61d4): it runs unchanged and reproduces every value in `split_payload.json` except `sourceToken` (a wall-clock inclusion proof, see above), so the vector is still produced by this generator and stays as it is.

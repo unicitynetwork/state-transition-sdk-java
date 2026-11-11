@@ -15,10 +15,9 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.unicitylabs.sdk.api.InclusionProof;
 import org.unicitylabs.sdk.api.InclusionProofResponse;
 import org.unicitylabs.sdk.api.bft.PartitionViewPolicy;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
 import org.unicitylabs.sdk.api.bft.verification.OperationUnicityCertificateVerifier;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerifier;
-import org.unicitylabs.sdk.api.bft.verification.VerificationPolicy;
 import org.unicitylabs.sdk.internal.Deadlines;
 import org.unicitylabs.sdk.internal.OperationContext;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
@@ -205,7 +204,7 @@ public final class TokenProofClient {
 
     private void verifyAndPlan() {
       throwIfDone();
-      final RootTrustBase trustBase = context.getTrustBase();
+      final TrustBaseHistoryView trustBase = context.getTrustBase();
       UnicityCertificateVerifier base = context.getCertificateVerifier();
       OperationUnicityCertificateVerifier operation;
       VerificationContext tokenContext;
@@ -215,7 +214,7 @@ public final class TokenProofClient {
         tokenContext = context;
       } else {
         UnicityCertificateVerifier scoped =
-            base.beginOperation(VerificationPolicy.LEGACY_QUORUM, PartitionViewPolicy.none());
+            base.beginOperation(PartitionViewPolicy.none());
         if (scoped instanceof OperationUnicityCertificateVerifier) {
           operation = (OperationUnicityCertificateVerifier) scoped;
           tokenContext = context.withCertificateVerifier(operation);
@@ -223,7 +222,7 @@ public final class TokenProofClient {
           // a customized verifier keeps verifying every proof by itself; the consolidation's own
           // checks use a stock operation
           operation = (OperationUnicityCertificateVerifier) new UnicityCertificateVerifier()
-              .beginOperation(VerificationPolicy.LEGACY_QUORUM, PartitionViewPolicy.none());
+              .beginOperation(PartitionViewPolicy.none());
           tokenContext = context;
         }
       }
@@ -292,7 +291,7 @@ public final class TokenProofClient {
 
     private void rebuild(ConsolidationAttempt attempt, List<ConsolidationItem> items,
         VerificationContext tokenContext, OperationUnicityCertificateVerifier operation,
-        RootTrustBase trustBase, int originalSeals, long evidenceQuorumChecks) {
+        TrustBaseHistoryView trustBase, int originalSeals, long evidenceQuorumChecks) {
       throwIfDone();
       if (attempt.getStatus() == ConsolidationAttempt.Status.UNAVAILABLE) {
         result.complete(ConsolidationResult.unavailable(attempt.getUnavailability()));

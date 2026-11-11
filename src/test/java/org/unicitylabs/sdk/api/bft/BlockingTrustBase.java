@@ -1,30 +1,23 @@
 package org.unicitylabs.sdk.api.bft;
 
-import java.util.ArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseEntry;
+import org.unicitylabs.sdk.api.bft.verification.SealQuorumRule;
+import org.unicitylabs.sdk.api.bft.verification.rule.UnicitySealQuorumSignaturesVerificationRule;
+import org.unicitylabs.sdk.util.verification.VerificationResult;
+import org.unicitylabs.sdk.util.verification.VerificationStatus;
 
 /**
- * A trust base that holds every quorum check once it is armed, so that a test can keep seal
- * verifications in flight deterministically.
+ * A quorum rule that holds every check once it is armed, so that a test can keep seal verifications
+ * in flight deterministically.
  */
-public final class BlockingTrustBase extends RootTrustBase {
+public final class BlockingTrustBase implements SealQuorumRule {
 
   private final CountDownLatch release = new CountDownLatch(1);
   private final AtomicInteger entered = new AtomicInteger();
   private volatile boolean armed;
-
-  private BlockingTrustBase(RootTrustBase base) {
-    super(base.getVersion(), base.getNetworkId(), base.getEpoch(), base.getEpochStartRound(),
-        new ArrayList<>(base.getRootNodes()), base.getQuorumThreshold(), base.getStateHash(),
-        base.getChangeRecordHash(), base.getPreviousEntryHash(), base.getSignatures());
-  }
-
-  /** A copy of the trust base that can be armed. */
-  public static BlockingTrustBase copyOf(RootTrustBase base) {
-    return new BlockingTrustBase(base);
-  }
 
   /** From now on every quorum check waits for {@link #release()}. */
   public void arm() {
@@ -42,7 +35,8 @@ public final class BlockingTrustBase extends RootTrustBase {
   }
 
   @Override
-  public long getQuorumThreshold() {
+  public VerificationResult<VerificationStatus> verify(TrustBaseEntry entry,
+      org.unicitylabs.sdk.api.bft.UnicitySeal seal) {
     if (armed) {
       entered.incrementAndGet();
       try {
@@ -51,6 +45,6 @@ public final class BlockingTrustBase extends RootTrustBase {
         Thread.currentThread().interrupt();
       }
     }
-    return super.getQuorumThreshold();
+    return UnicitySealQuorumSignaturesVerificationRule.verify(entry, seal);
   }
 }

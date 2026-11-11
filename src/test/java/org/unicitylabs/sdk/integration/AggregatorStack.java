@@ -1,11 +1,14 @@
 package org.unicitylabs.sdk.integration;
 
+import org.unicitylabs.sdk.api.bft.TrustBaseTestUtils;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
@@ -16,11 +19,14 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 import org.testcontainers.containers.ComposeContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
+import org.unicitylabs.sdk.util.HexConverter;
 
 /**
- * The aggregator stack the integration suite runs against: a BFT root node, mongodb, redis and a
- * pinned aggregator build, from the same compose file the TypeScript SDK uses.
+ * The aggregator stack the integration suite runs against: a BFT root node, mongodb, redis and an
+ * aggregator, from the same compose file, image pins and build script the TypeScript SDK's
+ * integration job uses (both images are built from exact commits of the ristik forks, because only
+ * those speak the signed trust base history).
  *
  * <p>The chain starts empty on every run and the aggregator takes an ephemeral port, so concurrent
  * runs cannot collide. There is deliberately no way to point the suite at a stack it did not
@@ -33,7 +39,8 @@ public final class AggregatorStack implements AutoCloseable {
   /** Genesis, a replica-set election and the first certified round, on a cold start. */
   private static final Duration STARTUP = Duration.ofMinutes(4);
 
-  private static final Path COMPOSE_DIR = Paths.get("src", "test", "resources", "integration");
+  private static final Path INTEGRATION_DIR = Paths.get("src", "test", "resources", "integration");
+  private static final Path COMPOSE_DIR = INTEGRATION_DIR.resolve("docker");
   private static final Path DATA_DIR = COMPOSE_DIR.resolve("data");
 
   private final ComposeContainer environment;
@@ -67,6 +74,8 @@ public final class AggregatorStack implements AutoCloseable {
     Files.createDirectories(DATA_DIR.resolve("genesis"));
     Files.createDirectories(DATA_DIR.resolve("genesis-root"));
 
+    Map<String, String> images = buildImages();
+
     String project = "stsdk" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
     ComposeContainer environment = new ComposeContainer(
             project,
@@ -76,6 +85,8 @@ public final class AggregatorStack implements AutoCloseable {
             // Port 0 publishes on an ephemeral host port, so concurrent runs and CI jobs cannot
             // collide on a fixed one.
             .withEnv("AGGREGATOR_PORT", "0")
+            .withEnv("AGGREGATOR_IMAGE", images.get("aggregator"))
+            .withEnv("BFT_CORE_IMAGE", images.get("bft-core"))
             .withEnv("USER_UID", String.valueOf(currentUid()))
             .withEnv("USER_GID", String.valueOf(currentGid()))
             .withExposedService("aggregator", AGGREGATOR_PORT,
@@ -102,6 +113,35 @@ public final class AggregatorStack implements AutoCloseable {
       stopQuietly(environment, e);
       throw e;
     }
+  }
+
+  /**
+   * Build the stack's images from the commits pinned in stack.env (an image the daemon already has
+   * is not rebuilt; nothing is pulled prebuilt) and return their tags.
+   *
+   * @return image tags by name: {@code aggregator} and {@code bft-core}
+   * @throws IOException if the script cannot run or fails
+   * @throws InterruptedException if the wait is interrupted
+   */
+  private static Map<String, String> buildImages() throws IOException, InterruptedException {
+    Map<String, String> pins = new HashMap<>();
+    for (String line : Files.readAllLines(INTEGRATION_DIR.resolve("stack.env"),
+        StandardCharsets.UTF_8)) {
+      if (line.matches("^[A-Z_]+=.*")) {
+        pins.put(line.substring(0, line.indexOf('=')), line.substring(line.indexOf('=') + 1));
+      }
+    }
+    Process build = new ProcessBuilder("bash",
+        INTEGRATION_DIR.resolve("support").resolve("build-images.sh").toString())
+        .redirectErrorStream(true).start();
+    String output = new String(build.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+    if (build.waitFor() != 0) {
+      throw new IOException("building the stack images failed:\n" + output);
+    }
+    Map<String, String> images = new HashMap<>();
+    images.put("aggregator", "sdk-it/aggregator:" + pins.get("AGGREGATOR_SHA").substring(0, 12));
+    images.put("bft-core", "sdk-it/bft-core:" + pins.get("BFT_CORE_SHA").substring(0, 12));
+    return images;
   }
 
   /**
@@ -158,23 +198,36 @@ public final class AggregatorStack implements AutoCloseable {
   }
 
   /**
-   * Get the path of the trust base the BFT root node generated for this run.
+   * Fetch the trust base history the aggregator of this run serves: the complete bundle (tag 39015)
+   * from the genesis entry to the tip, as {@code GET /api/v1/trustbases} answers it. The stack is
+   * the test's own, so the bundle is the local deployment's authority and its genesis entry is the
+   * pin.
    *
-   * @return trust base path
+   * @return bundle bytes
+   * @throws IOException if the aggregator does not serve a bundle
    */
-  public Path getTrustBasePath() {
-    return DATA_DIR.resolve("genesis").resolve("trust-base.json");
+  public byte[] fetchTrustBaseBundle() throws IOException {
+    return TrustBaseTestUtils.fetchServedBundle(this.url);
   }
 
   /**
-   * Read the trust base the BFT root node generated for this run.
+   * Open the trust base history the aggregator of this run serves (see
+   * {@link #fetchTrustBaseBundle()}) as a local-deployment session, the way an application opens
+   * its own network, and check that its genesis is the one the stack's genesis step wrote.
    *
    * @return trust base
-   * @throws IOException if the generated genesis cannot be read
+   * @throws IOException if the bundle cannot be fetched or the session cannot be opened
    */
-  public RootTrustBase getTrustBase() throws IOException {
-    return RootTrustBase.fromJson(new String(
-            Files.readAllBytes(getTrustBasePath()), StandardCharsets.UTF_8));
+  public TrustBaseHistoryView getTrustBase() throws IOException {
+    TrustBaseHistoryView history = TrustBaseTestUtils.openLocal(fetchTrustBaseBundle());
+    String genesisId = new String(Files.readAllBytes(
+        DATA_DIR.resolve("genesis").resolve("utb").resolve("genesis.id")),
+        StandardCharsets.UTF_8).trim();
+    byte[] expected = HexConverter.decode(genesisId);
+    if (!java.util.Arrays.equals(expected, history.getEntries().get(0).entryId())) {
+      throw new IOException("the served history does not start at the genesis the stack wrote");
+    }
+    return history;
   }
 
   @Override

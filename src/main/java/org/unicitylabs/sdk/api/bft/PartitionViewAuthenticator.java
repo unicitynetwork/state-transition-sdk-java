@@ -4,6 +4,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
+import org.unicitylabs.sdk.api.bft.verification.NoTrustBaseEntryResult;
 import org.unicitylabs.sdk.api.bft.verification.SealAuthenticator;
 import org.unicitylabs.sdk.api.bft.verification.SealVerificationBusyException;
 import org.unicitylabs.sdk.api.bft.verification.SealVerificationSession;
@@ -98,7 +99,10 @@ public final class PartitionViewAuthenticator {
    * @param view untrusted candidate
    * @param enclosing the certificate whose commitment covers the view
    * @return authenticated view
-   * @throws PartitionViewException with the failing reason; nothing is retained on failure
+   * @throws PartitionViewException with the failing reason; nothing is retained on failure. When
+   *     the seal is of an epoch the history does not hold yet, the reason is {@code AUTHENTICATION}
+   *     and the cause is a {@link
+   *     org.unicitylabs.sdk.api.bft.verification.NoTrustBaseEntryException}
    * @throws SealVerificationBusyException if the seal session already runs as many distinct seal
    *     checks as it allows. That is a resource limit, not a rejection of the view: nothing is
    *     known about it, and the call can be repeated later
@@ -233,9 +237,12 @@ public final class PartitionViewAuthenticator {
     // 4: only then the seal, under the caller's anchored authority
     VerificationResult<VerificationStatus> sealResult = seals.authenticate(enclosing.getUnicitySeal());
     if (sealResult.getStatus() != VerificationStatus.OK) {
+      // a seal of an epoch the history does not hold yet keeps the typed signal as the cause
+      NoTrustBaseEntryResult noEntry = NoTrustBaseEntryResult.find(sealResult);
       throw new PartitionViewException(PartitionViewException.Reason.AUTHENTICATION,
           "Authenticating unicity seal: "
-              + (sealResult.getMessage().isEmpty() ? "failed" : sealResult.getMessage()) + ".");
+              + (sealResult.getMessage().isEmpty() ? "failed" : sealResult.getMessage()) + ".",
+          noEntry == null ? null : noEntry.toException());
     }
 
     List<PartitionViewLeaf> leaves = view.getLeaves();

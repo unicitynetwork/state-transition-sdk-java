@@ -64,6 +64,6 @@ class SealVerificationLowSTest {
     assertEquals(UnicityCertificateFailure.QUORUM_NOT_REACHED,
         session.authenticate(twinned).getFailure());
     // the legacy path applies the same rule
-    assertEquals(VerificationStatus.FAIL, session.verifyLegacyQuorum(twinned).getStatus());
+    assertEquals(VerificationStatus.FAIL, session.authenticate(twinned).getStatus());
   }
 }

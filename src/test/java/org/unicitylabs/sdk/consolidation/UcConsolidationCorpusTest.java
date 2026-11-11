@@ -24,12 +24,13 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.unicitylabs.sdk.api.InclusionProofResponse;
 import org.unicitylabs.sdk.api.bft.PartitionView;
 import org.unicitylabs.sdk.api.bft.PartitionViewException;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistory;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
+import org.unicitylabs.sdk.api.bft.verification.NoTrustBaseEntryException;
 import org.unicitylabs.sdk.api.bft.ShardConfigurationPin;
 import org.unicitylabs.sdk.api.bft.ShardId;
 import org.unicitylabs.sdk.api.bft.verification.OperationUnicityCertificateVerifier;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerifier;
-import org.unicitylabs.sdk.api.bft.verification.VerificationPolicy;
 import org.unicitylabs.sdk.consolidation.CorpusSupport.Call;
 import org.unicitylabs.sdk.consolidation.CorpusSupport.Case;
 import org.unicitylabs.sdk.api.bft.PartitionViewPolicy;
@@ -131,14 +132,16 @@ class UcConsolidationCorpusTest {
   }
 
   private static Observation execute(Case c) throws IOException {
+    return execute(c, CorpusSupport.trustBase(c.bytes("trust-base.cbor")));
+  }
+
+  private static Observation execute(Case c, TrustBaseHistoryView trustBase) throws IOException {
     Observation observed = new Observation();
     observed.calls = CorpusSupport.newCalls();
     try {
-      RootTrustBase trustBase = CorpusSupport.trustBase(c.bytes("trust-base.cbor"));
       ShardRouting routing = routing(c, responses(c), observed.calls);
       OperationUnicityCertificateVerifier verifier = (OperationUnicityCertificateVerifier)
-          new UnicityCertificateVerifier().beginOperation(VerificationPolicy.LEGACY_QUORUM,
-              PartitionViewPolicy.none());
+          new UnicityCertificateVerifier().beginOperation(PartitionViewPolicy.none());
       ProofConsolidator consolidator = new ProofConsolidator(routing, trustBase, verifier);
       List<ConsolidationItem> items;
       try {
@@ -159,6 +162,28 @@ class UcConsolidationCorpusTest {
       observed.failure = e;
     }
     return observed;
+  }
+
+  /**
+   * Evidence sealed in an epoch the history does not hold yet is not a verdict on the evidence:
+   * the consolidation is refused as unauthenticated and keeps the typed missing-entry cause, so
+   * the caller can update its history and ask again.
+   */
+  @Test
+  void evidenceOfAnEpochTheHistoryDoesNotHoldKeepsTheTypedMissingEntryCause() throws IOException {
+    Case c = new Case("shards-1");
+    TrustBaseHistory held = (TrustBaseHistory) CorpusSupport.trustBase(c.bytes("trust-base.cbor"));
+    TrustBaseHistory empty = TrustBaseHistory.create(held.entryForEpoch(1).get().entryId());
+    // control: the same case with its history consolidates
+    assertEquals(null, execute(c, held).failure);
+
+    ConsolidationException failure = execute(c, empty).failure;
+    assertEquals(ConsolidationOutcome.UNAUTHENTICATED, failure.getOutcome(), failure.getMessage());
+    assertTrue(failure.getCause() instanceof NoTrustBaseEntryException,
+        String.valueOf(failure.getCause()));
+    NoTrustBaseEntryException typed = (NoTrustBaseEntryException) failure.getCause();
+    assertEquals(1, typed.getEpoch());
+    assertEquals(null, typed.getHeldTipEpoch());
   }
 
   @Test
@@ -264,8 +289,8 @@ class UcConsolidationCorpusTest {
       String observed = "ok";
       try {
         routing(c, responses(c), CorpusSupport.newCalls());
-        RootTrustBase trustBase = CorpusSupport.trustBase(c.bytes("trust-base.cbor"));
-        if (c.json("context.json").get("networkId").asInt() != trustBase.getNetworkId().getId()) {
+        TrustBaseHistoryView trustBase = CorpusSupport.trustBase(c.bytes("trust-base.cbor"));
+        if (c.json("context.json").get("networkId").asInt() != trustBase.getNetworkId().get().getId()) {
           observed = "incompatible_lineage";
         }
       } catch (ConsolidationException e) {

@@ -7,7 +7,7 @@ import org.junit.jupiter.api.TestInstance;
 import org.unicitylabs.sdk.StateTransitionClient;
 import org.unicitylabs.sdk.TestAggregatorClient;
 import org.unicitylabs.sdk.api.NetworkId;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
 import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
 import org.unicitylabs.sdk.predicate.builtin.SignaturePredicate;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
@@ -28,7 +28,7 @@ import org.unicitylabs.sdk.utils.TokenUtils;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class TokenIssuanceVerifierServiceTest {
 
-  private RootTrustBase trustBase;
+  private TrustBaseHistoryView trustBase;
   private PredicateVerifierService predicateVerifier;
   private TokenType tokenType;
   private Token token;

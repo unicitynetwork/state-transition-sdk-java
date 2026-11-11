@@ -1,5 +1,6 @@
 package org.unicitylabs.sdk.crypto.secp256k1;
 
+import org.unicitylabs.sdk.api.bft.TrustBaseTestUtils;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -11,7 +12,7 @@ import java.util.List;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
 import org.unicitylabs.sdk.api.bft.UnicitySeal;
 import org.unicitylabs.sdk.api.bft.verification.rule.UnicitySealQuorumSignaturesVerificationRule;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
@@ -75,21 +76,20 @@ class SignatureRecoveryVectorsTest {
   @TestFactory
   List<DynamicTest> sealCases() {
     JsonNode seal = fixture.get("seal");
-    StringBuilder nodes = new StringBuilder();
+    List<org.unicitylabs.sdk.api.bft.trustbase.TrustBaseMember> members = new ArrayList<>();
     for (JsonNode node : seal.get("nodes")) {
-      if (nodes.length() > 0) {
-        nodes.append(',');
-      }
-      nodes.append("{\"nodeId\":\"").append(node.get("id").asText())
-          .append("\",\"sigKey\":\"").append(node.get("publicKeyCompressed").asText())
-          .append("\",\"stake\":").append(node.get("stake").asText()).append('}');
+      members.add(new org.unicitylabs.sdk.api.bft.trustbase.TrustBaseMember(
+          node.get("id").asText(),
+          HexConverter.decode(node.get("publicKeyCompressed").asText()),
+          node.get("stake").asLong()));
     }
-    RootTrustBase trustBase = RootTrustBase.fromJson("{\"version\":1,\"networkId\":"
-        + seal.get("networkId").asText() + ",\"epoch\":" + seal.get("epoch").asText()
-        + ",\"epochStartRound\":0,\"rootNodes\":[" + nodes + "],\"quorumThreshold\":"
-        + seal.get("quorumThreshold").asText()
-        + ",\"stateHash\":\"\",\"changeRecordHash\":\"\",\"previousEntryHash\":\"\","
-        + "\"signatures\":{}}");
+    org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistory trustBase =
+        TrustBaseTestUtils.genesis(
+            org.unicitylabs.sdk.api.NetworkId.fromId((short) seal.get("networkId").asInt()),
+            seal.get("epoch").asLong(), 1, members);
+    assertEquals(seal.get("quorumThreshold").asLong(),
+        trustBase.getTip().get().getQuorumThreshold(),
+        "the fixture quorum is the entry threshold");
 
     List<DynamicTest> tests = new ArrayList<>();
     for (JsonNode testCase : seal.get("cases")) {
@@ -97,7 +97,7 @@ class SignatureRecoveryVectorsTest {
         UnicitySeal unicitySeal = UnicitySeal.fromCbor(
             HexConverter.decode(testCase.get("sealCbor").asText()));
         assertEquals(testCase.get("accept").asBoolean(),
-            UnicitySealQuorumSignaturesVerificationRule.verify(trustBase, unicitySeal).getStatus()
+            UnicitySealQuorumSignaturesVerificationRule.verify(trustBase.getTip().get(), unicitySeal).getStatus()
                 == VerificationStatus.OK);
       }));
     }

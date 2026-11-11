@@ -3,6 +3,8 @@ package org.unicitylabs.sdk.interop;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
@@ -49,14 +51,18 @@ class JsSdkInteropIntegrationTest {
     this.stack = AggregatorStack.start();
 
     String interop = Paths.get("src", "test", "resources", "interop").toAbsolutePath().toString();
+    // the trust base history the aggregator serves, as the file the TypeScript client opens
+    Path bundle = Files.createTempFile("trust-base", ".cbor");
+    Files.write(bundle, this.stack.fetchTrustBaseBundle());
+    bundle.toFile().deleteOnExit();
     List<String> command = new ArrayList<>(List.of(
             "docker", "run", "--rm",
             // Join the stack's own network, so the aggregator is reachable by service name.
             "--network", this.stack.getNetworkName(),
             "-v", interop + ":/interop:ro",
-            "-v", this.stack.getTrustBasePath().toAbsolutePath() + ":/trust-base.json:ro",
+            "-v", bundle.toAbsolutePath() + ":/trust-base.cbor:ro",
             "-e", "AGGREGATOR_URL=http://aggregator:3000",
-            "-e", "TRUST_BASE_PATH=/trust-base.json",
+            "-e", "TRUST_BASE_PATH=/trust-base.cbor",
             "-w", "/work",
             NODE_IMAGE,
             "sh", "-c",

@@ -1,8 +1,10 @@
-// Mint a token and transfer it once, using the PUBLISHED TypeScript SDK against the aggregator
-// the Java integration suite started, then print the token as hex.
+// Mint a token and transfer it once, using the PUBLISHED TypeScript SDK (4.0.0 API: verification is
+// anchored in a trust base history) against the aggregator the Java integration suite started,
+// then print the token as hex.
 //
 // This runs inside a node container, against the npm artifact rather than the TypeScript repo's
-// source tree — the same bytes a consumer installs. The token comes back over stdout so nothing
+// source tree — the same bytes a consumer installs. TRUST_BASE_PATH is the bundle (tag 39015,
+// genesis to tip) the aggregator serves; as for any local network, its genesis entry is the pin. The token comes back over stdout so nothing
 // has to be bind-mounted or copied out.
 import { readFileSync } from 'node:fs';
 
@@ -10,8 +12,10 @@ import { AggregatorClient } from '@unicitylabs/state-transition-sdk/lib/api/Aggr
 import { UnicitySealQuorumSignaturesVerificationRule } from '@unicitylabs/state-transition-sdk/lib/api/bft/verification/rule/UnicitySealQuorumSignaturesVerificationRule.js';
 import { UnicityCertificateVerifier } from '@unicitylabs/state-transition-sdk/lib/api/bft/verification/UnicityCertificateVerifier.js';
 import { VerifiedSealCache } from '@unicitylabs/state-transition-sdk/lib/api/bft/verification/VerifiedSealCache.js';
-import { RootTrustBase } from '@unicitylabs/state-transition-sdk/lib/api/bft/RootTrustBase.js';
+import { TrustBaseBundle } from '@unicitylabs/state-transition-sdk/lib/api/bft/trustbase/TrustBaseBundle.js';
+import { TrustBaseHistory } from '@unicitylabs/state-transition-sdk/lib/api/bft/trustbase/TrustBaseHistory.js';
 import { CertificationData } from '@unicitylabs/state-transition-sdk/lib/api/CertificationData.js';
+import { NetworkId } from '@unicitylabs/state-transition-sdk/lib/api/NetworkId.js';
 import { Secp256k1SignatureVerifier } from '@unicitylabs/state-transition-sdk/lib/crypto/secp256k1/Secp256k1SignatureVerifier.js';
 import { SigningService } from '@unicitylabs/state-transition-sdk/lib/crypto/secp256k1/SigningService.js';
 import { SignaturePredicate } from '@unicitylabs/state-transition-sdk/lib/predicate/builtin/SignaturePredicate.js';
@@ -33,7 +37,12 @@ if (!aggregatorUrl || !trustBasePath) {
   throw new Error('AGGREGATOR_URL and TRUST_BASE_PATH must be set');
 }
 
-const trustBase = RootTrustBase.fromJSON(JSON.parse(readFileSync(trustBasePath, 'utf-8')));
+const bundleBytes = new Uint8Array(readFileSync(trustBasePath));
+const bundle = await TrustBaseBundle.decode(bundleBytes, { maxBytes: bundleBytes.length, maxEntries: 1024 });
+const trustBase = TrustBaseHistory.create(await bundle.entries[0].entryId());
+for (const entry of bundle.entries) {
+  await trustBase.append(entry);
+}
 const aggregatorClient = new AggregatorClient(aggregatorUrl, null);
 const client = new StateTransitionClient(aggregatorClient);
 const predicateVerifier = PredicateVerifierService.create();
@@ -60,7 +69,7 @@ const submit = async (certificationData) => {
   }
 };
 
-const mint = await MintTransaction.create(trustBase.networkId, SignaturePredicate.fromSigningService(alice), {
+const mint = await MintTransaction.create(NetworkId.fromId(trustBase.networkId.id), SignaturePredicate.fromSigningService(alice), {
   expiresAt,
 });
 await submit(await CertificationData.fromMintTransaction(mint));

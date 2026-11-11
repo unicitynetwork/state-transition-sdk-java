@@ -2,7 +2,7 @@
 
 This reference describes the SDK API for application developers: how to connect, mint, transfer, verify and store tokens, and how to wait for proofs and handle failures. The README gives a first introduction. The Javadoc comments in the source are authoritative for every signature and detail not covered here.
 
-All code snippets are compiled with the tests (`src/test/java/org/unicitylabs/sdk/examples`), and the token flow is run against an in-memory aggregator.
+The token-flow examples have companion tests in `src/test/java/org/unicitylabs/sdk/examples`, using an in-memory aggregator. The session API table below describes setup with application-supplied storage and executors.
 
 ## Contents
 
@@ -19,6 +19,7 @@ All code snippets are compiled with the tests (`src/test/java/org/unicitylabs/sd
    - [9.2 Partition Views and Seal Reuse](#92-partition-views-and-seal-reuse)
    - [9.3 Proof Consolidation](#93-proof-consolidation)
    - [9.4 Non-inclusion Proofs](#94-non-inclusion-proofs)
+10. [Trust-base Sessions](#10-trust-base-sessions)
 
 ## 1. Setup
 
@@ -43,13 +44,7 @@ var aggregator = new JsonRpcAggregatorClient(
 return new StateTransitionClient(aggregator);
 ```
 
-**Trust base.** The trust base identifies the network, its validators and quorum. Download the file for your network (links in the README), keep a trusted copy with the application, and load it:
-
-```java
-return RootTrustBase.fromJson(Files.readString(Path.of("bft-trustbase.testnet2.json")));
-```
-
-`trustBase.getNetworkId()` is the network ID to use when minting.
+**Trust base.** Open a session pinned to the network's known genesis, as in [section 10](#10-trust-base-sessions), and use `var trustBase = session.history()` in the examples below. Each seal is verified against its own epoch's authority. Use `trustBase.getNetworkId().get()` when minting on an initialized history.
 
 **Verification context.** `VerificationContext` bundles what token verification needs: the trust base, a `PredicateVerifierService` (`PredicateVerifierService.create()` handles the built-in predicates), a `MintJustificationVerifierService` (empty unless you use token splits, see [Payments and splits](#payments-and-splits)) and a `TokenIssuanceVerifierService`.
 
@@ -118,7 +113,7 @@ Store the private key securely; whoever holds it controls the tokens locked to i
 A mint creates a token with a new ID. Build a `MintTransaction`, submit its certification data, wait for the inclusion proof, and build the verified `Token`.
 
 ```java
-MintTransaction mint = MintTransaction.builder(context.getTrustBase().getNetworkId(), owner)
+MintTransaction mint = MintTransaction.builder(context.getTrustBase().getNetworkId().get(), owner)
     .tokenType(new TokenType("my-token-type".getBytes(StandardCharsets.UTF_8)))
     .data(payload)
     .build();
@@ -376,11 +371,12 @@ return Token.fromCbor(HexConverter.decode(hex));
 
 **Pending operations.** Serialization is also how an application survives a crash. Before submitting a mint, a transfer or a split, persist the exact transaction (`toCbor()`), the `CertificationData` of a transfer, and for a split its inputs (recipients, payment data, output salts, state mask and deadline). After a crash, deserialize them and submit again; never rebuild. Examples: [Crash recovery](#crash-recovery), [Recovering a transfer](#recovering-a-transfer) and [Payments and splits](#payments-and-splits).
 
-JSON is used for the trust base: `RootTrustBase.fromJson(json)` and `trustBase.toJson()`.
+The trust base serializes as a bundle: `trustBase.toBundle()` and `TrustBaseBundle.decode(bytes, limits)`.
 
 ```java
-String json = trustBase.toJson();
-return RootTrustBase.fromJson(json).getNetworkId().toString();
+byte[] bundle = trustBase.toBundle();
+return TrustBaseBundle.decode(bundle, new TrustBaseBundleLimits(1 << 20, 64))
+    .getNetworkId().toString();
 ```
 
 ## 7. Waiting for Inclusion Proofs
@@ -618,3 +614,56 @@ if (snapshot.getNetworkId().getId() != checkpoint.networkId()
 ```
 
 `NonInclusionContext.unsharded()` expects the unsharded partition, where the certificate's shard is the empty shard. For a sharded partition, pin the served shard with `withShard`. `new NonInclusionProof(stateId, bytes)` only records which state ID a proof was requested for. It is request bookkeeping, not evidence.
+
+## 10. Trust-base Sessions
+
+The `org.unicitylabs.sdk.api.bft.trustbase` package supplies V2 entries, histories and cached sessions. Verification reads the session's history; opening a session verifies embedded and cached bytes without fetching from the network.
+
+### Mainnet, testnet2 and local setup
+
+The session and store classes below are in `org.unicitylabs.sdk.api.bft.trustbase`; `NetworkId` is in `org.unicitylabs.sdk.api`. Let `options` be `TrustBaseSessionOptions.of(sessionExecutor)`, with an application-owned bounded executor, and `store` be `new MemoryTrustBaseStore()` or a durable implementation.
+
+| Setup | Call |
+| --- | --- |
+| Mainnet | `TrustBaseSession.openPublic(NetworkId.MAINNET, null, store, options)` |
+| Testnet2 | `TrustBaseSession.openPublic(NetworkId.TESTNET2, null, store, options)` |
+| Local deployment | `TrustBaseSession.openLocal(deploymentBundle, store, options)` |
+
+Each returns `CompletableFuture<TrustBaseSession.Opened>`: compose it asynchronously, or call `.get()` on a worker thread, never the UI thread. Read `opened.getSession()` and `opened.getDiagnostics()`, then pass `session.history()` to `VerificationContext`.
+
+For `openLocal`, `deploymentBundle` is a complete `byte[]` bundle obtained through authenticated operator configuration, independently of an untrusted server response. The method derives genesis/tip pins from it and uses namespace `local`, without public-network lineage checks. This explicitly trusts that deployment; it cannot authenticate mainnet from an arbitrary download. `openPrivate(namespace, pin, store, options)` accepts a `ReleasePin` under a namespace of 1–64 UTF-8 bytes, with no `/`, other than `public`. Strict chain/signature checks remain in force.
+
+`ReleasePins.ROWS` embeds the approved mainnet (1) and testnet2 (4) histories with network, genesis/checkpoint epochs and EntryIDs, plus bundle SHA-256. The release is the source of trust, not an untrusted server supplying its own hash. A non-null override to `openPublic` must extend the built-in checkpoint. `withTable` is for tests/release tooling; applications should not replace public pins. `ReleasePins` loads the resources under `src/main/resources/release-pins`; `ReleasePinsTest` regenerates and checks their manifest and verifies the rows. Set `UTB_RELEASE_PINS_UPDATE=1` when intentionally regenerating the manifest.
+
+### Refresh and missing epochs
+
+`HttpTrustBaseSource` implements `TrustBaseSource` for the gateway's `GET /api/v1/trustbases`. It returns unverified, bounded CBOR; it is separate from `JsonRpcAggregatorClient`:
+
+Construct `source` with `new org.unicitylabs.sdk.api.HttpTrustBaseSource(gatewayUrl, apiKey)`, then call `session.refresh(java.util.List.of(source), TrustBaseUpdateOptions.defaults())`. The future returns the number of appended entries. `session.flush()` returns a future of `FlushResult`; inspect `isSaved()` and `getError()`.
+
+`refresh` authenticates consecutive entries after the held tip and attempts to save, including an accepted prefix if a later page fails. Its integer result is not a persistence acknowledgement; inspect `isDirty()` and the `FlushResult` when persistence matters. Default update policy is two passes, 200 ms backoff and bounded pages. The first page freezes the end epoch/EntryID; later pages echo it and another source continues the same cursor. `NotYetAvailable` and zero appended entries are not authenticated freshness. Failures surface through `TrustBaseUpdateException` (wrapped by a future when applicable).
+
+Plain verification does not fetch. `NoTrustBaseEntryResult.find(result)` identifies missing future epochs (or empty history); bad signatures, wrong network or a seal before genesis are other failures. Where the refusal is an exception (non-inclusion, consolidation, partition view), the same signal is its cause, a `NoTrustBaseEntryException` with the seal's epoch and the held tip. Refresh and re-verify before accepting. `TrustBaseUpdater.verifyWithUpdate` provides a one-update/one-retry helper but does not persist; callers must flush any accepted prefix, including on update failure.
+
+### Persistence and conflict handling
+
+`TrustBaseStore` exposes `CompletableFuture`-based `read(key, maxBytes)` and `compareAndSwap(key, expectedRevision, bytes)`. Reads return a coherent optional `Stored` value with bytes/revision and must enforce limits before allocation. CAS returns `WRITTEN` or `CHANGED` and must be atomic across sharing processes; read-then-write is insufficient. Revisions do not authenticate bytes. Keys include layout version, network, genesis EntryID and namespace; applications add per-user scope and choose storage location and refresh policy.
+
+The core's `MemoryTrustBaseStore` is volatile. The optional `org.unicitylabs.sdk.api.bft.trustbase.file.FileTrustBaseStore(Path, Executor)` uses an exclusive lock directory, synced temporary file and atomic rename; a busy or crash-left lock is never stolen. The application resolves stale locks only after establishing that no writer owns them. **Store futures must not depend on the session executor**: session work waits for them. Give a file adapter a separate executor to avoid deadlock; the application owns both executors' lifetimes.
+
+Opening re-verifies cached entries from genesis. Compatible longer caches are retained; a new pin extends a shorter cache. Damage/unreadability falls back to embedded history with diagnostics. An over-budget or authenticated checkpoint-conflicting cache is not overwritten. `flush()` validates the latest stored bytes, merges compatible progress and saves one complete bundle by CAS (at most four attempts). A pending save does not undo verified memory. A clean flush does not rescan other writers; reopen for that.
+
+A valid conflicting entry after the pinned checkpoint raises `TrustBaseConflictException`, latching the live session. Its history view, append and refresh then fail with `HistoryConflictedException`; invalid offers do not latch it and pinned-prefix disagreements are `TrustBasePinMismatchException`. `getConflict()` and `exportBundle()` expose evidence. Record/report the incident in the application: a process-local latch cannot survive cache deletion or a fresh process by itself.
+
+### Codecs and limits
+
+`TrustBaseEntry.decode`/`encode` handles deterministic tag 39000, version 2; `entryId()` hashes the unsigned entry, not its signature witnesses. `TrustBaseBundle.decode`/`encode` handles complete tag-39015 histories, and `TrustBaseRange.decode` handles pages. Decoding is not authority verification: use `TrustBaseHistory.fromBundle(bundle, genesisPin)` or a session. `append` checks network, next epoch, previous EntryID, increasing start round and the predecessor's weighted quorum. Every supplied entry signature must be a known-member, valid 65-byte low-S recoverable signature; unknown/bad extras reject the entry. Seal verification is a separate rule.
+
+| Resource | Limit |
+| --- | --- |
+| Members / supplied entry signatures | 256 / 256 |
+| Node ID / encoded entry | 128 UTF-8 bytes / 128 KiB |
+| Default page | 64 entries / 1 MiB |
+| Default session bundle/cache | 4,096 entries / 16 MiB / 128 KiB per entry |
+
+Configure bundle budgets with `TrustBaseSessionOptions.withLimits`; never truncate history to fit, since old tokens require old epochs. `TrustBaseEncodingException`, `TrustBaseChainException`, `TrustBaseSignatureException`, `ReleasePinInvalidException` and `TrustBaseStoreException` distinguish malformed input, authentication and storage failures. Single-record JSON trust bases are no longer verification inputs. Use `NetworkId.TESTNET2` (4), not the removed `TESTNET` constant.

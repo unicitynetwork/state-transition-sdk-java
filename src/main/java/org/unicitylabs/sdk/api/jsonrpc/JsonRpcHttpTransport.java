@@ -55,10 +55,20 @@ public class JsonRpcHttpTransport {
           .followSslRedirects(false)
           .build();
 
+  /**
+   * The SDK's default HTTP client (no redirects).
+   *
+   * @return the shared default client
+   */
+  public static OkHttpClient defaultHttpClient() {
+    return DEFAULT_HTTP_CLIENT;
+  }
+
   private final String url;
   private final int maxResponseBytes;
   private final OkHttpClient httpClient;
   private final Supplier<JsonNode> idSupplier;
+  private final SdkVersionHeader sdkVersionHeader;
 
   /**
    * JSON-RPC HTTP service constructor.
@@ -102,7 +112,21 @@ public class JsonRpcHttpTransport {
    * @param maxResponseBytes maximum response body size in bytes
    */
   public JsonRpcHttpTransport(String url, OkHttpClient httpClient, int maxResponseBytes) {
-    this(url, httpClient, maxResponseBytes, () -> TextNode.valueOf(UUID.randomUUID().toString()));
+    this(url, httpClient, maxResponseBytes, SdkVersionHeader.sdkDefault());
+  }
+
+  /**
+   * JSON-RPC HTTP service constructor with an explicit setting of the SDK version header.
+   *
+   * @param url service URL
+   * @param httpClient OkHttp client to use
+   * @param maxResponseBytes maximum response body size in bytes
+   * @param sdkVersionHeader what to send in the {@code X-SDK-Version} header of every call
+   */
+  public JsonRpcHttpTransport(String url, OkHttpClient httpClient, int maxResponseBytes,
+      SdkVersionHeader sdkVersionHeader) {
+    this(url, httpClient, maxResponseBytes,
+        () -> TextNode.valueOf(UUID.randomUUID().toString()), sdkVersionHeader);
   }
 
   /**
@@ -110,6 +134,12 @@ public class JsonRpcHttpTransport {
    */
   JsonRpcHttpTransport(String url, OkHttpClient httpClient, int maxResponseBytes,
       Supplier<JsonNode> idSupplier) {
+    this(url, httpClient, maxResponseBytes, idSupplier, SdkVersionHeader.sdkDefault());
+  }
+
+  JsonRpcHttpTransport(String url, OkHttpClient httpClient, int maxResponseBytes,
+      Supplier<JsonNode> idSupplier, SdkVersionHeader sdkVersionHeader) {
+    this.sdkVersionHeader = Objects.requireNonNull(sdkVersionHeader, "sdkVersionHeader cannot be null");
     this.idSupplier = Objects.requireNonNull(idSupplier, "idSupplier cannot be null");
     this.url = Objects.requireNonNull(url, "url cannot be null");
     if (maxResponseBytes <= 0) {
@@ -224,6 +254,9 @@ public class JsonRpcHttpTransport {
               .post(JsonRpcHttpTransport.oneShot(RequestBody.create(
                       UnicityObjectMapper.JSON.writeValueAsString(envelope),
                       JsonRpcHttpTransport.MEDIA_TYPE_JSON)));
+      if (this.sdkVersionHeader.value() != null) {
+        requestBuilder.header(SdkVersionHeader.NAME, this.sdkVersionHeader.value());
+      }
       headers.forEach((header, values) ->
               values.forEach(value -> requestBuilder.addHeader(header, value)));
 

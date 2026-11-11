@@ -1,5 +1,6 @@
 package org.unicitylabs.sdk.api.bft.verification;
 
+import org.unicitylabs.sdk.api.bft.TrustBaseTestUtils;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -10,7 +11,7 @@ import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.unicitylabs.sdk.api.NetworkId;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
 import org.unicitylabs.sdk.api.bft.TestChain;
 import org.unicitylabs.sdk.api.bft.UnicitySeal;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
@@ -28,6 +29,12 @@ class SealVerificationSessionTest {
     byte[] hash = new byte[32];
     java.util.Arrays.fill(hash, (byte) fill);
     return AUTHORITY.seal(round, hash, 0, 1, 2);
+  }
+
+  private static UnicitySeal sealBy(long round, int... nodes) {
+    byte[] hash = new byte[32];
+    java.util.Arrays.fill(hash, (byte) round);
+    return AUTHORITY.seal(round, hash, nodes);
   }
 
   @Test
@@ -123,21 +130,37 @@ class SealVerificationSessionTest {
   }
 
   @Test
-  void aLegacySuccessNeverAdmitsAStrictRequest() {
+  void anEpochEndsExclusivelyAtTheStartRoundOfTheNextOne() {
     TestChain.Authority epoch2 = new TestChain.Authority(NetworkId.LOCAL, 2, 10, 1);
-    SealVerificationSession session = SealVerificationSession.create(epoch2.trustBase());
-    UnicitySeal historical = seal(50, 3);
+    SealVerificationSession session =
+        SealVerificationSession.create(AUTHORITY.trustBaseThrough(epoch2));
+    assertEquals(VerificationStatus.OK, session.authenticate(seal(9, 1)).getStatus());
+    assertEquals(UnicityCertificateFailure.AFTER_EPOCH_END,
+        session.authenticate(seal(10, 1)).getFailure());
+    // the first round of epoch 2 belongs to epoch 2
+    assertEquals(VerificationStatus.OK,
+        session.authenticate(epoch2.seal(10, new byte[32], 0, 1, 2)).getStatus());
+  }
 
-    // the historical proof of an earlier epoch passes the legacy quorum-only check and warms the memo
-    assertEquals(VerificationStatus.OK, session.verifyLegacyQuorum(historical).getStatus());
+  @Test
+  void aMemoHitStillPlacesTheSealInTheGrowingHistory() {
+    TestChain.Authority epoch2 = new TestChain.Authority(NetworkId.LOCAL, 2, 10, 1);
+    org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistory history = AUTHORITY.trustBase();
+    SealVerificationSession session = SealVerificationSession.create(history);
+    UnicitySeal inEpoch1 = seal(12, 3);
+
+    assertEquals(VerificationStatus.OK, session.authenticate(inEpoch1).getStatus());
     assertEquals(1, session.getStats().getQuorumChecks());
 
-    // the strict request is refused on every call, hits or not, and costs no signature work
+    // the history grows: epoch 2 starts at round 10, so round 12 of epoch 1 is past its end
+    AUTHORITY.appendSuccessor(history, epoch2);
     for (int i = 0; i < 3; i++) {
-      assertEquals(UnicityCertificateFailure.EPOCH_MISMATCH,
-          session.authenticate(historical).getFailure());
+      assertEquals(UnicityCertificateFailure.AFTER_EPOCH_END,
+          session.authenticate(inEpoch1).getFailure());
     }
+    // refused on every call from the placement: no signature work, and the memo was not consulted
     assertEquals(1, session.getStats().getQuorumChecks());
+    assertEquals(0, session.getStats().getMemoHits());
   }
 
   @Test
@@ -186,15 +209,15 @@ class SealVerificationSessionTest {
   }
 
   @Test
-  void aStakeWeightedAuthorityIsRefusedNotJudgedByTheWrongRule() {
-    RootTrustBase weighted = RootTrustBase.fromJson("{\"version\":1,\"networkId\":3,\"epoch\":1,"
-        + "\"epochStartRound\":1,\"rootNodes\":[{\"nodeId\":\"n0\",\"sigKey\":\"0x02aa\",\"stake\":5},"
-        + "{\"nodeId\":\"n1\",\"sigKey\":\"0x02bb\",\"stake\":1}],\"quorumThreshold\":1,"
-        + "\"stateHash\":\"\",\"changeRecordHash\":\"\",\"previousEntryHash\":\"\",\"signatures\":{}}");
-    SealVerificationSession session = SealVerificationSession.create(weighted);
-    assertEquals(UnicityCertificateFailure.UNSUPPORTED_AUTHORITY,
-        session.authenticate(seal(5, 1)).getFailure());
-    assertEquals(0, session.getStats().getQuorumChecks());
+  void aWeightedAuthorityCountsWeightNotSigners() {
+    // weights 5,1,1,1: threshold 6; node 0 alone has 5, nodes 0 and 1 have 6, nodes 1-3 have 3
+    SealVerificationSession session =
+        SealVerificationSession.create(AUTHORITY.weightedTrustBase(5, 1, 1, 1));
+    assertEquals(UnicityCertificateFailure.QUORUM_NOT_REACHED,
+        session.authenticate(sealBy(5, 0)).getFailure());
+    assertEquals(VerificationStatus.OK, session.authenticate(sealBy(5, 0, 1)).getStatus());
+    assertEquals(UnicityCertificateFailure.QUORUM_NOT_REACHED,
+        session.authenticate(sealBy(6, 1, 2, 3)).getFailure());
   }
 
   @Test

@@ -6,9 +6,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
 import org.unicitylabs.sdk.api.InclusionProof;
 import org.unicitylabs.sdk.api.bft.PartitionViewPolicy;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
 import org.unicitylabs.sdk.api.bft.UnicityCertificate;
 import org.unicitylabs.sdk.crypto.hash.DataHasher;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
@@ -29,78 +30,76 @@ import org.unicitylabs.sdk.util.verification.VerificationStatus;
  *
  * <p>Per call, in this order: the network of the seal, the fixed partition (before any memo, so a
  * hit can never carry another partition), the certificate body, seal structure and paths to the
- * seal hash (memoized under the complete certificate bytes including the signature witnesses and
- * the policy), the caller's pins, and finally the seal under the policy of the operation. Under
- * {@link VerificationPolicy#STRICT} the seal is authenticated by the operation's
- * {@link SealVerificationSession}; under {@link VerificationPolicy#LEGACY_QUORUM} it goes through
- * the separate legacy quorum check. Only successes are retained.
+ * seal hash (memoized under the complete certificate bytes including the signature witnesses), the
+ * caller's pins, and finally the seal, authenticated by the operation's
+ * {@link SealVerificationSession} under the trust-base entry of its own epoch. Only successes are
+ * retained.
  */
 public final class OperationUnicityCertificateVerifier extends UnicityCertificateVerifier {
 
   private static final int MAX_BODIES = 256;
   private static final int MAX_BODIES_IN_FLIGHT = 64;
 
-  private final VerificationPolicy policy;
   private final PartitionViewPolicy pins;
+  private final Function<TrustBaseHistoryView, SealVerificationSession> sessionFactory;
   private final SingleFlightMemo<CertificateChecks.Body> bodies = new SingleFlightMemo<>(
       MAX_BODIES, MAX_BODIES_IN_FLIGHT, CertificateChecks.Body::isOk);
-  private final Map<RootTrustBase, SealVerificationSession> sessions = new IdentityHashMap<>();
+  private final Map<TrustBaseHistoryView, SealVerificationSession> sessions = new IdentityHashMap<>();
   private final AtomicLong bodyChecks = new AtomicLong();
   private final AtomicLong bodyHits = new AtomicLong();
   private final AtomicLong encodes = new AtomicLong();
 
-  private OperationUnicityCertificateVerifier(VerificationPolicy policy, PartitionViewPolicy pins) {
-    this.policy = policy;
+  private OperationUnicityCertificateVerifier(PartitionViewPolicy pins,
+      Function<TrustBaseHistoryView, SealVerificationSession> sessionFactory) {
+    this.sessionFactory = sessionFactory;
     this.pins = pins;
     // a pin set that is not consistent is an error of the configuration, found here
     pins.getIdentity();
   }
 
-  static OperationUnicityCertificateVerifier start(VerificationPolicy policy,
-      PartitionViewPolicy pins) {
-    return new OperationUnicityCertificateVerifier(policy, pins);
+  static OperationUnicityCertificateVerifier start(PartitionViewPolicy pins,
+      Function<TrustBaseHistoryView, SealVerificationSession> sessionFactory) {
+    return new OperationUnicityCertificateVerifier(pins, sessionFactory);
   }
 
   /**
-   * An operation verifier is already scoped to its operation: asking for the same policy and pins
-   * returns it, another policy or other pins begin an independent operation that shares nothing,
-   * so a different policy never inherits memoized work.
+   * An operation verifier is already scoped to its operation: asking for the same pins returns it,
+   * other pins begin an independent operation that shares nothing, so a different pin set never
+   * inherits memoized work.
    */
   @Override
-  public UnicityCertificateVerifier beginOperation(VerificationPolicy policy,
-      PartitionViewPolicy pins) {
-    Objects.requireNonNull(policy, "policy cannot be null");
+  public UnicityCertificateVerifier beginOperation(PartitionViewPolicy pins) {
     PartitionViewPolicy requested = pins == null ? PartitionViewPolicy.none() : pins;
-    if (policy == this.policy && requested.getIdentity().equals(this.pins.getIdentity())) {
+    if (requested.getIdentity().equals(this.pins.getIdentity())) {
       return this;
     }
-    return new OperationUnicityCertificateVerifier(policy, requested);
+    return new OperationUnicityCertificateVerifier(requested, this.sessionFactory);
   }
 
   /**
-   * Verifies the certificate of an inclusion proof under the policy of the operation. Network and
-   * epoch/policy checks run on every call, memo hits included.
+   * Verifies the certificate of an inclusion proof. Network and the placement of the seal in the
+   * history run on every call, memo hits included.
    *
    * @param trustBase the authority
    * @param inclusionProof the proof
    * @return verification result
    */
   @Override
-  public UnicityCertificateVerificationResult verify(RootTrustBase trustBase,
+  public UnicityCertificateVerificationResult verify(TrustBaseHistoryView trustBase,
       InclusionProof inclusionProof) {
     return verifyCertificate(trustBase, inclusionProof.getUnicityCertificate());
   }
 
   /**
-   * Verifies a raw certificate under the policy of the operation, with the operation's seal
-   * session, body memo and pins. Used for strict evidence such as non-inclusion.
+   * Verifies a raw certificate with the operation's seal session, body memo and pins. Used for
+   * evidence such as non-inclusion.
    *
    * @param trustBase the authority
    * @param certificate the certificate
    * @return verification result
    */
   @Override
-  public UnicityCertificateVerificationResult verifyCertificate(RootTrustBase trustBase,
+  public UnicityCertificateVerificationResult verifyCertificate(TrustBaseHistoryView trustBase,
       UnicityCertificate certificate) {
     List<VerificationResult<?>> results = new ArrayList<>();
 
@@ -134,9 +133,7 @@ public final class OperationUnicityCertificateVerifier extends UnicityCertificat
     }
 
     SealVerificationSession session = sessionFor(trustBase);
-    SealVerificationResult seal = policy == VerificationPolicy.STRICT
-        ? session.authenticate(certificate.getUnicitySeal())
-        : session.verifyLegacyQuorum(certificate.getUnicitySeal());
+    SealVerificationResult seal = session.authenticate(certificate.getUnicitySeal());
     results.add(seal);
     if (seal.getStatus() != VerificationStatus.OK) {
       return UnicityCertificateVerificationResult.fail(seal.getFailure(), results);
@@ -187,25 +184,16 @@ public final class OperationUnicityCertificateVerifier extends UnicityCertificat
    * @param trustBase the authority; one session is built per distinct trust base object
    * @return seal session of the operation
    */
-  public SealVerificationSession sessionFor(RootTrustBase trustBase) {
+  public SealVerificationSession sessionFor(TrustBaseHistoryView trustBase) {
     Objects.requireNonNull(trustBase, "trustBase cannot be null");
     synchronized (sessions) {
       SealVerificationSession session = sessions.get(trustBase);
       if (session == null) {
-        session = SealVerificationSession.create(trustBase);
+        session = sessionFactory.apply(trustBase);
         sessions.put(trustBase, session);
       }
       return session;
     }
-  }
-
-  /**
-   * Policy of the operation.
-   *
-   * @return policy
-   */
-  public VerificationPolicy getPolicy() {
-    return policy;
   }
 
   /**
@@ -239,7 +227,7 @@ public final class OperationUnicityCertificateVerifier extends UnicityCertificat
     encodes.incrementAndGet();
     String key = HexConverter.encode(new DataHasher(HashAlgorithm.SHA256)
         .update(CborSerializer.encodeArray(
-            CborSerializer.encodeTextString(policy.name()),
+            CborSerializer.encodeTextString("body"),
             CborSerializer.encodeByteString(certificate.toCbor())))
         .digest().getData());
     SingleFlightMemo.Outcome<CertificateChecks.Body> outcome;

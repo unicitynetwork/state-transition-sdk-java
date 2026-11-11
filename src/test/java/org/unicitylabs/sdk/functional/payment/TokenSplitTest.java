@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.unicitylabs.sdk.StateTransitionClient;
 import org.unicitylabs.sdk.TestAggregatorClient;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
 import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
 import org.unicitylabs.sdk.payment.SplitMintJustificationVerifier;
 import org.unicitylabs.sdk.payment.SplitTokenRequest;
@@ -44,7 +44,7 @@ public class TokenSplitTest {
   @BeforeAll
   public void setupFixture() throws Exception {
     TestAggregatorClient aggregatorClient = TestAggregatorClient.create();
-    RootTrustBase trustBase = aggregatorClient.getTrustBase();
+    TrustBaseHistoryView trustBase = aggregatorClient.getTrustBase();
     StateTransitionClient client = new StateTransitionClient(aggregatorClient);
     PredicateVerifierService predicateVerifier = PredicateVerifierService.create();
 

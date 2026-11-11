@@ -5,7 +5,7 @@ import org.unicitylabs.sdk.util.verification.VerificationResult;
 import org.unicitylabs.sdk.util.verification.VerificationStatus;
 
 /**
- * Strict authentication of a unicity seal under an authority the caller owns.
+ * Authentication of a unicity seal under a trust-base history the caller owns.
  *
  * <p>Strict means: the seal is structurally valid, its network, epoch and root chain round fit the
  * authority snapshot (the round is not before the start of the epoch) and the quorum of signatures
@@ -24,10 +24,9 @@ public interface SealAuthenticator {
   String getIdentity();
 
   /**
-   * Authenticates a seal. Always strict: an implementation never relaxes this check, whatever
-   * policy it was created or used with elsewhere. Legacy quorum-only checking of historical proofs
-   * is a separate, differently named operation (see
-   * {@link SealVerificationSession#verifyLegacyQuorum}) and its success never stands for this one.
+   * Authenticates a seal. Always strict: an implementation never relaxes this check. The seal is
+   * placed in the entry of its own epoch of the trust-base history, so a seal of an earlier epoch
+   * is judged by that epoch's entry and by no other; there is no quorum-only mode.
    *
    * @param seal the seal, possibly from an untrusted source
    * @return OK, or FAIL with the failing rule; malformed peer data never throws a generic

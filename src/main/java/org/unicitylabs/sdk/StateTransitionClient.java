@@ -20,7 +20,7 @@ import org.unicitylabs.sdk.api.StateId;
 import org.unicitylabs.sdk.api.StatusAwareAggregatorClient;
 import org.unicitylabs.sdk.api.SubmitOutcome;
 import org.unicitylabs.sdk.api.WaitOptions;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
 import org.unicitylabs.sdk.api.jsonrpc.JsonRpcDataException;
 import org.unicitylabs.sdk.api.jsonrpc.JsonRpcNetworkException;
 import org.unicitylabs.sdk.api.jsonrpc.JsonRpcResponseException;
@@ -258,7 +258,7 @@ public class StateTransitionClient {
    *     {@code maxResubmits} is negative
    */
   public CompletableFuture<InclusionProof> submitAndWait(Transaction transaction,
-      CertificationData certificationData, int maxResubmits, RootTrustBase trustBase,
+      CertificationData certificationData, int maxResubmits, TrustBaseHistoryView trustBase,
       PredicateVerifierService predicateVerifier, WaitOptions options) {
     Objects.requireNonNull(options, "options cannot be null");
     if (maxResubmits < 0) {
@@ -293,7 +293,7 @@ public class StateTransitionClient {
   }
 
   private void attempt(Transaction transaction, CertificationData data, int resubmitsLeft,
-      RootTrustBase trustBase, PredicateVerifierService verifier, WaitOptions options,
+      TrustBaseHistoryView trustBase, PredicateVerifierService verifier, WaitOptions options,
       OperationContext operation, CompletableFuture<InclusionProof> result) {
     if (result.isDone()) {
       return;

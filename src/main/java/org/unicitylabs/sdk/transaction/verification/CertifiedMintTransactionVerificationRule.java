@@ -42,7 +42,9 @@ public class CertifiedMintTransactionVerificationRule {
   ) {
     List<VerificationResult<?>> results = new ArrayList<>();
 
-    if (!transaction.getNetworkId().equals(context.getTrustBase().getNetworkId())) {
+    // an empty history names no network: the proof's seal is then found without an entry below
+    if (context.getTrustBase().getNetworkId()
+            .filter(network -> !network.equals(transaction.getNetworkId())).isPresent()) {
       results.add(new VerificationResult<>("MintNetworkMatchesTrustBaseRule", VerificationStatus.FAIL));
       return new VerificationResult<>("CertifiedMintTransactionVerificationRule",
               VerificationStatus.FAIL, "Mint network does not match trust base.", results);

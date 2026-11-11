@@ -1,5 +1,6 @@
 package org.unicitylabs.sdk.examples;
 
+import org.unicitylabs.sdk.api.bft.TrustBaseTestUtils;
 import java.io.IOException;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
@@ -36,7 +37,10 @@ import org.unicitylabs.sdk.api.NonInclusionVerifier;
 import org.unicitylabs.sdk.api.RequestOptions;
 import org.unicitylabs.sdk.api.StateId;
 import org.unicitylabs.sdk.api.WaitOptions;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseBundle;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseBundleLimits;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistory;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
 import org.unicitylabs.sdk.api.jsonrpc.JsonRpcNetworkException;
 import org.unicitylabs.sdk.api.jsonrpc.JsonRpcResponseException;
 import org.unicitylabs.sdk.consolidation.ConsolidationException;
@@ -141,8 +145,10 @@ final class ApiReferenceExamples {
     return new StateTransitionClient(aggregator);
   }
 
-  static RootTrustBase loadTrustBase() throws IOException {
-    return RootTrustBase.fromJson(Files.readString(Path.of("bft-trustbase.testnet2.json")));
+  static TrustBaseHistory loadTrustBase(byte[] genesisPin) throws IOException {
+    var bundle = TrustBaseBundle.decode(Files.readAllBytes(Path.of("trust-base-bundle.cbor")),
+        new TrustBaseBundleLimits(1 << 20, 64));
+    return TrustBaseHistory.fromBundle(bundle, genesisPin);
   }
 
   static JsonRpcAggregatorClient withTimeouts(String url, String apiKey) {
@@ -158,7 +164,7 @@ final class ApiReferenceExamples {
         RequestOptions.none().withCallTimeout(Duration.ofSeconds(5)));
   }
 
-  static VerificationContext createContext(RootTrustBase trustBase) {
+  static VerificationContext createContext(TrustBaseHistoryView trustBase) {
     var predicateVerifier = PredicateVerifierService.create();
     return new VerificationContext(trustBase, predicateVerifier,
         new MintJustificationVerifierService(), new TokenIssuanceVerifierService(false));
@@ -183,7 +189,7 @@ final class ApiReferenceExamples {
 
   static Token mint(StateTransitionClient client, VerificationContext context,
       Predicate owner, byte[] payload, Map<String, byte[]> journal) throws Exception {
-    MintTransaction mint = MintTransaction.builder(context.getTrustBase().getNetworkId(), owner)
+    MintTransaction mint = MintTransaction.builder(context.getTrustBase().getNetworkId().get(), owner)
         .tokenType(new TokenType("my-token-type".getBytes(StandardCharsets.UTF_8)))
         .data(payload)
         .build();
@@ -291,9 +297,10 @@ final class ApiReferenceExamples {
     return Token.fromCbor(HexConverter.decode(hex));
   }
 
-  static String trustBaseJson(RootTrustBase trustBase) {
-    String json = trustBase.toJson();
-    return RootTrustBase.fromJson(json).getNetworkId().toString();
+  static String trustBaseBundleNetwork(TrustBaseHistory trustBase) {
+    byte[] bundle = trustBase.toBundle();
+    return TrustBaseBundle.decode(bundle, new TrustBaseBundleLimits(1 << 20, 64))
+        .getNetworkId().toString();
   }
 
   // 8. Errors
@@ -332,7 +339,7 @@ final class ApiReferenceExamples {
 
   // 9. Advanced
 
-  static NonInclusionSnapshot requireAbsent(RootTrustBase trustBase, NonInclusionProof proof,
+  static NonInclusionSnapshot requireAbsent(TrustBaseHistoryView trustBase, NonInclusionProof proof,
       Checkpoint checkpoint) {
     // `checkpoint` is obtained independently of the proof and of the server response.
     NonInclusionOutcome outcome =
@@ -436,7 +443,7 @@ final class ApiReferenceExamples {
     return Payment::decode;
   }
 
-  static VerificationContext splitContext(RootTrustBase trustBase) {
+  static VerificationContext splitContext(TrustBaseHistoryView trustBase) {
     var justifications = new MintJustificationVerifierService()
         .register(new SplitMintJustificationVerifier(Payment::decode));
     return new VerificationContext(trustBase, PredicateVerifierService.create(), justifications,

@@ -8,7 +8,7 @@ import org.unicitylabs.sdk.api.CertificationData;
 import org.unicitylabs.sdk.api.CertificationResponse;
 import org.unicitylabs.sdk.api.CertificationStatus;
 import org.unicitylabs.sdk.api.InclusionProof;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
 import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
 import org.unicitylabs.sdk.predicate.builtin.SignaturePredicate;
 import org.unicitylabs.sdk.predicate.builtin.SignaturePredicateUnlockScript;
@@ -38,7 +38,7 @@ public class CertificationDataBindingTest {
   @Test
   public void rejectsCertificationDataFromADifferentTransaction() throws Exception {
     TestAggregatorClient aggregatorClient = TestAggregatorClient.create();
-    RootTrustBase trustBase = aggregatorClient.getTrustBase();
+    TrustBaseHistoryView trustBase = aggregatorClient.getTrustBase();
     StateTransitionClient client = new StateTransitionClient(aggregatorClient);
     PredicateVerifierService predicateVerifier = PredicateVerifierService.create();
     MintJustificationVerifierService mintJustificationVerifier =

@@ -1,8 +1,8 @@
 package org.unicitylabs.sdk;
 
 import org.unicitylabs.sdk.api.*;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
-import org.unicitylabs.sdk.api.bft.RootTrustBaseUtils;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistory;
+import org.unicitylabs.sdk.api.bft.TrustBaseTestUtils;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
@@ -16,7 +16,7 @@ import java.util.HashMap;
 import java.util.concurrent.CompletableFuture;
 
 public class TestAggregatorClient implements AggregatorClient {
-  private final RootTrustBase trustBase;
+  private final TrustBaseHistory trustBase;
   private final PredicateVerifierService predicateVerifier;
   private final SparseMerkleTree sparseMerkleTree;
   private final HashMap<StateId, CertificationData> requests = new HashMap<>();
@@ -34,12 +34,12 @@ public class TestAggregatorClient implements AggregatorClient {
     this.referenceTime = referenceTime;
     this.sparseMerkleTree = smt;
     this.signingService = signingService;
-    this.trustBase = RootTrustBaseUtils.generateRootTrustBase(this.signingService.getPublicKey());
+    this.trustBase = TrustBaseTestUtils.singleNode(this.signingService.getPublicKey());
     this.predicateVerifier = PredicateVerifierService.create();
   }
 
 
-  public RootTrustBase getTrustBase() {
+  public TrustBaseHistory getTrustBase() {
     return this.trustBase;
   }
 

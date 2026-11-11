@@ -11,7 +11,7 @@ import org.unicitylabs.sdk.api.JsonRpcAggregatorClient;
 import org.unicitylabs.sdk.api.CertificationData;
 import org.unicitylabs.sdk.api.CertificationStatus;
 import org.unicitylabs.sdk.api.InclusionProof;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
 import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
 import org.unicitylabs.sdk.predicate.builtin.SignaturePredicate;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
@@ -32,7 +32,7 @@ class RequestDeadlineIntegrationTest {
 
   private AggregatorStack stack;
   private StateTransitionClient client;
-  private RootTrustBase trustBase;
+  private TrustBaseHistoryView trustBase;
   private PredicateVerifierService predicateVerifier;
 
   @BeforeAll
@@ -52,7 +52,7 @@ class RequestDeadlineIntegrationTest {
 
   private MintTransaction mint(Long deadline) {
     return MintTransaction.builder(
-                    this.trustBase.getNetworkId(),
+                    this.trustBase.getNetworkId().get(),
                     SignaturePredicate.fromSigningService(SigningService.generate()))
             .expiresAt(deadline)
             .build();

@@ -78,7 +78,7 @@ class NonInclusionCertificateTest {
   void snapshotKeepsUnsignedValuesLosslessly() {
     long twoPow63 = Long.MIN_VALUE;
     long max = -1L;
-    NonInclusionSnapshot snapshot = new NonInclusionSnapshot(NetworkId.TESTNET, 7,
+    NonInclusionSnapshot snapshot = new NonInclusionSnapshot(NetworkId.fromId((short) 2), 7,
         ShardId.decode(new byte[] {(byte) 0x80}), twoPow63, max, max - 2, 0, max, new byte[32]);
     assertEquals("9223372036854775808", snapshot.getRootRoundDecimal());
     assertEquals("18446744073709551615", snapshot.getSealTimestampSecondsDecimal());

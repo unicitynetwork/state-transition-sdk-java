@@ -1,7 +1,7 @@
 package org.unicitylabs.sdk.transaction;
 
 import org.unicitylabs.sdk.api.InclusionProof;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.crypto.hash.DataHasher;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
@@ -196,7 +196,7 @@ public class TransferTransaction implements Transaction {
    * @return certified transfer transaction
    */
   public CertifiedTransferTransaction toCertifiedTransaction(
-          RootTrustBase trustBase,
+          TrustBaseHistoryView trustBase,
           PredicateVerifierService predicateVerifier,
           InclusionProof inclusionProof
   ) {

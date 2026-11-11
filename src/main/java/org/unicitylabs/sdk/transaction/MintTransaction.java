@@ -2,7 +2,7 @@ package org.unicitylabs.sdk.transaction;
 
 import org.unicitylabs.sdk.api.InclusionProof;
 import org.unicitylabs.sdk.api.NetworkId;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
 import org.unicitylabs.sdk.crypto.MintSigningService;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.crypto.hash.DataHasher;
@@ -361,7 +361,7 @@ public class MintTransaction implements Transaction {
    * @return certified mint transaction
    */
   public CertifiedMintTransaction toCertifiedTransaction(
-          RootTrustBase trustBase,
+          TrustBaseHistoryView trustBase,
           PredicateVerifierService predicateVerifier,
           InclusionProof inclusionProof
   ) {

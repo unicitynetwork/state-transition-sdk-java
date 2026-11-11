@@ -2,7 +2,7 @@ package org.unicitylabs.sdk.transaction;
 
 import org.unicitylabs.sdk.api.InclusionProof;
 import org.unicitylabs.sdk.api.NetworkId;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.predicate.EncodedPredicate;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
@@ -143,7 +143,7 @@ public class CertifiedMintTransaction implements Transaction {
    * @throws VerificationException if inclusion proof verification fails
    */
   public static CertifiedMintTransaction fromTransaction(
-          RootTrustBase trustBase,
+          TrustBaseHistoryView trustBase,
           PredicateVerifierService predicateVerifier,
           MintTransaction transaction,
           InclusionProof inclusionProof

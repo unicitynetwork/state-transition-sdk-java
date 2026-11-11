@@ -56,10 +56,10 @@ class ApiReferenceExamplesTest {
   }
 
   @Test
-  void trustBaseJsonRoundTrips() {
+  void trustBaseBundleRoundTrips() {
     TestAggregatorClient aggregator = TestAggregatorClient.create();
-    assertEquals(aggregator.getTrustBase().getNetworkId().toString(),
-        ApiReferenceExamples.trustBaseJson(aggregator.getTrustBase()));
+    assertEquals(aggregator.getTrustBase().getNetworkId().get().toString(),
+        ApiReferenceExamples.trustBaseBundleNetwork(aggregator.getTrustBase()));
   }
 
   @Test

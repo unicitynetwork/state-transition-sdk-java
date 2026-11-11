@@ -1,10 +1,9 @@
 package org.unicitylabs.sdk.transaction.verification;
 
 import org.unicitylabs.sdk.api.bft.PartitionViewPolicy;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
 import org.unicitylabs.sdk.api.bft.verification.OperationUnicityCertificateVerifier;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerifier;
-import org.unicitylabs.sdk.api.bft.verification.VerificationPolicy;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
 
 import java.util.Objects;
@@ -22,7 +21,7 @@ import java.util.Objects;
  */
 public final class VerificationContext {
 
-  private final RootTrustBase trustBase;
+  private final TrustBaseHistoryView trustBase;
   private final PredicateVerifierService predicateVerifier;
   private final MintJustificationVerifierService mintJustificationVerifier;
   private final TokenIssuanceVerifierService tokenIssuanceVerifier;
@@ -38,7 +37,7 @@ public final class VerificationContext {
    * @param tokenIssuanceVerifier token issuance registry
    */
   public VerificationContext(
-          RootTrustBase trustBase,
+          TrustBaseHistoryView trustBase,
           PredicateVerifierService predicateVerifier,
           MintJustificationVerifierService mintJustificationVerifier,
           TokenIssuanceVerifierService tokenIssuanceVerifier
@@ -58,7 +57,7 @@ public final class VerificationContext {
    *     control of the checks and is never wrapped
    */
   public VerificationContext(
-          RootTrustBase trustBase,
+          TrustBaseHistoryView trustBase,
           PredicateVerifierService predicateVerifier,
           MintJustificationVerifierService mintJustificationVerifier,
           TokenIssuanceVerifierService tokenIssuanceVerifier,
@@ -100,7 +99,7 @@ public final class VerificationContext {
    * an operation under the legacy quorum policy of ordinary token proofs, which shares work
    * between the proofs of the token and of every nested token. A verifier that already is an
    * operation verifier is kept, so a caller that shares one operation across several tokens, or
-   * chose the policy, stays in control; a customized verifier is kept as it is.
+   * chose the pins, stays in control; a customized verifier is kept as it is.
    *
    * @return context to verify one token with
    */
@@ -108,8 +107,7 @@ public final class VerificationContext {
     if (this.certificateVerifier instanceof OperationUnicityCertificateVerifier) {
       return this;
     }
-    UnicityCertificateVerifier operation = this.certificateVerifier.beginOperation(
-            VerificationPolicy.LEGACY_QUORUM, PartitionViewPolicy.none());
+    UnicityCertificateVerifier operation = this.certificateVerifier.beginOperation(PartitionViewPolicy.none());
     if (operation == this.certificateVerifier) {
       return this;
     }
@@ -122,7 +120,7 @@ public final class VerificationContext {
    *
    * @return trust base
    */
-  public RootTrustBase getTrustBase() {
+  public TrustBaseHistoryView getTrustBase() {
     return this.trustBase;
   }
 

@@ -20,14 +20,19 @@ public enum UnicityCertificateFailure {
   MALFORMED_SEAL(false),
   /** The seal is of another network than the trusted authority. */
   NETWORK_MISMATCH(true),
-  /** The seal is of another epoch than the trusted authority. */
+  /** The seal is of an epoch before the genesis epoch of the trusted history. */
   EPOCH_MISMATCH(true),
-  /** The seal round is before the start of the authority's epoch. */
+  /**
+   * The history holds no entry for the epoch of the seal (it is above the held tip, or the history
+   * is empty). The only authority failure that more entries can cure: fetch, append, verify again.
+   */
+  NO_TRUST_BASE_ENTRY(true),
+  /** The seal round is before the start of its epoch. */
   BEFORE_EPOCH_START(true),
+  /** The seal round is at or after the start of the next epoch. */
+  AFTER_EPOCH_END(true),
   /** The seal does not carry a quorum of valid signatures of the authority. */
-  QUORUM_NOT_REACHED(true),
-  /** The authority is of a kind this verification does not support (stake-weighted quorum). */
-  UNSUPPORTED_AUTHORITY(true);
+  QUORUM_NOT_REACHED(true);
 
   private final boolean authorityRejection;
 

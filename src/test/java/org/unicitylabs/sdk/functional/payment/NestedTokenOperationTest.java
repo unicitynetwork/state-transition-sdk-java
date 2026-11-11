@@ -16,7 +16,6 @@ import org.unicitylabs.sdk.api.bft.verification.OperationUnicityCertificateVerif
 import org.unicitylabs.sdk.api.bft.verification.OperationVerificationStats;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerifier;
 import org.unicitylabs.sdk.api.bft.PartitionViewPolicy;
-import org.unicitylabs.sdk.api.bft.verification.VerificationPolicy;
 import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
 import org.unicitylabs.sdk.payment.SplitMintJustification;
 import org.unicitylabs.sdk.payment.SplitMintJustificationVerifier;
@@ -86,8 +85,7 @@ class NestedTokenOperationTest {
         output.getSalt(), SplitMintJustification.create(burn, output.getProofs()).toCbor());
 
     OperationUnicityCertificateVerifier operation = (OperationUnicityCertificateVerifier)
-        new UnicityCertificateVerifier().beginOperation(VerificationPolicy.LEGACY_QUORUM,
-            PartitionViewPolicy.none());
+        new UnicityCertificateVerifier().beginOperation(PartitionViewPolicy.none());
     VerificationContext scoped = context.withCertificateVerifier(operation);
 
     // the output and the burned source it nests: distinct seals of both

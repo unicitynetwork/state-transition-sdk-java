@@ -5,6 +5,10 @@ import org.unicitylabs.sdk.serializer.cbor.CborSerializer.CborMap.Entry;
 import org.unicitylabs.sdk.util.BigIntegerConverter;
 
 import java.math.BigInteger;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.function.Function;
 
@@ -111,7 +115,16 @@ public class CborDeserializer {
     byte[] bytes = reader.read(reader.readLength(CborMajorType.TEXT_STRING).asListSize());
     reader.assertExhausted();
 
-    return new String(bytes);
+    // Strictly UTF-8: malformed or unmappable input is an error, never replaced by U+FFFD and never
+    // decoded with the platform default charset, so one byte string is one text and back.
+    try {
+      return StandardCharsets.UTF_8.newDecoder()
+          .onMalformedInput(CodingErrorAction.REPORT)
+          .onUnmappableCharacter(CodingErrorAction.REPORT)
+          .decode(ByteBuffer.wrap(bytes)).toString();
+    } catch (CharacterCodingException e) {
+      throw new CborSerializationException("Text string is not valid UTF-8.", e);
+    }
   }
 
   /**
@@ -125,6 +138,35 @@ public class CborDeserializer {
     int length = reader.readLength(CborMajorType.ARRAY).asListSize();
 
     ArrayList<byte[]> result = new ArrayList<>();
+    for (int i = 0; i < length; i++) {
+      result.add(reader.readRawCbor());
+    }
+    reader.assertExhausted();
+
+    return result;
+  }
+
+  /**
+   * Read elements as raw CBOR element array from CBOR bytes, refusing an array that declares more
+   * than {@code maxElements} elements as soon as its header is read, before any element is read or
+   * copied.
+   *
+   * @param data bytes
+   * @param maxElements the most elements admitted
+   * @return CBOR element array
+   *
+   * @throws CborSerializationException when the declared length exceeds {@code maxElements}
+   */
+  public static List<byte[]> decodeArrayAtMost(byte[] data, int maxElements) {
+    CborReader reader = new CborReader(data);
+    CborUnsignedLong declared = reader.readLength(CborMajorType.ARRAY);
+    if (Long.compareUnsigned(declared.asLong(), maxElements) > 0) {
+      throw new CborSerializationException(String.format(
+              "Array of more than %d elements.", maxElements));
+    }
+    int length = declared.asListSize();
+
+    ArrayList<byte[]> result = new ArrayList<>(Math.min(length, 1024));
     for (int i = 0; i < length; i++) {
       result.add(reader.readRawCbor());
     }
@@ -182,6 +224,28 @@ public class CborDeserializer {
     reader.assertExhausted();
 
     return result;
+  }
+
+  /**
+   * Read elements as raw CBOR element map from CBOR bytes, refusing a map that declares more than
+   * {@code maxPairs} pairs as soon as its header is read, before any pair is read or copied. Keys
+   * must be in canonical order and unique, as in {@link #decodeMap(byte[])}.
+   *
+   * @param data bytes
+   * @param maxPairs the most key-value pairs admitted
+   * @return CBOR element map
+   *
+   * @throws CborSerializationException when the declared length exceeds {@code maxPairs}
+   */
+  public static Set<CborMap.Entry> decodeMapAtMost(byte[] data, int maxPairs) {
+    CborReader reader = new CborReader(data);
+    CborUnsignedLong declared = reader.readLength(CborMajorType.MAP);
+    if (Long.compareUnsigned(declared.asLong(), maxPairs) > 0) {
+      throw new CborSerializationException(String.format(
+              "Map of more than %d pairs.", maxPairs));
+    }
+    // The pairs are read by the unbounded reader below only after the bound passed.
+    return CborDeserializer.decodeMap(data);
   }
 
   /**

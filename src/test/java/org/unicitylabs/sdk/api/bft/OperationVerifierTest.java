@@ -1,6 +1,9 @@
 package org.unicitylabs.sdk.api.bft;
 
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -21,8 +24,8 @@ import org.unicitylabs.sdk.api.bft.verification.OperationVerificationStats;
 import org.unicitylabs.sdk.api.bft.verification.SealVerificationSession;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateFailure;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerificationResult;
+import org.unicitylabs.sdk.api.bft.verification.NoTrustBaseEntryResult;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerifier;
-import org.unicitylabs.sdk.api.bft.verification.VerificationPolicy;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializer.CborMap;
 import org.unicitylabs.sdk.util.verification.VerificationStatus;
@@ -32,14 +35,13 @@ class OperationVerifierTest {
   private static final TestChain.Authority AUTHORITY = new TestChain.Authority();
   private static final long NOW = TestChain.TIMESTAMP;
 
-  private static OperationUnicityCertificateVerifier operation(VerificationPolicy policy,
-      PartitionViewPolicy pins) {
+  private static OperationUnicityCertificateVerifier operation(PartitionViewPolicy pins) {
     return (OperationUnicityCertificateVerifier) new UnicityCertificateVerifier()
-        .beginOperation(policy, pins);
+        .beginOperation(pins);
   }
 
   private static OperationUnicityCertificateVerifier strict() {
-    return operation(VerificationPolicy.STRICT, null);
+    return operation(null);
   }
 
   private static UnicityCertificate withWitnesses(UnicityCertificate certificate,
@@ -64,7 +66,7 @@ class OperationVerifierTest {
   void manyProofsOfOneSealCostOneQuorumCheckAndOneBodyCheckPerDistinctCertificate() {
     TestChain.Sealed sealed = TestChain.seal(AUTHORITY, 7, 9, TestChain.fourShards(1, NOW));
     OperationUnicityCertificateVerifier verifier = strict();
-    RootTrustBase trustBase = AUTHORITY.trustBase();
+    TrustBaseHistoryView trustBase = AUTHORITY.trustBase();
 
     // 20 proofs: five of each of four distinct certificates, one shared seal
     for (int proof = 0; proof < 20; proof++) {
@@ -88,7 +90,7 @@ class OperationVerifierTest {
     TestChain.Sealed sealed = TestChain.seal(AUTHORITY, 7, 9, TestChain.fourShards(1, NOW));
     TestChain.Sealed other = TestChain.seal(AUTHORITY, 7, 10, TestChain.fourShards(2, NOW), 1, 2, 3);
     OperationUnicityCertificateVerifier verifier = strict();
-    RootTrustBase trustBase = AUTHORITY.trustBase();
+    TrustBaseHistoryView trustBase = AUTHORITY.trustBase();
 
     assertEquals(VerificationStatus.OK,
         verifier.verifyCertificate(trustBase, sealed.certificate("00")).getStatus());
@@ -116,7 +118,7 @@ class OperationVerifierTest {
   void alteredWitnessesAfterAWarmCacheAreAMissAndAreChecked() {
     TestChain.Sealed sealed = TestChain.seal(AUTHORITY, 7, 9, TestChain.fourShards(1, NOW));
     OperationUnicityCertificateVerifier verifier = strict();
-    RootTrustBase trustBase = AUTHORITY.trustBase();
+    TrustBaseHistoryView trustBase = AUTHORITY.trustBase();
     UnicityCertificate good = sealed.certificate("00");
     assertEquals(VerificationStatus.OK, verifier.verifyCertificate(trustBase, good).getStatus());
 
@@ -138,7 +140,7 @@ class OperationVerifierTest {
     TestChain.Sealed seven = TestChain.seal(AUTHORITY, 7, 9, TestChain.fourShards(1, NOW));
     TestChain.Sealed eight = TestChain.seal(AUTHORITY, 8, 9, TestChain.fourShards(1, NOW));
     OperationUnicityCertificateVerifier verifier = strict();
-    RootTrustBase trustBase = AUTHORITY.trustBase();
+    TrustBaseHistoryView trustBase = AUTHORITY.trustBase();
     assertEquals(VerificationStatus.OK,
         verifier.verifyCertificate(trustBase, seven.certificate("00")).getStatus());
 
@@ -159,48 +161,68 @@ class OperationVerifierTest {
   }
 
   @Test
-  void aLegacyOperationAcceptsAHistoricalEpochAStrictOneRefusesIt() {
+  void aSealOfAnEarlierEpochVerifiesAgainstTheEntryOfItsOwnEpochAndNotAfterItsEnd() {
     TestChain.Authority epoch2 = new TestChain.Authority(NetworkId.LOCAL, 2, 10, 1);
-    TestChain.Sealed historical = TestChain.seal(AUTHORITY, 7, 50, TestChain.fourShards(1, NOW));
-    RootTrustBase current = epoch2.trustBase();
+    TrustBaseHistoryView history = AUTHORITY.trustBaseThrough(epoch2);
+    TestChain.Sealed historical = TestChain.seal(AUTHORITY, 7, 9, TestChain.fourShards(1, NOW));
+    TestChain.Sealed late = TestChain.seal(AUTHORITY, 7, 50, TestChain.fourShards(1, NOW));
 
-    OperationUnicityCertificateVerifier legacy = operation(VerificationPolicy.LEGACY_QUORUM, null);
+    OperationUnicityCertificateVerifier verifier = strict();
     assertEquals(VerificationStatus.OK,
-        legacy.verifyCertificate(current, historical.certificate("00")).getStatus());
-    // the same operation's session is the strict authenticator, and the legacy success does not
-    // admit a strict request for the same seal
-    SealVerificationSession session = legacy.sessionFor(current);
-    assertEquals(UnicityCertificateFailure.EPOCH_MISMATCH,
-        session.authenticate(historical.certificate("00").getUnicitySeal()).getFailure());
-    assertEquals(1, legacy.getStats().getQuorumChecks());
+        verifier.verifyCertificate(history, historical.certificate("00")).getStatus());
+    assertEquals(1, verifier.getStats().getQuorumChecks());
 
-    OperationUnicityCertificateVerifier strict = strict();
+    // round 50 of epoch 1 is after the start (10) of epoch 2: final, and no signature work
     UnicityCertificateVerificationResult refused =
-        strict.verifyCertificate(current, historical.certificate("00"));
-    assertEquals(UnicityCertificateFailure.EPOCH_MISMATCH, refused.getFailure());
+        verifier.verifyCertificate(history, late.certificate("00"));
+    assertEquals(UnicityCertificateFailure.AFTER_EPOCH_END, refused.getFailure());
     assertTrue(refused.getFailure().isAuthorityRejection());
-    assertEquals(0, strict.getStats().getQuorumChecks());
+    assertEquals(1, verifier.getStats().getQuorumChecks());
+  }
+
+  @Test
+  void aSealOfAnEpochTheHistoryLacksIsTheTypedNoEntryFailureWithoutSignatureWork() {
+    TestChain.Authority epoch2 = new TestChain.Authority(NetworkId.LOCAL, 2, 10, 1);
+    TestChain.Sealed future = TestChain.seal(epoch2, 7, 11, TestChain.fourShards(1, NOW));
+    TrustBaseHistoryView history = AUTHORITY.trustBase();
+
+    OperationUnicityCertificateVerifier verifier = strict();
+    UnicityCertificateVerificationResult result =
+        verifier.verifyCertificate(history, future.certificate("00"));
+    assertEquals(UnicityCertificateFailure.NO_TRUST_BASE_ENTRY, result.getFailure());
+    NoTrustBaseEntryResult noEntry = NoTrustBaseEntryResult.find(result);
+    assertNotNull(noEntry);
+    assertEquals(2, noEntry.getEpoch());
+    assertEquals(Long.valueOf(1), noEntry.getHeldTipEpoch());
+    assertEquals(0, verifier.getStats().getQuorumChecks());
+
+    // the same seal verifies once the history holds epoch 2
+    assertEquals(VerificationStatus.OK, verifier
+        .verifyCertificate(AUTHORITY.trustBaseThrough(epoch2), future.certificate("00")).getStatus());
+    // other failures are not the typed no-entry
+    assertNull(NoTrustBaseEntryResult.find(verifier.verifyCertificate(
+        new TestChain.Authority(NetworkId.MAINNET, 1, 1, 1).trustBase(),
+        future.certificate("00"))));
   }
 
   @Test
   void anotherAuthorityIsAnotherSessionAndNeverSharesAVerdict() {
     TestChain.Sealed sealed = TestChain.seal(AUTHORITY, 7, 9, TestChain.fourShards(1, NOW));
-    OperationUnicityCertificateVerifier verifier = operation(VerificationPolicy.LEGACY_QUORUM, null);
-    RootTrustBase same = AUTHORITY.trustBase();
-    RootTrustBase otherEpoch = new TestChain.Authority(NetworkId.LOCAL, 7, 1, 1).trustBase();
-    RootTrustBase otherKeys = new TestChain.Authority(NetworkId.LOCAL, 1, 1, 2).trustBase();
+    OperationUnicityCertificateVerifier verifier = operation(null);
+    TrustBaseHistoryView same = AUTHORITY.trustBase();
+    TrustBaseHistoryView otherEpoch = new TestChain.Authority(NetworkId.LOCAL, 7, 1, 1).trustBase();
+    TrustBaseHistoryView otherKeys = new TestChain.Authority(NetworkId.LOCAL, 1, 1, 2).trustBase();
 
     assertEquals(VerificationStatus.OK,
         verifier.verifyCertificate(same, sealed.certificate("00")).getStatus());
-    // same keys, other epoch: the legacy verdict is a property of the keys, but the authority
-    // content differs, so it is a new identity and a new quorum check
-    assertEquals(VerificationStatus.OK,
-        verifier.verifyCertificate(otherEpoch, sealed.certificate("00")).getStatus());
-    assertEquals(2, verifier.getStats().getQuorumChecks());
-    assertEquals(2, verifier.getStats().getAuthorityBuilds());
+    // a history whose genesis epoch is 7 holds nothing for a seal of epoch 1
+    assertEquals(UnicityCertificateFailure.EPOCH_MISMATCH,
+        verifier.verifyCertificate(otherEpoch, sealed.certificate("00")).getFailure());
+    assertEquals(1, verifier.getStats().getQuorumChecks());
     // other keys: not a quorum of this authority
     assertEquals(UnicityCertificateFailure.QUORUM_NOT_REACHED,
         verifier.verifyCertificate(otherKeys, sealed.certificate("00")).getFailure());
+    assertEquals(2, verifier.getStats().getQuorumChecks());
     assertEquals(3, verifier.getStats().getAuthorityBuilds());
   }
 
@@ -210,7 +232,7 @@ class OperationVerifierTest {
     OperationUnicityCertificateVerifier verifier = strict();
     assertEquals(VerificationStatus.OK,
         verifier.verifyCertificate(AUTHORITY.trustBase(), sealed.certificate("00")).getStatus());
-    RootTrustBase mainnet = new TestChain.Authority(NetworkId.MAINNET, 1, 1, 1).trustBase();
+    TrustBaseHistoryView mainnet = new TestChain.Authority(NetworkId.MAINNET, 1, 1, 1).trustBase();
     assertEquals(UnicityCertificateFailure.NETWORK_MISMATCH,
         verifier.verifyCertificate(mainnet, sealed.certificate("00")).getFailure());
   }
@@ -219,38 +241,38 @@ class OperationVerifierTest {
   void pinsOfTheOperationConstrainShardAndConfiguration() {
     TestChain.Sealed sealed = TestChain.seal(AUTHORITY, 7, 9, TestChain.fourShards(1, NOW));
     UnicityCertificate certificate = sealed.certificate("00");
-    RootTrustBase trustBase = AUTHORITY.trustBase();
+    TrustBaseHistoryView trustBase = AUTHORITY.trustBase();
 
     PartitionViewPolicy right = PartitionViewPolicy.none().withPins(List.of(
         new ShardConfigurationPin(ShardId.fromBitString("00"),
             certificate.getShardConfigurationHash())));
-    assertEquals(VerificationStatus.OK, operation(VerificationPolicy.STRICT, right)
+    assertEquals(VerificationStatus.OK, operation(right)
         .verifyCertificate(trustBase, certificate).getStatus());
 
     PartitionViewPolicy wrong = PartitionViewPolicy.none().withPins(List.of(
         new ShardConfigurationPin(ShardId.fromBitString("00"), new byte[32])));
-    assertEquals(UnicityCertificateFailure.PIN_MISMATCH, operation(VerificationPolicy.STRICT, wrong)
+    assertEquals(UnicityCertificateFailure.PIN_MISMATCH, operation(wrong)
         .verifyCertificate(trustBase, certificate).getFailure());
 
     PartitionViewPolicy otherScheme = PartitionViewPolicy.none().withScheme(List.of(
         ShardId.fromBitString("0"), ShardId.fromBitString("1")));
     assertEquals(UnicityCertificateFailure.PIN_MISMATCH,
-        operation(VerificationPolicy.STRICT, otherScheme)
+        operation(otherScheme)
             .verifyCertificate(trustBase, certificate).getFailure());
   }
 
   @Test
   void aCustomVerifierIsNeverWrappedAndAnOperationReturnsItselfForTheSameRequest() {
     UnicityCertificateVerifier custom = new UnicityCertificateVerifier() { };
-    assertSame(custom, custom.beginOperation(VerificationPolicy.STRICT, null));
+    assertSame(custom, custom.beginOperation(null));
 
     OperationUnicityCertificateVerifier operation = strict();
-    assertSame(operation, operation.beginOperation(VerificationPolicy.STRICT, null));
-    assertSame(operation, operation.beginOperation(VerificationPolicy.STRICT,
-        PartitionViewPolicy.none()));
-    assertNotSame(operation, operation.beginOperation(VerificationPolicy.LEGACY_QUORUM, null));
+    assertSame(operation, operation.beginOperation(null));
+    assertSame(operation, operation.beginOperation(PartitionViewPolicy.none()));
+    assertNotSame(operation, operation.beginOperation(PartitionViewPolicy.none().withScheme(
+        List.of(ShardId.fromBitString("0"), ShardId.fromBitString("1")))));
     assertNotSame(operation, new UnicityCertificateVerifier()
-        .beginOperation(VerificationPolicy.STRICT, null));
+        .beginOperation(null));
   }
 
   @Test
@@ -258,7 +280,7 @@ class OperationVerifierTest {
     TestChain.Sealed sealed = TestChain.seal(AUTHORITY, 7, 9, TestChain.fourShards(1, NOW));
     UnicityCertificate good = sealed.certificate("00");
     OperationUnicityCertificateVerifier verifier = strict();
-    RootTrustBase trustBase = AUTHORITY.trustBase();
+    TrustBaseHistoryView trustBase = AUTHORITY.trustBase();
 
     UnicityCertificate badPath = new UnicityCertificate(good.getInputRecord(),
         good.getTechnicalRecordHash(), good.getShardConfigurationHash(),
@@ -292,7 +314,7 @@ class OperationVerifierTest {
   void concurrentProofsOfTheSameCertificateAreCheckedOnce() throws Exception {
     TestChain.Sealed sealed = TestChain.seal(AUTHORITY, 7, 9, TestChain.fourShards(1, NOW));
     OperationUnicityCertificateVerifier verifier = strict();
-    RootTrustBase trustBase = AUTHORITY.trustBase();
+    TrustBaseHistoryView trustBase = AUTHORITY.trustBase();
     ExecutorService pool = Executors.newFixedThreadPool(8);
     try {
       List<Future<VerificationStatus>> futures = new ArrayList<>();

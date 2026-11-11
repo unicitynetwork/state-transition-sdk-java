@@ -35,10 +35,12 @@ import org.unicitylabs.sdk.api.bft.PartitionView;
 import org.unicitylabs.sdk.api.bft.PartitionViewAuthenticator;
 import org.unicitylabs.sdk.api.bft.PartitionViewException;
 import org.unicitylabs.sdk.api.bft.PartitionViewLeaf;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
 import org.unicitylabs.sdk.api.bft.ShardId;
 import org.unicitylabs.sdk.api.bft.UnicityCertificate;
 import org.unicitylabs.sdk.api.bft.UnicitySeal;
+import org.unicitylabs.sdk.api.bft.verification.NoTrustBaseEntryException;
+import org.unicitylabs.sdk.api.bft.verification.NoTrustBaseEntryResult;
 import org.unicitylabs.sdk.api.bft.verification.OperationUnicityCertificateVerifier;
 import org.unicitylabs.sdk.api.bft.verification.SealVerificationResult;
 import org.unicitylabs.sdk.api.bft.verification.SealVerificationSession;
@@ -81,7 +83,7 @@ public final class ProofConsolidator {
   private static final int HASH_LENGTH = 32;
 
   private final ShardRouting routing;
-  private final RootTrustBase trustBase;
+  private final TrustBaseHistoryView trustBase;
   private final OperationUnicityCertificateVerifier verifier;
   private final SealVerificationSession session;
 
@@ -96,7 +98,7 @@ public final class ProofConsolidator {
    *     are authenticated. Its pins are not used: the routing's scheme and configuration pins
    *     constrain the original proofs and the targets of the consolidation only
    */
-  public ProofConsolidator(ShardRouting routing, RootTrustBase trustBase,
+  public ProofConsolidator(ShardRouting routing, TrustBaseHistoryView trustBase,
       OperationUnicityCertificateVerifier verifier) {
     this.routing = Objects.requireNonNull(routing, "routing cannot be null");
     this.trustBase = Objects.requireNonNull(trustBase, "trustBase cannot be null");
@@ -123,6 +125,18 @@ public final class ProofConsolidator {
   // ---------------------------------------------------------------------------------------------
 
   /** Service outcome that ends the attempt as unavailable, internal control flow. */
+  /**
+   * The consolidation failure for a master view that does not authenticate. The typed missing-entry
+   * signal is the direct cause, as at the other two seal checks; otherwise the view failure is.
+   */
+  static ConsolidationException viewFailure(PartitionViewException e, ShardId masterShard) {
+    Throwable cause = e.getCause() instanceof NoTrustBaseEntryException ? e.getCause() : e;
+    return ConsolidationException.of(ConsolidationException.Kind.INTEGRITY,
+        e.getReason() == PartitionViewException.Reason.AUTHENTICATION
+            ? ConsolidationOutcome.UNAUTHENTICATED : ConsolidationOutcome.INVALID_INPUT,
+        e.getMessage(), masterShard, cause);
+  }
+
   private static final class UnavailableSignal extends RuntimeException {
     private final transient Unavailability unavailability;
 
@@ -504,7 +518,9 @@ public final class ProofConsolidator {
         UnicityCertificateVerificationResult verified = verifier.verifyCertificate(trustBase, uc);
         evidenceBodyChecks += verifier.getStats().getBodyChecks() - bodiesBefore;
         if (verified.getStatus() != VerificationStatus.OK) {
-          throw certificateFailure("Evidence " + i, verified.getFailure(), shard, null);
+          NoTrustBaseEntryResult noEntry = NoTrustBaseEntryResult.find(verified);
+          throw certificateFailure("Evidence " + i, verified.getFailure(), shard,
+              noEntry == null ? null : noEntry.toException());
         }
         String pinViolation = routing.getViewPolicy().violation(shard,
             uc.getShardConfigurationHash());
@@ -537,9 +553,10 @@ public final class ProofConsolidator {
           break;
         case NETWORK_MISMATCH:
         case EPOCH_MISMATCH:
+        case NO_TRUST_BASE_ENTRY:
         case BEFORE_EPOCH_START:
+        case AFTER_EPOCH_END:
         case QUORUM_NOT_REACHED:
-        case UNSUPPORTED_AUTHORITY:
           outcome = ConsolidationOutcome.UNAUTHENTICATED;
           break;
         default:
@@ -562,9 +579,7 @@ public final class ProofConsolidator {
       try {
         view = authenticator.authenticate(PartitionView.fromCbor(viewBytes), enclosing);
       } catch (PartitionViewException e) {
-        throw integrity(e.getReason() == PartitionViewException.Reason.AUTHENTICATION
-            ? ConsolidationOutcome.UNAUTHENTICATED : ConsolidationOutcome.INVALID_INPUT,
-            e.getMessage(), masterShard, e);
+        throw viewFailure(e, masterShard);
       }
       return new Target() {
         @Override
@@ -619,8 +634,10 @@ public final class ProofConsolidator {
       }
       SealVerificationResult authenticated = session.authenticate(enclosing.getUnicitySeal());
       if (authenticated.getStatus() != VerificationStatus.OK) {
+        NoTrustBaseEntryResult noEntry = NoTrustBaseEntryResult.find(authenticated);
         throw integrity(ConsolidationOutcome.UNAUTHENTICATED,
-            "Authenticating unicity seal: " + authenticated.getFailure() + ".", masterShard, null);
+            "Authenticating unicity seal: " + authenticated.getFailure() + ".", masterShard,
+            noEntry == null ? null : noEntry.toException());
       }
       return new Target() {
         @Override

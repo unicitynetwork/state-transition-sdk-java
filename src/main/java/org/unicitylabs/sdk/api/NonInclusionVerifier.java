@@ -4,16 +4,16 @@ import java.util.Arrays;
 import java.util.Objects;
 import org.unicitylabs.sdk.api.NonInclusionVerificationException.Reason;
 import org.unicitylabs.sdk.api.bft.InputRecord;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
 import org.unicitylabs.sdk.api.bft.ShardId;
 import org.unicitylabs.sdk.api.bft.UnicityCertificate;
 import org.unicitylabs.sdk.api.bft.UnicitySeal;
 import org.unicitylabs.sdk.api.bft.PartitionViewPolicy;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerificationResult;
 import org.unicitylabs.sdk.api.bft.verification.OperationUnicityCertificateVerifier;
+import org.unicitylabs.sdk.api.bft.verification.NoTrustBaseEntryResult;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateFailure;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerifier;
-import org.unicitylabs.sdk.api.bft.verification.VerificationPolicy;
 import org.unicitylabs.sdk.serializer.cbor.CborSerializationException;
 import org.unicitylabs.sdk.util.UnsignedLongs;
 import org.unicitylabs.sdk.util.verification.VerificationStatus;
@@ -67,10 +67,10 @@ public final class NonInclusionVerifier {
    * @return the outcome with its authenticated snapshot
    * @throws NonInclusionVerificationException if the proof is rejected; no snapshot is attached
    */
-  public static NonInclusionOutcome verify(RootTrustBase trustBase, NonInclusionProof proof,
+  public static NonInclusionOutcome verify(TrustBaseHistoryView trustBase, NonInclusionProof proof,
       NonInclusionContext context) {
     return verify(new UnicityCertificateVerifier()
-        .beginOperation(VerificationPolicy.STRICT, PartitionViewPolicy.none()),
+        .beginOperation(PartitionViewPolicy.none()),
         trustBase, proof, context);
   }
 
@@ -93,7 +93,7 @@ public final class NonInclusionVerifier {
    * @throws NonInclusionVerificationException if the proof is rejected or bound to another state
    */
   public static NonInclusionOutcome verify(UnicityCertificateVerifier verifier,
-      RootTrustBase trustBase, NonInclusionProof proof, StateId target,
+      TrustBaseHistoryView trustBase, NonInclusionProof proof, StateId target,
       NonInclusionContext context) {
     Objects.requireNonNull(target, "target cannot be null");
     Objects.requireNonNull(proof, "proof cannot be null");
@@ -115,32 +115,19 @@ public final class NonInclusionVerifier {
    * metadata for this check.
    *
    * @param verifier the verifier of the operation, obtained from
-   *     {@link UnicityCertificateVerifier#beginOperation} with {@link VerificationPolicy#STRICT};
-   *     the plain verifier and any operation verifier of the legacy quorum policy apply no
-   *     epoch check and are refused
-   * @param trustBase the authority
+   *     {@link UnicityCertificateVerifier#beginOperation}
+   * @param trustBase the trust-base history the seal is placed in
    * @param proof the unverified proof, bound to the queried state
    * @param context what the caller trusts about the shard
    * @return the outcome with its authenticated snapshot
-   * @throws IllegalArgumentException if the plain (legacy) verifier is passed
    * @throws NonInclusionVerificationException if the proof is rejected; no snapshot is attached
    */
   public static NonInclusionOutcome verify(UnicityCertificateVerifier verifier,
-      RootTrustBase trustBase, NonInclusionProof proof, NonInclusionContext context) {
+      TrustBaseHistoryView trustBase, NonInclusionProof proof, NonInclusionContext context) {
     Objects.requireNonNull(verifier, "verifier cannot be null");
     Objects.requireNonNull(trustBase, "trustBase cannot be null");
     Objects.requireNonNull(proof, "proof cannot be null");
     Objects.requireNonNull(context, "context cannot be null");
-    if (verifier.getClass() == UnicityCertificateVerifier.class) {
-      throw new IllegalArgumentException(
-          "The plain verifier applies the legacy quorum policy; use beginOperation(STRICT, ...).");
-    }
-    if (verifier instanceof OperationUnicityCertificateVerifier
-        && ((OperationUnicityCertificateVerifier) verifier).getPolicy() != VerificationPolicy.STRICT) {
-      throw new IllegalArgumentException(
-          "The operation verifier applies the legacy quorum policy; use beginOperation(STRICT, ...).");
-    }
-
     NonInclusionProof.Decoded decoded;
     try {
       decoded = proof.decode();
@@ -195,7 +182,7 @@ public final class NonInclusionVerifier {
    * seal hash, network, epoch interval and quorum), and the authority&rsquo;s end.
    */
   private static void authenticateCertificate(UnicityCertificateVerifier verifier,
-      RootTrustBase trustBase, UnicityCertificate uc, NonInclusionContext context) {
+      TrustBaseHistoryView trustBase, UnicityCertificate uc, NonInclusionContext context) {
     ShardId shard = uc.getShardTreeCertificate().getShard();
     if (!shard.equals(context.getShard())) {
       throw invalid("the certificate is not of the context's shard");
@@ -218,10 +205,14 @@ public final class NonInclusionVerifier {
       UnicityCertificateFailure failure = result.getFailure();
       // a fault of the certificate (partition, body, paths, seal hash, pins) is uc_invalid; the
       // refusal of the authority (network, epoch, quorum) is authority_rejected
+      // a missing trust-base entry is not a verdict on the proof: the typed signal stays the cause
+      // (epoch of the seal, held tip), so the caller can update its history and ask again
+      NoTrustBaseEntryResult noEntry = NoTrustBaseEntryResult.find(result);
       throw new NonInclusionVerificationException(
           failure != null && !failure.isAuthorityRejection() ? Reason.UC_INVALID
               : Reason.AUTHORITY_REJECTED,
-          "the certificate is not authenticated by the trusted authority", null);
+          "the certificate is not authenticated by the trusted authority",
+          noEntry == null ? null : noEntry.toException());
     }
     // the end of the authority is a statement about an authenticated seal
     long round = uc.getUnicitySeal().getRootChainRoundNumber();

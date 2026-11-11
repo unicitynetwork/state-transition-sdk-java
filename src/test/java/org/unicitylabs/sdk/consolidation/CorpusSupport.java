@@ -1,5 +1,6 @@
 package org.unicitylabs.sdk.consolidation;
 
+import org.unicitylabs.sdk.api.bft.TrustBaseTestUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -26,7 +27,10 @@ import org.unicitylabs.sdk.api.CertificationResponse;
 import org.unicitylabs.sdk.api.InclusionProofBatch;
 import org.unicitylabs.sdk.api.InclusionProofResponse;
 import org.unicitylabs.sdk.api.StateId;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.NetworkId;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistory;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseMember;
 import org.unicitylabs.sdk.api.bft.ShardId;
 import org.unicitylabs.sdk.serializer.cbor.CborDeserializer;
 import org.unicitylabs.sdk.util.HexConverter;
@@ -105,37 +109,12 @@ final class CorpusSupport {
     return ShardId.fromBitString(bits);
   }
 
-  /** Go trust base CBOR: tag 39000 [version, network, epoch, epochStart, [[id, key, stake]...], quorum, ...]. */
-  static RootTrustBase trustBase(byte[] cbor) {
-    List<byte[]> data = CborDeserializer.decodeArray(CborDeserializer.decodeTag(cbor).getData());
-    ObjectNode json = JSON.createObjectNode();
-    json.put("version", 1);
-    json.put("networkId", CborDeserializer.decodeUnsignedInteger(data.get(1)).asLong());
-    json.put("epoch", Long.toUnsignedString(
-        CborDeserializer.decodeUnsignedInteger(data.get(2)).asLong()));
-    json.put("epochStartRound", Long.toUnsignedString(
-        CborDeserializer.decodeUnsignedInteger(data.get(3)).asLong()));
-    ArrayNode nodes = json.putArray("rootNodes");
-    for (byte[] node : CborDeserializer.decodeArray(data.get(4))) {
-      List<byte[]> fields = CborDeserializer.decodeArray(node, 3);
-      ObjectNode entry = nodes.addObject();
-      entry.put("nodeId", CborDeserializer.decodeTextString(fields.get(0)));
-      entry.put("sigKey", "0x" + HexConverter.encode(
-          CborDeserializer.decodeByteString(fields.get(1))));
-      entry.put("stake", Long.toUnsignedString(
-          CborDeserializer.decodeUnsignedInteger(fields.get(2)).asLong()));
-    }
-    json.put("quorumThreshold", Long.toUnsignedString(
-        CborDeserializer.decodeUnsignedInteger(data.get(5)).asLong()));
-    json.put("stateHash", "");
-    json.putNull("changeRecordHash");
-    json.putNull("previousEntryHash");
-    json.putObject("signatures");
-    try {
-      return RootTrustBase.fromJson(JSON.writeValueAsString(json));
-    } catch (IOException e) {
-      throw new UncheckedIOException(e);
-    }
+  /**
+   * The consolidation corpus authority: a trust base v2 bundle (tag 39015) of one genesis entry,
+   * opened as a history pinned by that entry's identity.
+   */
+  static TrustBaseHistoryView trustBase(byte[] bundle) {
+    return TrustBaseTestUtils.fromBundle(bundle);
   }
 
   /** Certification data inside a Go certification request (tag 39030). */

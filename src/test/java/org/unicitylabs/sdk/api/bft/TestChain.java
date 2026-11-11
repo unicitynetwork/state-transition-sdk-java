@@ -10,6 +10,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.unicitylabs.sdk.api.NetworkId;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseEntry;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistory;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseMember;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.crypto.hash.DataHasher;
 import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
@@ -55,13 +58,50 @@ public final class TestChain {
       this(NetworkId.LOCAL, 1, 1, 1);
     }
 
-    public RootTrustBase trustBase() {
-      List<RootTrustBase.NodeInfo> nodes = new ArrayList<>();
+    public TrustBaseHistory trustBase() {
+      List<TrustBaseMember> nodes = new ArrayList<>();
       for (int i = 0; i < 4; i++) {
-        nodes.add(new RootTrustBase.NodeInfo(ids[i], signers[i].getPublicKey(), 1));
+        nodes.add(new TrustBaseMember(ids[i], signers[i].getPublicKey(), 1));
       }
-      return new RootTrustBase(1, network, epoch, epochStartRound, nodes, 3, new byte[0], null,
-          null, Map.of());
+      return TrustBaseTestUtils.genesis(network, epoch, epochStartRound, nodes);
+    }
+
+    /**
+     * A history holding this authority's epoch as the genesis and {@code next}'s epoch as its
+     * successor, signed by this authority's nodes 0, 1 and 2.
+     */
+    public TrustBaseHistory trustBaseThrough(Authority next) {
+      TrustBaseHistory history = trustBase();
+      appendSuccessor(history, next);
+      return history;
+    }
+
+    /** Appends {@code next}'s epoch to a history whose tip is this authority's epoch. */
+    public void appendSuccessor(TrustBaseHistory history, Authority next) {
+      TrustBaseEntry genesis = history.getTip().get();
+      List<TrustBaseMember> members = new ArrayList<>();
+      for (int i = 0; i < 4; i++) {
+        members.add(new TrustBaseMember(next.ids[i], next.signers[i].getPublicKey(), 1));
+      }
+      TrustBaseEntry unsigned = new TrustBaseEntry(next.network.getId(), next.epoch,
+          next.epochStartRound, members, 3, null, null, genesis.entryId(),
+          Map.of("x", new byte[65]));
+      DataHash hash = new DataHasher(HashAlgorithm.SHA256).update(unsigned.sigBytes()).digest();
+      Map<String, byte[]> signatures = new LinkedHashMap<>();
+      for (int i = 0; i < 3; i++) {
+        signatures.put(ids[i], signers[i].sign(hash).encode());
+      }
+      history.append(new TrustBaseEntry(next.network.getId(), next.epoch, next.epochStartRound,
+          members, 3, null, null, genesis.entryId(), signatures));
+    }
+
+    /** The same four nodes with the given voting weights (the threshold follows from them). */
+    public TrustBaseHistory weightedTrustBase(long... weights) {
+      List<TrustBaseMember> nodes = new ArrayList<>();
+      for (int i = 0; i < 4; i++) {
+        nodes.add(new TrustBaseMember(ids[i], signers[i].getPublicKey(), weights[i]));
+      }
+      return TrustBaseTestUtils.genesis(network, epoch, epochStartRound, nodes);
     }
 
     public NetworkId network() {

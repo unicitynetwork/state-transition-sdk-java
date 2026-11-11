@@ -16,7 +16,7 @@ import org.unicitylabs.sdk.api.RequestOptions;
 import org.unicitylabs.sdk.api.StateId;
 import org.unicitylabs.sdk.api.SubmitOutcome;
 import org.unicitylabs.sdk.api.WaitOptions;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
 import org.unicitylabs.sdk.transaction.Transaction;
 import org.unicitylabs.sdk.util.InclusionProofUtils;
@@ -30,7 +30,7 @@ final class WaitingExamples {
   private WaitingExamples() {
   }
 
-  static InclusionProof standardWait(StateTransitionClient client, RootTrustBase trustBase,
+  static InclusionProof standardWait(StateTransitionClient client, TrustBaseHistoryView trustBase,
       PredicateVerifierService predicateVerifier, Transaction transaction) throws Exception {
     // long polling, 30 s in total, the first request goes out at once
     return InclusionProofUtils
@@ -38,7 +38,7 @@ final class WaitingExamples {
         .get();
   }
 
-  static InclusionProof tunedWait(StateTransitionClient client, RootTrustBase trustBase,
+  static InclusionProof tunedWait(StateTransitionClient client, TrustBaseHistoryView trustBase,
       PredicateVerifierService predicateVerifier, Transaction transaction) throws Exception {
     var options = WaitOptions.defaults().timeout(Duration.ofSeconds(60));
     return InclusionProofUtils
@@ -47,7 +47,7 @@ final class WaitingExamples {
   }
 
   static CompletableFuture<InclusionProof> cancellable(StateTransitionClient client,
-      RootTrustBase trustBase, PredicateVerifierService predicateVerifier, Transaction transaction) {
+      TrustBaseHistoryView trustBase, PredicateVerifierService predicateVerifier, Transaction transaction) {
     CompletableFuture<InclusionProof> wait =
         InclusionProofUtils.waitInclusionProof(client, trustBase, predicateVerifier, transaction);
     // cancelling the future cancels the HTTP call in flight and the pending pause
@@ -61,7 +61,7 @@ final class WaitingExamples {
   }
 
   static CompletableFuture<InclusionProof> submitAndWait(StateTransitionClient client,
-      Transaction transaction, CertificationData data, RootTrustBase trustBase,
+      Transaction transaction, CertificationData data, TrustBaseHistoryView trustBase,
       PredicateVerifierService predicateVerifier) {
     // the first submission and at most two resubmissions; the proof must certify this transaction
     return client.submitAndWait(transaction, data, 2, trustBase, predicateVerifier,

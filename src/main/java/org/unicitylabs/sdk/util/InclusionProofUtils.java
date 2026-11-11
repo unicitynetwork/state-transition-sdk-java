@@ -6,7 +6,7 @@ import org.unicitylabs.sdk.api.InclusionProof;
 import org.unicitylabs.sdk.api.InclusionProofWaitException;
 import org.unicitylabs.sdk.api.StateId;
 import org.unicitylabs.sdk.api.WaitOptions;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
 import org.unicitylabs.sdk.crypto.hash.DataHash;
 import org.unicitylabs.sdk.internal.InclusionProofWaiter;
 import org.unicitylabs.sdk.predicate.EncodedPredicate;
@@ -44,7 +44,7 @@ public class InclusionProofUtils {
    */
   public static CompletableFuture<InclusionProof> waitInclusionProof(
           StateTransitionClient client,
-          RootTrustBase trustBase,
+          TrustBaseHistoryView trustBase,
           PredicateVerifierService predicateVerifier,
           Transaction transaction
   ) {
@@ -68,7 +68,7 @@ public class InclusionProofUtils {
    */
   public static CompletableFuture<InclusionProof> waitInclusionProof(
           StateTransitionClient client,
-          RootTrustBase trustBase,
+          TrustBaseHistoryView trustBase,
           PredicateVerifierService predicateVerifier,
           Transaction transaction,
           Duration timeout,
@@ -99,7 +99,7 @@ public class InclusionProofUtils {
    */
   public static CompletableFuture<InclusionProof> waitInclusionProof(
           StateTransitionClient client,
-          RootTrustBase trustBase,
+          TrustBaseHistoryView trustBase,
           PredicateVerifierService predicateVerifier,
           Transaction transaction,
           WaitOptions options
@@ -109,7 +109,7 @@ public class InclusionProofUtils {
             proof -> check(trustBase, predicateVerifier, transaction, stateId, proof), options);
   }
 
-  private static void check(RootTrustBase trustBase, PredicateVerifierService predicateVerifier,
+  private static void check(TrustBaseHistoryView trustBase, PredicateVerifierService predicateVerifier,
       Transaction transaction, StateId stateId, InclusionProof proof) {
     VerificationResult<InclusionProofVerificationStatus> result =
             InclusionProofVerificationRule.verify(trustBase, predicateVerifier, proof, transaction);
@@ -128,7 +128,7 @@ public class InclusionProofUtils {
     throw new VerificationException("Inclusion proof verification failed", result);
   }
 
-  private static boolean authenticatesAnotherRequest(RootTrustBase trustBase,
+  private static boolean authenticatesAnotherRequest(TrustBaseHistoryView trustBase,
       PredicateVerifierService predicateVerifier, StateId stateId, InclusionProof proof) {
     try {
       CertificationData data = proof.getCertificationData();

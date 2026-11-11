@@ -31,7 +31,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'org.unicitylabs:java-state-transition-sdk:3.0-SNAPSHOT'
+    implementation 'org.unicitylabs:java-state-transition-sdk:4.0.0'
     implementation 'com.google.guava:guava:33.0.0-jre'
 }
 ```
@@ -56,23 +56,20 @@ dependencies {
 
 Mainnet is live. Start with testnet2; for production, use the mainnet gateway and matching trust base.
 
-| Network | Gateway | Network ID | Trust base |
-| --- | --- | --- | --- |
-| Mainnet | `https://gateway.mainnet.unicity.network` | `1` | [JSON](https://raw.githubusercontent.com/unicitynetwork/unicity-ids/main/bft-trustbase.mainnet.json) |
-| Testnet2 | `https://gateway.testnet2.unicity.network` | `4` | [JSON](https://raw.githubusercontent.com/unicitynetwork/unicity-ids/main/bft-trustbase.testnet2.json) |
+| Network | Gateway | Network ID |
+| --- | --- | --- |
+| Mainnet | `https://gateway.mainnet.unicity.network` | `1` |
+| Testnet2 | `https://gateway.testnet2.unicity.network` | `4` |
 
 Pass your gateway API key as the second argument to `JsonRpcAggregatorClient`. The public testnet2 key is `sk_ddc3cfcc001e4a28ac3fad7407f99590`. Use your own mainnet key obtained from [Sphere](https://sphere.unicity.network/) and keep it secure.
 
 ### First connection
 
-Download the testnet2 trust base above as `bft-trustbase.testnet2.json` in your working directory. Add this class to your application and run it:
+Add this class to your application and run it to check connectivity. Token verification also needs a trust-base history pinned to a known genesis; open it through a session using the [mainnet, testnet2 or local setup](./docs/api-reference.md#10-trust-base-sessions).
 
 ```java
-import java.nio.file.Files;
-import java.nio.file.Path;
 import org.unicitylabs.sdk.StateTransitionClient;
 import org.unicitylabs.sdk.api.JsonRpcAggregatorClient;
-import org.unicitylabs.sdk.api.bft.RootTrustBase;
 
 public class Connect {
     public static void main(String[] args) throws Exception {
@@ -80,16 +77,10 @@ public class Connect {
                 "https://gateway.testnet2.unicity.network",
                 "sk_ddc3cfcc001e4a28ac3fad7407f99590"); // Public testnet2 key
         var client = new StateTransitionClient(aggregator);
-        var trustBase = RootTrustBase.fromJson(
-                Files.readString(Path.of("bft-trustbase.testnet2.json")));
-
-        System.out.println("Network ID: " + trustBase.getNetworkId().getId());
         System.out.println("Latest round: " + aggregator.getLatestBlockNumber().get());
     }
 }
 ```
-
-The trust base identifies the Consensus Layer (BFT Core) instance. Pin a trusted copy in your application for production. Use `trustBase.getNetworkId()` when creating tokens so they match your gateway; testnet2 is network ID `4` (`NetworkId.TESTNET` is `2`).
 
 The example waits for the result with `.get()`. In asynchronous applications, compose the returned futures; on Android, keep blocking calls off the UI thread.
 
@@ -108,7 +99,7 @@ For minting and transfers, create the transaction, submit its `CertificationData
 
 `waitInclusionProof()` sends its first request immediately and, by default, asks the aggregator to hold each request while the state is pending (long polling). The proof then arrives soon after certification, usually within a single request. Aggregators without long polling are polled at the interval. The default budget is 15 seconds; adjust it, the interval, and the long-poll window with `WaitOptions`. Cancelling the returned future cancels the request in flight. See the [API reference](./docs/api-reference.md#7-waiting-for-inclusion-proofs).
 
-These examples are test code with local network configuration. When adapting them to a public network, use the matching gateway, key, and trust base, and pass `trustBase.getNetworkId()` when minting.
+These examples are test code with local network configuration. When adapting them to a public network, use the matching gateway, key, and trust base, and pass `trustBase.getNetworkId().get()` when minting.
 
 ### Store, send, and receive
 
@@ -142,6 +133,8 @@ Use the SDK's verification APIs with the authentic network trust base and your a
 
 ## Development
 
+Use JDK 21 for the Gradle build, matching CI; the SDK still targets Java 11. Select it with `JAVA_HOME` if another JDK is your system default.
+
 From a repository checkout:
 
 ```bash
@@ -156,7 +149,7 @@ Run the integration tests, including Docker-based tests:
 ./gradlew integrationTest
 ```
 
-The [deployed-network test](./src/test/java/org/unicitylabs/sdk/e2e/TokenE2ETest.java) is enabled by `AGGREGATOR_URL`. Its current setup loads `src/test/resources/trust-base.json` and creates a client without an API key; configure both for your target network before running it.
+The [deployed-network test](./src/test/java/org/unicitylabs/sdk/e2e/TokenE2ETest.java) is enabled by `AGGREGATOR_URL`. Its setup opens the trust base history the aggregator under test serves (the local-network setup, for a deployment you run yourself; for a public network use a pinned session instead) and creates a client without an API key; configure both for your target network before running it.
 
 ## Resources
 
