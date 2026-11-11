@@ -1,6 +1,7 @@
 package org.unicitylabs.sdk.consolidation;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -19,14 +20,22 @@ import org.unicitylabs.sdk.api.CertificationData;
 import org.unicitylabs.sdk.api.CertificationResponse;
 import org.unicitylabs.sdk.api.CertificationStatus;
 import org.unicitylabs.sdk.api.InclusionProof;
+import org.unicitylabs.sdk.api.InclusionProofFixture;
 import org.unicitylabs.sdk.api.InclusionProofBatch;
 import org.unicitylabs.sdk.api.InclusionProofResponse;
 import org.unicitylabs.sdk.api.StateId;
 import org.unicitylabs.sdk.api.bft.PartitionViewPolicy;
+import org.unicitylabs.sdk.api.bft.UnicityCertificateUtils;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseEntry;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistory;
+import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseMember;
 import org.unicitylabs.sdk.api.bft.trustbase.TrustBaseHistoryView;
+import org.unicitylabs.sdk.api.bft.verification.NoTrustBaseEntryException;
 import org.unicitylabs.sdk.api.bft.verification.OperationUnicityCertificateVerifier;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerificationResult;
 import org.unicitylabs.sdk.api.bft.verification.UnicityCertificateVerifier;
+import org.unicitylabs.sdk.crypto.hash.DataHasher;
+import org.unicitylabs.sdk.crypto.hash.HashAlgorithm;
 import org.unicitylabs.sdk.crypto.secp256k1.SigningService;
 import org.unicitylabs.sdk.predicate.builtin.SignaturePredicate;
 import org.unicitylabs.sdk.predicate.verification.PredicateVerifierService;
@@ -188,6 +197,129 @@ class ConsolidationGuardTest {
     ConsolidationException viaClient = failure(tokenClient(new Batch(alien), context));
     assertEquals(ConsolidationException.Kind.INTEGRITY, viaClient.getKind());
     assertEquals(ConsolidationOutcome.UNAUTHENTICATED, viaClient.getOutcome());
+    // a bad quorum is final: no typed missing-entry cause
+    assertFalse(direct.getCause() instanceof NoTrustBaseEntryException);
+    assertFalse(viaClient.getCause() instanceof NoTrustBaseEntryException);
+  }
+
+  /** Serves the batch of {@code source} with every seal moved to {@code epoch}, re-signed. */
+  private static final class EpochMoved implements BatchAggregatorClient {
+    private final Batch source;
+    private final SigningService signer;
+    private final long epoch;
+    private final long round;
+
+    EpochMoved(TestAggregatorClient source, byte[] key, long epoch, long round) {
+      this.source = new Batch(source);
+      this.signer = new SigningService(key);
+      this.epoch = epoch;
+      this.round = round;
+    }
+
+    @Override
+    public CompletableFuture<InclusionProofBatch> getInclusionProofs(List<StateId> stateIds,
+        BatchRequestOptions options) {
+      List<InclusionProofResponse> proofs = new ArrayList<>();
+      for (InclusionProofResponse response : source.getInclusionProofs(stateIds, options).join()
+          .getProofs()) {
+        InclusionProof p = response.getInclusionProof();
+        proofs.add(InclusionProofResponse.certified(response.getBlockNumber(),
+            InclusionProofFixture.withCertificate(p, UnicityCertificateUtils.withSealAt(
+                p.getUnicityCertificate(), signer, round, epoch))));
+      }
+      return CompletableFuture.completedFuture(new InclusionProofBatch(proofs, null, 1, null));
+    }
+
+    @Override
+    public CompletableFuture<CertificationResponse> submitCertificationRequest(
+        CertificationData certificationData) {
+      throw new AssertionError("a consolidation never submits");
+    }
+
+    @Override
+    public CompletableFuture<InclusionProofResponse> getInclusionProof(StateId stateId) {
+      throw new AssertionError("a batch is never emulated by single requests");
+    }
+
+    @Override
+    public CompletableFuture<Long> getLatestBlockNumber() {
+      throw new AssertionError("not needed");
+    }
+  }
+
+  /**
+   * Guard: ProofConsolidator.authenticateDirect keeps the typed missing-entry cause. The master
+   * seal is the newest seal of a consolidation, so after a committee rotation it is the one most
+   * likely to be of an epoch the history does not hold yet: that is not a verdict on the proofs,
+   * and the caller needs the typed signal to update its history and ask again.
+   */
+  @Test
+  void aDirectTargetSealOfAnEpochTheHistoryDoesNotHoldKeepsTheTypedMissingEntryCause()
+      throws Exception {
+    // epoch 2 starts at round 2; the re-certified seals are at round 2 of epoch 2, same root key
+    EpochMoved rotated = new EpochMoved(reCertify(key, 0), key, 2, 2);
+
+    ConsolidationException direct = failure(attempt(rotated));
+    assertEquals(ConsolidationOutcome.UNAUTHENTICATED, direct.getOutcome(), direct.toString());
+    assertTrue(direct.getCause() instanceof NoTrustBaseEntryException,
+        String.valueOf(direct.getCause()));
+    assertEquals(2, ((NoTrustBaseEntryException) direct.getCause()).getEpoch());
+    assertEquals(Long.valueOf(1), ((NoTrustBaseEntryException) direct.getCause()).getHeldTipEpoch());
+
+    ConsolidationException viaClient = failure(tokenClient(rotated, context));
+    assertEquals(ConsolidationOutcome.UNAUTHENTICATED, viaClient.getOutcome(), viaClient.toString());
+    assertTrue(viaClient.getCause() instanceof NoTrustBaseEntryException,
+        String.valueOf(viaClient.getCause()));
+
+    // control: with epoch 2 appended (signed by the epoch 1 quorum), the same batch consolidates
+    TrustBaseHistory through = (TrustBaseHistory) context.getTrustBase();
+    TrustBaseEntry genesis = through.getTip().get();
+    List<TrustBaseMember> members = genesis.getMembers();
+    TrustBaseEntry unsigned = new TrustBaseEntry(genesis.getNetworkId().getId(), 2, 2, members, 1, null,
+        null, genesis.entryId(), java.util.Map.of("x", new byte[65]));
+    SigningService root = new SigningService(key);
+    through.append(new TrustBaseEntry(genesis.getNetworkId().getId(), 2, 2, members, 1, null, null,
+        genesis.entryId(), java.util.Map.of("NODE", root.sign(new DataHasher(HashAlgorithm.SHA256)
+            .update(unsigned.sigBytes()).digest()).encode())));
+    assertEquals(ConsolidationAttempt.Status.CONSOLIDATED,
+        attempt(rotated).get(30, TimeUnit.SECONDS).getStatus());
+  }
+
+  /**
+   * Guard: a master view that does not authenticate for want of the seal's epoch keeps the typed
+   * missing-entry cause as the direct cause of the consolidation failure; any other view failure
+   * stays the cause itself. The view is the one PartitionViewAuthenticator refuses.
+   */
+  @Test
+  void aMasterViewOfAnEpochTheHistoryDoesNotHoldKeepsTheTypedMissingEntryCause() {
+    org.unicitylabs.sdk.api.bft.TestChain.Authority epoch1 =
+        new org.unicitylabs.sdk.api.bft.TestChain.Authority();
+    org.unicitylabs.sdk.api.bft.TestChain.Authority epoch2 = new org.unicitylabs.sdk.api.bft
+        .TestChain.Authority(org.unicitylabs.sdk.api.NetworkId.LOCAL, 2, 5, 2);
+    org.unicitylabs.sdk.api.bft.TestChain.Sealed rotated = org.unicitylabs.sdk.api.bft.TestChain
+        .seal(epoch2, 7, 9, org.unicitylabs.sdk.api.bft.TestChain.fourShards(3, START));
+    org.unicitylabs.sdk.api.bft.PartitionViewException refused = assertThrows(
+        org.unicitylabs.sdk.api.bft.PartitionViewException.class,
+        () -> new org.unicitylabs.sdk.api.bft.PartitionViewAuthenticator(
+            org.unicitylabs.sdk.api.bft.verification.SealVerificationSession.create(
+                epoch1.trustBase()), PartitionViewPolicy.none())
+            .authenticate(rotated.view, rotated.certificate("00")));
+
+    ConsolidationException failure = ProofConsolidator.viewFailure(refused,
+        org.unicitylabs.sdk.api.bft.ShardId.fromBitString("00"));
+    assertEquals(ConsolidationOutcome.UNAUTHENTICATED, failure.getOutcome());
+    assertTrue(failure.getCause() instanceof NoTrustBaseEntryException,
+        String.valueOf(failure.getCause()));
+    assertEquals(2, ((NoTrustBaseEntryException) failure.getCause()).getEpoch());
+
+    // any other view failure stays the cause itself
+    org.unicitylabs.sdk.api.bft.PartitionViewException topology =
+        new org.unicitylabs.sdk.api.bft.PartitionViewException(
+            org.unicitylabs.sdk.api.bft.PartitionViewException.Reason.TOPOLOGY, "missing leaf");
+    ConsolidationException other = ProofConsolidator.viewFailure(topology,
+        org.unicitylabs.sdk.api.bft.ShardId.fromBitString("00"));
+    assertEquals(ConsolidationOutcome.INVALID_INPUT, other.getOutcome());
+    assertEquals(topology, other.getCause());
   }
 
   /**

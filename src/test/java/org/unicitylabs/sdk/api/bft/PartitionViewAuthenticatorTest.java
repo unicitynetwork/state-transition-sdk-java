@@ -10,6 +10,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.unicitylabs.sdk.api.NetworkId;
 import org.unicitylabs.sdk.api.bft.PartitionViewException.Reason;
+import org.unicitylabs.sdk.api.bft.verification.NoTrustBaseEntryException;
 import org.unicitylabs.sdk.api.bft.verification.SealVerificationSession;
 import org.unicitylabs.sdk.util.verification.VerificationStatus;
 
@@ -190,6 +191,39 @@ class PartitionViewAuthenticatorTest {
         PartitionViewPolicy.none());
     assertEquals(Reason.AUTHENTICATION,
         failure(otherNetwork, historical.view, historical.certificate("00")));
+  }
+
+  /**
+   * A view sealed in an epoch the history does not hold yet is refused as AUTHENTICATION with the
+   * typed missing-entry cause (the caller updates its history and asks again); a final seal failure
+   * carries no such cause.
+   */
+  @Test
+  void aSealOfAnEpochTheHistoryDoesNotHoldKeepsTheTypedMissingEntryCause() {
+    TestChain.Authority epoch2 = new TestChain.Authority(NetworkId.LOCAL, 2, 5, 2);
+    TestChain.Sealed rotated = TestChain.seal(epoch2, 7, 9, TestChain.fourShards(3, NOW));
+
+    PartitionViewException refused = assertThrows(PartitionViewException.class,
+        () -> authenticator(PartitionViewPolicy.none()).authenticate(rotated.view,
+            rotated.certificate("00")));
+    assertEquals(Reason.AUTHENTICATION, refused.getReason());
+    assertTrue(refused.getCause() instanceof NoTrustBaseEntryException,
+        String.valueOf(refused.getCause()));
+    NoTrustBaseEntryException typed = (NoTrustBaseEntryException) refused.getCause();
+    assertEquals(2, typed.getEpoch());
+    assertEquals(Long.valueOf(1), typed.getHeldTipEpoch());
+
+    // control: with epoch 2 appended, the view authenticates
+    new PartitionViewAuthenticator(SealVerificationSession.create(AUTHORITY.trustBaseThrough(epoch2)),
+        PartitionViewPolicy.none()).authenticate(rotated.view, rotated.certificate("00"));
+
+    // below quorum is final: no typed cause
+    TestChain.Sealed weak = TestChain.seal(AUTHORITY, 7, 9, TestChain.fourShards(3, NOW), 0, 1);
+    PartitionViewException final_ = assertThrows(PartitionViewException.class,
+        () -> authenticator(PartitionViewPolicy.none()).authenticate(weak.view,
+            weak.certificate("00")));
+    assertEquals(Reason.AUTHENTICATION, final_.getReason());
+    assertEquals(null, final_.getCause());
   }
 
   @Test

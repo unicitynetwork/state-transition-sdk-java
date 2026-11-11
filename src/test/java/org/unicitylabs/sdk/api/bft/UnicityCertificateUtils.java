@@ -134,4 +134,21 @@ public class UnicityCertificateUtils {
             )
     );
   }
+
+  /**
+   * The same certificate with its seal moved to {@code round} of {@code epoch}, re-signed as
+   * {@code "NODE"} by {@code signingService} (a committee rotation under the same root key).
+   */
+  public static UnicityCertificate withSealAt(UnicityCertificate certificate,
+          SigningService signingService, long round, long epoch) {
+    UnicitySeal old = certificate.getUnicitySeal();
+    UnicitySeal seal = new UnicitySeal(old.getNetworkId(), round, epoch, old.getTimestamp(),
+            old.getPreviousHash(), old.getHash(), null);
+    return new UnicityCertificate(certificate.getInputRecord(),
+            certificate.getTechnicalRecordHash(), certificate.getShardConfigurationHash(),
+            certificate.getShardTreeCertificate(), certificate.getUnicityTreeCertificate(),
+            seal.withSignatures(Set.of(new UnicitySeal.SignatureEntry("NODE",
+                    signingService.sign(
+                            new DataHasher(HashAlgorithm.SHA256).update(seal.toCbor()).digest())))));
+  }
 }

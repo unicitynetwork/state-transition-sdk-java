@@ -24,4 +24,11 @@ public class InclusionProofFixture {
     return InclusionProofResponse.notCertified(1L,
             UnicityCertificateUtils.generateCertificate(signingService, root, certificateTimestamp));
   }
+
+  /** The same proof under another unicity certificate. */
+  public static InclusionProof withCertificate(InclusionProof proof,
+          UnicityCertificate unicityCertificate) {
+    return new InclusionProof(proof.getCertificationData(), proof.getReferenceTime(),
+            proof.getInclusionCertificate(), unicityCertificate);
+  }
 }
